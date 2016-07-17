@@ -109,11 +109,10 @@ function encodeRecord(v, data) {
 // some point.)
 // 
 class Store {
-  constructor(options = {}) {
-    const location = options.location || 'db';
-    const db = require('level')(location, {
+  constructor(location, options = {}) {
+    const db = require('levelup')(location, {
       valueEncoding: 'binary',
-      //db: options.db
+      db: options.db || require('leveldown')
     });
 
     this.lock = require('lock')();
@@ -231,10 +230,10 @@ class Store {
 
 
 
-module.exports = (options) => new Store(options);
+module.exports = (...args) => new Store(...args)
 
 if (require.main === module) {
-  const store = new Store();
+  const store = new Store('db', {db: require('memdown')});
   store.set('/foo/bar', {x:5}, (err) => {
     if (err) console.error(err);
 
