@@ -183,19 +183,28 @@ class Store {
         });
       }, (err) => {
         if (err) {
-          release();
+          debug('Operation preflight failed', err);
+          release()();
           return callback(err);
         }
 
+        debug('Operation preflight succeeded. Committing');
         batch
           .put('__v', encodeVersion(resultingVersion))
-          .write(err => {
+          .write(release(err => {
             if (!err) this.version = resultingVersion;
-            release();
-            callback(err);
-          });
+            debug('Committed version', resultingVersion);
+            callback(err, resultingVersion);
+          }));
       });
     }));
+  }
+
+  getVersion(callback) {
+    this._whenReady(err => {
+      if (err) return callback(err);
+      process.nextTick(() => callback(null, this.version));
+    });
   }
 
   get(key, callback) {
@@ -226,7 +235,6 @@ class Store {
   }
 
 }
-
 
 
 
