@@ -3,7 +3,7 @@ const concat = require('concat-stream')
 const db = {}
 let v = 0
 
-const source = require('crypto').randomBytes(10).toString('base64')
+const source = require('crypto').randomBytes(12).toString('base64')
 const alphabet = "abcdefghijklmnopqrstuvwxyz"
 const gen = () => {
   const char = alphabet[(Math.random() * alphabet.length)|0]
@@ -28,7 +28,9 @@ setInterval(gen, 300)
 
 
 function fetch(ranges, versions, callback) {
-  if (versions[0] > v) {
+  const vrange = versions[source] || [0, Infinity]
+
+  if (vrange[0] > v) {
     // TODO: Hold the query until the version catches up
     return callback(Error('Version in the future'))
   }
@@ -36,7 +38,7 @@ function fetch(ranges, versions, callback) {
   const results = {}
   let minVersion = -1
 
-  console.log('fetch', ranges, versions)
+  console.log('fetch', ranges, vrange)
 
   // Start read transaction
   ranges.forEach(([a, b]) => {
@@ -55,9 +57,10 @@ function fetch(ranges, versions, callback) {
     }
   })
 
-  callback(null, {results, versions:[minVersion, v]})
+  callback(null, {results, versions:{[source]: [minVersion, v]}})
 }
 
 
-require('http').createServer(require('./hostmiddleware')(fetch, source)).listen(5747)
-console.log('listening on 5747')
+const port = process.env.PORT || 5747
+require('http').createServer(require('./hostmiddleware')(fetch)).listen(port)
+console.log(`Source ${source} listening on ${port}`)

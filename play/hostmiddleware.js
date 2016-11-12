@@ -2,21 +2,18 @@
 
 const concat = require('concat-stream')
 
-module.exports = (fetchfn, source) => (req, res) => {
+module.exports = (fetchfn) => (req, res, next) => {
   console.log(req.url, req.headers)
 
-  const vs = [+req.headers['x-minversion'], +req.headers['x-maxversion']]
   // No error handling. Eh.
   req.pipe(concat(text => {
-    ranges = JSON.parse(text)
-    fetchfn(ranges, vs, (err, {results, versions:v2}) => {
+    // Ranges is a list of [start, end] pairs.
+    const {ranges, versions:v1} = JSON.parse(text)
+    fetchfn(ranges, v1 || {}, (err, {results, versions:v2}) => {
       if (err) throw err
 
       res.setHeader('content-type', 'application/json')
-      res.setHeader('x-minversion', v2[0])
-      res.setHeader('x-maxversion', v2[1])
-      if (source) res.setHeader('x-source', source)
-      res.write(JSON.stringify(results))
+      res.write(JSON.stringify({results, versions:v2}))
       res.end()
     })
   }))

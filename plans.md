@@ -1,3 +1,4 @@
+
 Need:
 
 - Router
@@ -122,8 +123,10 @@ Router.fetchQuery, second half:
 - [x] Dumb server supporting fetch for local variables
 - [x] Dumb Router
 - [ ] Router supports mount points
-- [ ] Streaming protocol
+- [x] Support for multiple sources
+- [ ] Streaming update protocol
 - [ ] Update fetch to use stream when behind
 - [ ] Browser client
 - [ ] Leveldb server
 - [ ] Version pairs
+- [ ] Rust

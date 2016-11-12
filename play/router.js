@@ -56,7 +56,7 @@ function routeIntersection(a, b) {
 
 //addRoute(['a', 'z'], 'http://localhost:5747')
 addRoute(['a', 'a~'], 'http://localhost:5747')
-addRoute(['c', 'k'], 'http://localhost:5747')
+addRoute(['c', 'k'], 'http://localhost:5748')
 
 //console.log(routes)
 
@@ -69,6 +69,30 @@ const getDef = (map, key, fn) => {
     map.set(key, v)
   }
   return v
+}
+
+function versionIntersection(dest, src) {
+  // Take the intersection of 
+  for (let source in src) {
+    const vIn = src[source]
+    const vOut = dest[source]
+
+    if (!vOut) {
+      dest[source] = vIn
+    } else {
+      // Intersect.
+      if (vIn[0] > vOut[1] || vIn[1] < vOut[0]) {
+        // TODO: Non-overlapping versions. For now abort. Later, await the data
+        // from the behind server in question via a subscription.
+        throw Error('Non-overlapping version data')
+      }
+
+      vOut[0] = max(vOut[0], vIn[0])
+      vOut[1] = min(vOut[1], vIn[1])
+    }
+  }
+
+  return dest
 }
 
 function fetch(ranges, versions, callback) {
@@ -88,29 +112,23 @@ function fetch(ranges, versions, callback) {
 
     console.log('Got results back', results)
 
-    let minVersion = -1, maxVersion = Infinity
+    const resultVersions = {}
+    //let minVersion = -1, maxVersion = Infinity
     const data = {}
 
     for (let i = 0; i < results.length; i++) {
       const r = results[i]
       for (k in r.results) data[k] = r.results[k]
       
-      if (minVersion > r.versions[1] || maxVersion < r.versions[0]) {
-        // TODO: Non-overlapping versions. For now abort. Later, await the data
-        // from the behind server in question via a subscription.
-        throw Error('Non-overlapping version data')
-      }
-
-      minVersion = max(minVersion, r.versions[0])
-      maxVersion = min(maxVersion, r.versions[1])
+      versionIntersection(resultVersions, r.versions)
     }
 
-    callback(null, {results: data, versions: [minVersion, maxVersion]})
+    callback(null, {results: data, versions: resultVersions})
   })
 
   rangesForRoute.forEach((ranges, route) => {
     console.log('target', ranges, versions, route.urlBase)
-    fetchRemote(route.urlBase, ranges, versions, null, next())
+    fetchRemote(route.urlBase, ranges, versions, next())
   })
 }
 
@@ -120,5 +138,5 @@ fetch([['a', 'b'], ['e', 'g']], [0, Infinity], (err, results) => {
 })*/
 
 
-require('http').createServer(require('./hostmiddleware')(fetch, null)).listen(5741)
+require('http').createServer(require('./hostmiddleware')(fetch)).listen(5741)
 console.log('listening on 5741')
