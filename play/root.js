@@ -62,5 +62,5 @@ function fetch(ranges, versions, callback) {
 
 
 const port = process.env.PORT || 5747
-require('http').createServer(require('./hostmiddleware')(fetch)).listen(port)
+require('http').createServer(require('./hostsource')({fetch})).listen(port)
 console.log(`Source ${source} listening on ${port}`)

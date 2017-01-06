@@ -6,11 +6,11 @@ const accessToken = "5"
 let knownVersions = {} // Map from source -> [v,v] range.
 let knownData = {}
 
-const fetch = require('./fetchremote')
+const {Remote} = require('./remotesource')
 
 // Set of pairs of key1, key2. Ranges inclusive for now.
-const q = [['a', 'c'], ['j', 'm']]
-fetch('http://localhost:5741', q, knownVersions, (err, data) => {
+const q = [['yo/a', 'yo/c'], ['yo/j', 'zz/a']]
+Remote('http://localhost:5741').fetch(q, knownVersions, (err, data) => {
   if (err) throw err
 
   const {results, versions:v2} = data
@@ -45,3 +45,4 @@ fetch('http://localhost:5741', q, knownVersions, (err, data) => {
   console.log('version', knownVersions)
 
 })
+
