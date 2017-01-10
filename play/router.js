@@ -2,13 +2,6 @@
 const afterAll = require('after-all-results')
 const assert = require('assert')
 
-// Stored in frontend-visible range order. Overlapping not allowed. Append with mount().
-//
-// source: Data source to hit with request
-// fRange: Front visible range (eg users/byCar to users/byCar~)
-// fPrefix: Characters to strip from input range start&end (eg 'users/')
-// bPrefix: characters (if any) to prefix on the range when sending to the named source.
-const routes = []
 
 const min = (a, b) => a < b ? a : b
 const max = (a, b) => a > b ? a : b
@@ -22,69 +15,6 @@ const beginsWith = (str, prefix) => (str.slice(0, prefix.length) === prefix)
 
 const mapKey = (key, fromPrefix, toPrefix) => toPrefix + key.slice(fromPrefix.length)
 const mapRange = (range, fromPrefix, toPrefix) => range.map(x => mapKey(x, fromPrefix, toPrefix))
-
-function mount(source, bPrefix, lRange, fPrefix) {
-  // Splice the route in order in the routes list. Binary tree or something
-  // would be good here but there shouldn't be many routes, so this is fine for
-  // now.
-  assert(lRange[0] < lRange[1])
-
-  const fRange = [fPrefix + lRange[0], fPrefix + lRange[1]]
-  const route = {source, fRange, fPrefix, bPrefix}
-
-  const [a, b] = fRange
-
-  for(let i = 0; i < routes.length; i++) {
-    const r = routes[i].fRange
-    if (a <= r[1]) {
-      assert(a < r[0] && b < r[0], 'Routes overlap')
-      routes.splice(i, 0, route)
-      return
-    }
-  }
-  routes.push(route)
-}
-
-// Only thing supported right now.
-//addRoute(prefixToRange('/root/'), 'http://localhost:5747')
-
-const {Remote} = require('./remotesource')
-//addRoute(['a', 'z'], 'http://localhost:5747')
-
-//addRouteRaw(['a', 'a~'], 'http://localhost:5747')
-//addRouteRaw(['c', 'k'], 'http://localhost:5748')
-
-const root = Remote('http://localhost:5747')
-mount(root, '', ['a', 'a~'], 'yo/')
-mount(root, '', ['j', 'k~'], 'yo/')
-mount(root, '', ['a', 'q~'], 'zz/')
-
-console.log(routes)
-
-
-// [a, b] is inclusive.
-function routeIntersection(a, b) {
-  const results = []
-
-  let x = a
-  // First try to find the route that overlaps
-  for(let i = 0; i < routes.length; i++) {
-    const route = routes[i]
-    const [r0, r1] = route.fRange
-
-    if (b < r0 || x > r1) continue
-
-    // We've found the next route.
-    x = max(x, r0)
-    const end = min(b, r1)
-    results.push({route, fRange:[x, end]})
-
-    if (r1 >= b) break
-  }
-
-  console.log('RI', a, b, results)
-  return results
-}
 
 const getDef = (map, key, fn) => {
   let v = map.get(key)
@@ -120,80 +50,134 @@ function versionIntersection(dest, src) {
   return dest
 }
 
-function fetch(reqRanges, versions, callback) {
-  console.log('Fetching', reqRanges)
 
-  // First go through all the ranges and split them out based on our routes.
-  let mappingsForSource = new Map
-
-  // If the requested range set was sorted we could do this in O(nlogn)ish instead of O(n*k)
-  for (let i = 0; i < reqRanges.length; i++) {
-    const [a, b] = reqRanges[i]
-    routeIntersection(a, b).forEach(({route:{source, fPrefix, bPrefix}, fRange}) => {
-      const mappings = getDef(mappingsForSource, source, newArray)
-
-      // Map the intersecting frontend range to the equivalent backend range.
-      // Note that multiple front ranges could overlap. This would be more
-      // efficient if we keep the back range set sorted.
-      mappings.push({
-        bRange: mapRange(fRange, fPrefix, bPrefix),
-        fPrefix,
-        bPrefix,
-      })
-    })
+class Router {
+  constructor() {
+    // Stored in frontend-visible range order. Overlapping not allowed. Append with mount().
+    //
+    // source: Data source to hit with request
+    // fRange: Front visible range (eg users/byCar to users/byCar~)
+    // fPrefix: Characters to strip from input range start&end (eg 'users/')
+    // bPrefix: characters (if any) to prefix on the range when sending to the named source.
+    this.routes = []
   }
 
-  console.log('ranges', mappingsForSource)
+  mount(source, bPrefix, lRange, fPrefix) {
+    // Splice the route in order in the routes list. Binary tree or something
+    // would be good here but there shouldn't be many routes, so this is fine for
+    // now.
+    assert(lRange[0] < lRange[1])
 
-  const next = afterAll((err, allResults) => {
-    if (err) return callback(err)
+    const fRange = [fPrefix + lRange[0], fPrefix + lRange[1]]
+    const route = {source, fRange, fPrefix, bPrefix}
 
-    console.log('Got results back', allResults)
+    const [a, b] = fRange
 
-    const resultVersions = {}
-    const data = {}
-
-    for (let i = 0; i < allResults.length; i++) {
-      const {results, versions, mappings} = allResults[i]
-
-      versionIntersection(resultVersions, versions)
-
-      //for (k in r.results) data[k] = r.results[k]
-      for (let j = 0; j < mappings.length; j++) {
-        const {bRange, fPrefix, bPrefix} = mappings[j]
-        // This is really inefficient but whatever.
-        for (bk in results) {
-          if (inRange(bk, bRange)) {
-            fk = mapKey(bk, bPrefix, fPrefix)
-            data[fk] = results[bk]
-          }
-        }
-        //console.log('mapping', results)
+    for(let i = 0; i < this.routes.length; i++) {
+      const r = this.routes[i].fRange
+      if (a <= r[1]) {
+        assert(a < r[0] && b < r[0], 'Routes overlap')
+        this.routes.splice(i, 0, route)
+        return
       }
     }
+    this.routes.push(route)
+  }
 
-    callback(null, {results: data, versions: resultVersions})
-  })
 
-  mappingsForSource.forEach((mappings, source) => {
-    console.log('target', mappings, versions)
+  // [a, b] is inclusive.
+  routeIntersection(a, b) {
+    const results = []
 
-    // Map the routes. Note that the mapped routes can overlap. This would be more efficient if we 
-    
-    source.fetch(mappings.map(m => m.bRange), versions, next((err, result) => {
-      // AAR (weirdly) calls this sync before the results are collected.
-      if (result) {
-        result.mappings = mappings
+    let x = a
+    // First try to find the route that overlaps
+    for(let i = 0; i < this.routes.length; i++) {
+      const route = this.routes[i]
+      const [r0, r1] = route.fRange
+
+      if (b < r0 || x > r1) continue
+
+      // We've found the next route.
+      x = max(x, r0)
+      const end = min(b, r1)
+      results.push({route, fRange:[x, end]})
+
+      if (r1 >= b) break
+    }
+
+    console.log('RI', a, b, results)
+    return results
+  }
+
+  fetch(reqRanges, versions, callback) {
+    console.log('Fetching', reqRanges)
+
+    // First go through all the ranges and split them out based on our routes.
+    let mappingsForSource = new Map
+
+    // If the requested range set was sorted we could do this in O(nlogn)ish instead of O(n*k)
+    for (let i = 0; i < reqRanges.length; i++) {
+      const [a, b] = reqRanges[i]
+      this.routeIntersection(a, b).forEach(({route:{source, fPrefix, bPrefix}, fRange}) => {
+        const mappings = getDef(mappingsForSource, source, newArray)
+
+        // Map the intersecting frontend range to the equivalent backend range.
+        // Note that multiple front ranges could overlap. This would be more
+        // efficient if we keep the back range set sorted.
+        mappings.push({
+          bRange: mapRange(fRange, fPrefix, bPrefix),
+          fPrefix,
+          bPrefix,
+        })
+      })
+    }
+
+    console.log('ranges', mappingsForSource)
+
+    const next = afterAll((err, allResults) => {
+      if (err) return callback(err)
+
+      console.log('Got results back', allResults)
+
+      const resultVersions = {}
+      const data = {}
+
+      for (let i = 0; i < allResults.length; i++) {
+        const {results, versions, mappings} = allResults[i]
+
+        versionIntersection(resultVersions, versions)
+
+        //for (k in r.results) data[k] = r.results[k]
+        for (let j = 0; j < mappings.length; j++) {
+          const {bRange, fPrefix, bPrefix} = mappings[j]
+          // This is really inefficient but whatever.
+          for (let bk in results) {
+            if (inRange(bk, bRange)) {
+              const fk = mapKey(bk, bPrefix, fPrefix)
+              data[fk] = results[bk]
+            }
+          }
+          //console.log('mapping', results)
+        }
       }
-    }))
-  })
-}
 
-/*
-fetch([['a', 'b'], ['e', 'g']], [0, Infinity], (err, results) => {
-  console.log(err, results)
-})*/
+      callback(null, {results: data, versions: resultVersions})
+    })
 
+    mappingsForSource.forEach((mappings, source) => {
+      console.log('target', mappings, versions)
 
-require('http').createServer(require('./hostsource')({fetch})).listen(5741)
-console.log('listening on 5741')
+      // Map the routes. Note that the mapped routes can overlap. This would be more efficient if we 
+      
+      source.fetch(mappings.map(m => m.bRange), versions, next((err, result) => {
+        // AAR (weirdly) calls this sync before the results are collected.
+        if (result) {
+          result.mappings = mappings
+        }
+      }))
+    })
+  }
+};
+
+module.exports = () => new Router()
+
