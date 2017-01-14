@@ -1,48 +1,136 @@
-const request = require('request')
 const assert = require('assert')
+const es = require('event-stream')
+const {Writable} = require('stream')
 
-const accessToken = "5"
+function resultsAsMap(obj) {
+  if (obj.constructor === Map) return obj
 
-let knownVersions = {} // Map from source -> [v,v] range.
-let knownData = {}
-
-const {Remote} = require('./remotesource')
-
-// Set of pairs of key1, key2. Ranges inclusive for now.
-const q = [['yo/a', 'yo/c'], ['yo/j', 'zz/a']]
-Remote('http://localhost:5741').fetch(q, knownVersions, (err, data) => {
-  if (err) throw err
-
-  const {results, versions:v2} = data
-  console.log('v', v2, 'results', results)
-
-  /*
-  if (source && resultSource && resultSource !== source) {
-    console.log('Discarding all I know about the world - the DB has changed!')
-    knownData = {}
-    minVersion = v2[0]
-  } else if (!source) {
-    source = resultSource
-    minVersion = v2[0]
-  } else {
-    assert(v2[1] >= minVersion)
-    minVersion = Math.max(v2[0], minVersion)
-  }*/
-
-  // Merge data.
-  //
-  // Soooo this actually needs to be more complicated. The problem is that we
-  // have some results from a different version range. If the ranges are
-  // non-overlapping then we have a problem and the old data needs to be
-  // brought into a similar range.
-  for(k in results) {
-    knownData[k] = results[k]
+  const m = new Map
+  for (let k in obj) {
+    m.set(k, obj[k])
   }
-  // For now.
-  knownVersions = v2
+  return m
+}
 
-  console.log('known', knownData)
-  console.log('version', knownVersions)
+function resolvable(callback) {
+  // Invert a promise.
+  let resolve, reject
+  const promise = new Promise((_resolve, _reject) => {
+    resolve = _resolve
+    reject = _reject
+  })
 
+  if (callback) promise.then(data => callback(null, data), callback)
+  return (err, data) => {
+    if (err) reject(err)
+    else resolve(data)
+  }
+}
+
+const client = (stream) => {
+  //stream.write({a:"fetch",query:[["a","b"]],versions:{}})
+
+  const pendingByRef = new Map
+  const streamByRef = new Map
+  let nextRef = 1
+
+  const write = (msg) => {
+    if (stream.writable) stream.write(msg)
+  }
+
+  stream.on('data', msg => {
+    console.log('got', msg)
+
+    switch(msg.a) {
+      case 'fetch': {
+        const {ref, results, versions, error} = msg
+        const callback = pendingByRef.get(ref)
+
+        if (error) callback(Error(error))
+        else callback(null, {results, versions})
+
+        pendingByRef.delete(ref)
+        break
+      }
+
+      case 'streamOps': {
+        // We've gotten a response about a streamOps request
+        const {ref, versions, error} = msg
+        const callback = pendingByRef.get(ref)
+
+        // TODO: Missing the case where the stream ends naturally.
+        if (error) {
+          callback(Error(error))
+          streamByRef.delete(ref)
+          return
+        }
+
+        callback(null, {versions, cancel() {
+          write({a:'cancelStream', ref})
+          streamByRef.delete(ref)
+        }})
+        break
+      }
+      case 'cancelStream': {
+        const {ref, error} = msg
+        if (error) {
+          console.warn('Error cancelling stream', ref, error)
+        }
+        break
+      }
+      case 'stream': {
+        // We actually got a message on a stream.
+        const {ref, results} = msg
+        const listener = streamByRef.get(ref)
+        if (!listener) return
+
+        listener(resultsAsMap(results))
+        break
+      }
+      default:
+        console.error('Message not implemented', msg.a, msg)
+    }
+  })
+
+  return {
+    fetch(query, versions, callback) {
+      const ref = nextRef++
+      pendingByRef.set(ref, resolvable(callback))
+      write({a:'fetch', ref, query, versions})
+    },
+    streamOps(query, versions, listener, callback) {
+      const ref = nextRef++
+      pendingByRef.set(ref, resolvable(callback))
+      streamByRef.set(ref, listener)
+      stream.write({a:'streamOps', ref, query, versions})
+    },
+  }
+}
+
+exports.tcpClient = function(port, host) {
+  const net = require('net')
+  
+  const c = net.createConnection(port, host, () => {
+    console.log('connected')
+
+
+    //c.write('{"a":"fetch","query":[["a","b"]],"versions":{}}\n')
+  })
+
+  const write = es.stringify()
+  write.pipe(c)
+
+  const read = c.pipe(es.split()).pipe(es.parse())
+
+  return client(es.duplex(write, read))
+}
+
+/*
+const s = exports.tcpClient(5747)
+//s.fetch([['a', 'b']], {}, (err, data) => {
+s.streamOps([['a', 'z']], {}, d => {console.log(d)}, (err, data) => {
+  console.log(err, data)
+
+  setTimeout(() => {data.cancel()}, 2000)
 })
-
+*/

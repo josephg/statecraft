@@ -2,19 +2,13 @@
 const afterAll = require('after-all-results')
 const assert = require('assert')
 
+const {mapKey, mapRange, inRange} = require('./util')
 
 const min = (a, b) => a < b ? a : b
 const max = (a, b) => a > b ? a : b
 
-const inRange = (x, range) => (x >= range[0] && x <= range[1])
-
 const prefixToRange = (prefix) => [prefix, prefix+'~']
 const ALL = prefixToRange('')
-
-const beginsWith = (str, prefix) => (str.slice(0, prefix.length) === prefix)
-
-const mapKey = (key, fromPrefix, toPrefix) => toPrefix + key.slice(fromPrefix.length)
-const mapRange = (range, fromPrefix, toPrefix) => range.map(x => mapKey(x, fromPrefix, toPrefix))
 
 const getDef = (map, key, fn) => {
   let v = map.get(key)
@@ -109,15 +103,13 @@ class Router {
     return results
   }
 
-  fetch(reqRanges, versions, callback) {
-    console.log('Fetching', reqRanges)
-
+  getMappingsFor(ranges) {
     // First go through all the ranges and split them out based on our routes.
-    let mappingsForSource = new Map
+    const mappingsForSource = new Map
 
     // If the requested range set was sorted we could do this in O(nlogn)ish instead of O(n*k)
-    for (let i = 0; i < reqRanges.length; i++) {
-      const [a, b] = reqRanges[i]
+    for (let i = 0; i < ranges.length; i++) {
+      const [a, b] = ranges[i]
       this.routeIntersection(a, b).forEach(({route:{source, fPrefix, bPrefix}, fRange}) => {
         const mappings = getDef(mappingsForSource, source, newArray)
 
@@ -132,7 +124,14 @@ class Router {
       })
     }
 
-    console.log('ranges', mappingsForSource)
+    return mappingsForSource
+  }
+
+  fetch(ranges, versions, callback) {
+    console.log('Fetching', ranges)
+
+    const mappingsForSource = this.getMappingsFor(ranges)
+    console.log('mapping', mappingsForSource)
 
     const next = afterAll((err, allResults) => {
       if (err) return callback(err)
@@ -176,6 +175,10 @@ class Router {
         }
       }))
     })
+  }
+
+  streamOps(ranges, versions, listener, callback) {
+    
   }
 };
 

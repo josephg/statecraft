@@ -1,39 +1,10 @@
 const concat = require('concat-stream')
 const assert = require('assert')
 
+const {inRange, inRanges, normalizeRanges} = require('./util')
+
 const min = (a, b) => a < b ? a : b
 const max = (a, b) => a > b ? a : b
-
-const inRange = (x, range) => (x >= range[0] && x <= range[1])
-const inRanges = (x, ranges) => ranges.some(range => inRange(x, range))
-
-// Edits ranges in-place.
-const normalizeRanges = (ranges) => {
-  // first sort by starting key
-  ranges.sort(([a0], [b0]) => a0 - b0)
-
-  for (let i = 0; i < ranges.length - 1; i++) {
-    let a1 = ranges[i][1]
-    while (ranges[i+1][0] <= a1) {
-      // Merge.
-      let [b0, b1] = ranges[i+1]
-
-      a1 = ranges[i][1] = max(a1, b1)
-      ranges.splice(i+1, 1)
-      if (i+1 >= ranges.length) break
-    }
-  }
-
-  return ranges
-}
-
-/*
-console.log(normalizeRanges([[1,2],[3,5]]))
-console.log(normalizeRanges([[1,3],[3,5]]))
-console.log(normalizeRanges([[2,3],[1,5]]))
-
-return
-*/
 
 function isEmpty(obj) {
   for (let k in obj) return false
@@ -129,7 +100,10 @@ function subscriptionStore(currentVersions) {
         versions,
       })
 
-      callback(null, { cancel: () => { subscriptions.delete(listener) } })
+      callback(null, {
+        versions,
+        cancel() { subscriptions.delete(listener) },
+      })
     }
   }
 }
@@ -156,7 +130,7 @@ module.exports = () => {
     // Transaction ended!
 
     const txn = new Map([[char, {
-      newVal: db[char],
+      newVal: db[char].data,
       opType: 'inc',
       opData: 1
     }]])

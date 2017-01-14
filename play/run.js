@@ -1,19 +1,28 @@
-const hostSource = require('./hostsource')
+//const hostSource = require('./hostsource')
 const http = require('http')
 
 const port = process.env.PORT || 5747
 const root = require('./root')()
 
-http.createServer(hostSource(root)).listen(port)
-console.log(`root ${root.source} listening on ${port}`)
+//http.createServer(hostSource(root)).listen(port)
+//console.log(`root ${root.source} listening on ${port}`)
 
-root.streamOps([['a', 'c']], null, (x => console.log('l', x)), (err, result) => {
-  console.log('streaming', err, result)
+
+const view = require('./view')(root, (x => -x))
+
+require('./server').tcpServer(view).listen(port, () => {
+  console.log('listening on TCP port', port)
 })
 
+/*
+view.streamOps([['a', 'z']], null, (x => console.log('l', x)), (err, result) => {
+  console.log('streaming', err, result)
+})*/
 
 
 
+
+/*
 
 const router = require('./router')()
 
@@ -29,3 +38,5 @@ console.log(router.routes)
 
 require('http').createServer(require('./hostsource')(router)).listen(5741)
 console.log('listening on 5741')
+
+*/
