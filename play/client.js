@@ -98,7 +98,7 @@ const client = (stream) => {
       pendingByRef.set(ref, resolvable(callback))
       write({a:'fetch', ref, query, versions})
     },
-    streamOps(query, versions, listener, callback) {
+    streamOps(query, versions={}, listener, callback) {
       const ref = nextRef++
       pendingByRef.set(ref, resolvable(callback))
       streamByRef.set(ref, listener)
@@ -125,7 +125,7 @@ exports.tcpClient = function(port, host) {
   return client(es.duplex(write, read))
 }
 
-/*
+
 const s = exports.tcpClient(5747)
 //s.fetch([['a', 'b']], {}, (err, data) => {
 s.streamOps([['a', 'z']], {}, d => {console.log(d)}, (err, data) => {
@@ -133,4 +133,4 @@ s.streamOps([['a', 'z']], {}, d => {console.log(d)}, (err, data) => {
 
   setTimeout(() => {data.cancel()}, 2000)
 })
-*/
+

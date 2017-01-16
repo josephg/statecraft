@@ -19,7 +19,7 @@ function subscriptionStore(currentVersions) {
   return {
     // txn is a map from key -> {newVal, optional opType, optional op}
     op(txn, opVersions) {
-      //console.log('op', txn, opVersions)
+      console.log('op', txn, opVersions)
 
       for (s in opVersions) currentVersions[s] = opVersions[s]
 
@@ -78,6 +78,8 @@ function subscriptionStore(currentVersions) {
       // need a way to do this but this is sort of a weird / awkward way of
       // expressing that.)
       for (k in currentVersions) {
+        // TODO: If the version isn't specified this should actually find the
+        // minimum version of docs in the requested range
         const v = currentVersions[k]
         const reqV = (reqVersions && reqVersions[k]) || [v, Infinity]
         const [a, b] = reqV

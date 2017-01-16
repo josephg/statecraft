@@ -7,28 +7,25 @@ const root = require('./root')()
 //http.createServer(hostSource(root)).listen(port)
 //console.log(`root ${root.source} listening on ${port}`)
 
+{
+  const view = require('./view')(root, (x => -x))
 
-const view = require('./view')(root, (x => -x))
+  require('./server').tcpServer(view).listen(port, () => {
+    console.log('listening on TCP port', port)
+  })
 
-require('./server').tcpServer(view).listen(port, () => {
-  console.log('listening on TCP port', port)
-})
-
-/*
-view.streamOps([['a', 'z']], null, (x => console.log('l', x)), (err, result) => {
-  console.log('streaming', err, result)
-})*/
-
+  /*
+  view.streamOps([['a', 'z']], null, (x => console.log('l', x)), (err, result) => {
+    console.log('streaming', err, result)
+  })*/
+}
 
 
-
-/*
 
 const router = require('./router')()
 
-const {Remote} = require('./remotesource')
-
-const remoteRoot = root//Remote('http://localhost:5747')
+const remoteRoot = root//require('./client').tcpClient(5747, 'localhost')
+router.mount(remoteRoot, '', ['a', 'b'], '')
 router.mount(remoteRoot, '', ['a', 'a~'], 'yo/')
 router.mount(remoteRoot, '', ['j', 'k~'], 'yo/')
 router.mount(remoteRoot, '', ['a', 'q~'], 'zz/')
@@ -36,7 +33,6 @@ router.mount(remoteRoot, '', ['a', 'q~'], 'zz/')
 console.log(router.routes)
 
 
-require('http').createServer(require('./hostsource')(router)).listen(5741)
-console.log('listening on 5741')
-
-*/
+router.streamOps([['a', 'z']], null, (x => console.log('l', x)), (err, result) => {
+  console.log('streaming', err, result)
+})
