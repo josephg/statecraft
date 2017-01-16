@@ -1,4 +1,5 @@
 const debug = require('debug')('statecraft');
+const crypto = require('crypto');
 
 function doNothing() {}
 
@@ -110,6 +111,8 @@ function encodeRecord(v, data) {
 // 
 class Store {
   constructor(location, options = {}) {
+    if (!location || typeof location === 'object') throw Error('Invalid location');
+
     const db = require('levelup')(location, {
       valueEncoding: 'binary',
       db: options.db || require('leveldown')
@@ -120,10 +123,14 @@ class Store {
     this.ready = new Promise((res, rej) => {
       db.get('__v', (err, record) => {
         if (err && err.notFound) {
-          debug('Initializing a new database at version 0');
           this.version = 0;
-          db.put('__v', encodeVersion(this.version), (err) => {
+          this.id = crypto.randomBytes(9).toString('base64');
+          db.batch()
+          .put('__v', encodeVersion(this.version))
+          .put('__id', this.id)
+          .write((err) => {
             if (err) return rej(err);
+            debug(`Initializing a new database ${this.id} at version 0`);
             res(db);
           });
         } else if (err) {
@@ -131,8 +138,11 @@ class Store {
         } else {
           // The version is a LE i64.
           this.version = decodeVersion(record);
-          debug('Initialized existing database at version', this.version);
-          res(db);
+          db.get('__id', (err, id) => {
+            this.id = id.toString();
+            debug(`Initialized existing database ${this.id} at version ${this.version}`);
+            res(db);
+          });
         }
       });
     });
@@ -200,17 +210,29 @@ class Store {
     }));
   }
 
+  // Deprecated - if you want the version, get '_version'.
   getVersion(callback) {
-    this._whenReady(err => {
-      if (err) return callback(err);
-      process.nextTick(() => callback(null, this.version));
-    });
+    return this.get('_version', callback);
+  }
+
+  _getSpecial(key, callback) {
+    switch(key) {
+      case '_version':
+        return callback(null, this.version);
+      default:
+        return callback(Error('Invalid special value'));
+    }
   }
 
   get(key, callback) {
     // Don't need to serialize reads.
     return this._whenReady((err, db) => {
       if (err) return callback(err);
+  
+      if (key.startsWith('_')) {
+        return this._getSpecial(key, callback);
+      }
+
       db.get(key, (err, record) => {
         if (err) return callback(err);
 
@@ -241,7 +263,7 @@ class Store {
 module.exports = (...args) => new Store(...args)
 
 if (require.main === module) {
-  const store = new Store('db', {db: require('memdown')});
+  const store = new Store('db', {db: require('leveldown')});
   store.set('/foo/bar', {x:5}, (err) => {
     if (err) console.error(err);
 

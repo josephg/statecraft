@@ -14,7 +14,7 @@
 # types are binary, json, ..?
 # store.setType(pathstem, type)
 
-# store.at('/foo/bar/:baz', 
+# store.at('/foo/bar/:baz',
 #store.view('/worlds/:id', '/worlds/:id/image', ...
 # store.view('/worlds/:id', '/worldimg/:id', (world) => {...})
 
@@ -57,7 +57,7 @@ describe 'store', ->
               @store.getVersion throwErr (v) =>
                 assert.equal v, 2
                 done()
-  
+
     it 'can edit an existing value', (done) ->
       @store.set '/foo', {x:5}, throwErr =>
         @store.set '/foo', {x:6}, throwErr =>
@@ -76,15 +76,15 @@ describe 'store', ->
       it 'allows writing without conflicting'
       it 'allows marking read conflicts on separate values'
       it 'supports empty transactions' # Do we actually bump the version though?
-    
+
 
   describe 'level compatibility', ->
     it 'successfully runs the leveldown compatibility test suite'
-  
+
   describe 'sync protocol', ->
     it 'lets you start a sync with no version -> get whole database'
     it 'works if you edit the database while a sync is in progress'
-    
+
 
   describe 'watch', ->
     it 'lets you watch globally'
@@ -100,6 +100,3 @@ describe 'store', ->
     it 'lets you roundtrip queries through a database mounted at a path'
     it.skip 'updates the index syncronously with the data', () ->
       # watch, then edit an indexed value. Watch should only have one update containing both the data and the index getting updated.
-
-
-
