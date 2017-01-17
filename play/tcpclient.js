@@ -80,11 +80,11 @@ const client = (stream) => {
       }
       case 'stream': {
         // We actually got a message on a stream.
-        const {ref, results} = msg
+        const {ref, versions, ops} = msg
         const listener = streamByRef.get(ref)
         if (!listener) return
 
-        listener(resultsAsMap(results))
+        listener({versions, ops:resultsAsMap(ops)})
         break
       }
       default:
@@ -131,6 +131,6 @@ const s = exports.tcpClient(5747)
 s.streamOps([['a', 'z']], {}, d => {console.log(d)}, (err, data) => {
   console.log(err, data)
 
-  setTimeout(() => {data.cancel()}, 2000)
+  setTimeout(() => {data.cancel()}, 5000)
 })
 

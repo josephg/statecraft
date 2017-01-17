@@ -46,15 +46,16 @@ class View {
 
     const _listener = (bTxn) => {
       // Data is a map until the last entry, then its null to say its ended.
-      if (!bTxn) return listener(null)
+      if (bTxn == null) return listener(null)
+      const {ops: bOps, versions} = bTxn
 
-      const fTxn = new Map
-      for (let [bk, {newVal}] of bTxn) {
+      const fOps = new Map
+      for (let [bk, {newVal}] of bOps) {
         const fk = mapKey(bk, this.fPrefix, this.bPrefix)
-        fTxn.set(fk, {newVal: this.mapfn(newVal), opType: 'replace'})
+        fOps.set(fk, {newVal: this.mapfn(newVal), opType: 'replace'})
       }
 
-      listener(fTxn)
+      listener({ops: fOps, versions})
     }
 
     this.source.streamOps(bRanges, versions, _listener, (err, stream) => {

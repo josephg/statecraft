@@ -64,9 +64,13 @@ const serve = (client, source) => {
         const {query, versions, ref} = msg
         const listener = (data) => {
           if (!streamsByRef.has(ref)) return
+          if (data == null) {
+            // This will happen if the requested range doesn't include the new key
+            throw Error('Not implemented')
+          }
 
-          data = resultsAsObj(data)
-          write({a:'stream', ref, results: data})
+          const {ops, versions} = data
+          write({a:'stream', ref, versions, ops: resultsAsObj(ops)})
         }
 
         streamsByRef.set(ref, null)
