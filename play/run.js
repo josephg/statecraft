@@ -34,26 +34,21 @@ router.mount(remoteRoot, '', ['a', 'q~'], 'zz/')
 
 
 
+/*
 root.simpleSubKV(['a', 'b'], null, (x => console.log('l', x)), (err, result) => {
   console.log('streaming', err, result)
 })
+*/
 
 
 root.fetchKV(['a', 'b', 'c'], {}, (err, results) => {
-  console.log(err, results)
+  console.log('fetchkv', err, results)
 })
 
 
-const sub = root.subscribeKV(['a', 'b', 'c'/*, 'f', 'g', 'h', 'j', 'k'*/], {}, {notifyAll:true})
-//sub.stream.on('data', val => console.log(val, stream.data))
-
-sub.on('ready', data => {
-  console.log('ready', data)
-})
-sub.on('txn', (data, v) => {
-  console.log('txn', data, v)
-
-  console.log(sub.data, sub.versions)
+const sub = root.subscribeKV(['a', 'b', 'c'], {}, {notifyAll:false, supportedOps:['inc']}, function({data, versions}) {
+  console.log('txn', data, versions)
+  console.log(this.data)
 })
 
 setTimeout(() => {

@@ -50,23 +50,28 @@ module.exports = () => {
 
   function notifySubs(txn, v) {
     for (let sub of subs) {
-      let notify = null
+      let diff = null
       for (let k of sub.query) {
-        if (!txn.has(k)) continue
+        const change = txn.get(k)
+        if (!change) continue
 
-        if (notify == null) notify = new Map
-        notify.set(k, txn.get(k))
-        sub.data.set(k, txn.get(k).newVal)
+        if (diff == null) diff = new Map
+
+        if (sub.options.supportedOps.has(change.opType)) {
+          diff.set(k, {type: change.opType, data: change.opData})
+        } else {
+          diff.set(k, {type: 'set', data: change.newVal})
+        }
+
+        sub.data.set(k, change.newVal)
       }
 
-      if (notify != null) {
-        sub.versions[source] = [v, v]
-      } else {
-        sub.versions[source][1] = v
-      }
+      const vs = sub.versions[source]
+      if (diff != null) vs[0] = v
+      vs[1] = v
 
-      if (notify != null || sub.options.notifyAll) {
-        sub.emit('txn', notify || new Map, {[source]: v})
+      if (diff != null || sub.options.notifyAll) {
+        sub.emit('txn', {data: diff || new Map, versions: sub.versions})
       }
     }
 
@@ -91,21 +96,21 @@ module.exports = () => {
         return callback(Error('Version in the future'))
       }
 
-      const results = {} // ugh this should be a map.
+      const results = new Map
       let minVersion = -1
 
       for (let k of docs) {
         const cell = db[k]
         if (cell == null) continue // Is this right? I think this is right..?
         
-        results[k] = cell.data
+        results.set(k, cell.data)
         minVersion = Math.max(minVersion, cell.lastMod)
       }
 
       callback(null, {results, versions:{[source]: [minVersion, v]}})
     },
 
-    subscribeKV(initial, versions, options = {}) {
+    subscribeKV(initial, versions, options = {}, listener) {
       //const {Readable} = require('stream')
       const EventEmitter = require('events')
       const type = require('./setops')
@@ -114,7 +119,7 @@ module.exports = () => {
       if (versions[source]) throw Error('Requesting versions not yet supported')
 
       // Options are:
-      // - Supported operation types (forced ALL)
+      // - Supported operation types (supportedOps)
       // - Do initial fetch? (default YES, currently forced YES)
       // - Raw? (If raw then we don't attach a copy of the data. Must be raw if no initial fetch.) (false)
       // - Notify re version bump always? (options.notifyAll)
@@ -123,7 +128,6 @@ module.exports = () => {
 
       // But none of the options are supported at the moment.
       
-      const query = type.create(initial)
 
       const sub = new EventEmitter()
       /*
@@ -131,28 +135,12 @@ module.exports = () => {
         read(size) {},
         objectMode: true,
       })*/
-      sub.query = query
-      sub.data = null
+      sub.query = type.create()
+      sub.data = new Map
+
+      options.supportedOps = new Set(options.supportedOps)
       sub.options = options
-      sub.clientVersion = 0
-      sub.modify = (op, callback) => {
-        // There's a whole bunch of super fun timing issues here.
-        const newData = {}
-        if (op.add) op.add.forEach(k => {
-          const cell = db[k]
-          if (!cell) return
-
-          sub.data.set(k, newData[k] = cell.data)
-          sub.versions[source][0] = Math.max(sub.versions[source][1], cell.lastMod)
-        })
-        if (op.remove) op.remove.forEach(k => {
-          sub.data.delete(k)
-        })
-        sub.query = type.apply(query, op)
-        sub.clientVersion++
-
-        callback && callback(null, newData)
-      }
+      sub.versions = {[source]: [0, v], _client: [0, 0]}
 
       sub.cancel = () => {
         subs.delete(sub)
@@ -160,25 +148,44 @@ module.exports = () => {
 
       subs.add(sub)
 
-      // Mmmm we should fetch the data async, but there's weird timing
-      // implications of doing that here because all the client version changes
-      // need to be ordered. Ehhhhhhhh its going to be janky.
-      sub.data = new Map
-      let minVersion = -1
-      query.forEach(k => {
-        let cell = db[k]
-        if (cell == null) return
-        sub.data.set(k, cell.data)
-        minVersion = Math.max(minVersion, cell.lastMod)
-      })
-      sub.versions = {[source]: [minVersion, v]}
-      process.nextTick(() => sub.emit('ready', sub.data))
+      // Modify the subscription with a setop operation
+      sub.modify = (op, callback) => {
+        // There's a whole bunch of super fun timing issues here.
+        const diff = new Map
+        let minVersion = sub.versions[source][0]
+        if (op.add) op.add.forEach(k => {
+          const cell = db[k]
+          if (!cell) return
+
+          minVersion = Math.max(minVersion, cell.lastMod)
+          diff.set(k, {type: 'set', data: cell.data})
+          sub.data.set(k, cell.data)
+        })
+        if (op.remove) op.remove.forEach(k => {
+          const cell = db[k]
+          if (!cell) return
+
+          diff.set(k, {type: 'rm'})
+          sub.data.delete(k)
+        })
+        sub.query = type.apply(sub.query, op)
+
+        sub.versions[source][0] = minVersion
+        const cv = sub.versions._client
+        cv[0] = cv[1] = cv[1] + 1
+
+        sub.emit('txn', {data: diff, versions: sub.versions})
+        callback && callback(null, diff, versions)
+      }
+
+      if (listener) sub.on('txn', listener)
+
+      // Creating a subscription with a query is shorthand for creating an
+      // empty subscription then modifying its query.
+      if (initial) sub.modify({add:Array.from(initial)})
 
       return sub
     },
-
-    
-
 
 
 
@@ -207,7 +214,7 @@ module.exports = () => {
       const results = {}
       let minVersion = -1
 
-      console.log('fetch', ranges, vrange)
+      console.log('fetchSKV', ranges, vrange)
 
       // Start read transaction
       ranges.forEach(([a, b]) => {

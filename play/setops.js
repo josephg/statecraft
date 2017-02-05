@@ -2,8 +2,7 @@
 const type = module.exports = {
   name: 'set',
   create(data) {
-    // TODO: Assert the data is a set.
-    return Array.isArray(data) ? new Set(data) : data
+    return new Set(data) // Handles another set, array or empty just fine.
   },
 
   apply(snapshot, op) {
