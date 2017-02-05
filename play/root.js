@@ -6,159 +6,17 @@ const {inRange, inRanges, normalizeRanges} = require('./util')
 const min = (a, b) => a < b ? a : b
 const max = (a, b) => a > b ? a : b
 
-function isEmpty(obj) {
-  for (let k in obj) return false
-  return true
-}
-
-function getSourceForKey(key, schema) {
-  for (let i = 0; i < schema.length; i++) { // In order.
-    const {range:[s0, s1], source} = schema[i]
-    if (key < s0) break
-    if (key <= s1) return source
-  }
-  return null
-}
-
-function getSourcesForRange(dest = new Set, range, schema) {
-  const [r0, r1] = range
-
-  for (let i = 0; i < schema.length; i++) {
-    const {range:[s0, s1], source} = schema[i]
-    if (r0 > s1) continue
-    if (r1 < s0) break
-
-    dest.add(source)
-  }
-
-  return dest
-}
-
-function getSourcesForRanges(ranges, schema) {
-  const sources = new Set
-  for (let i = 0; i < ranges.length; i++) {
-    getSourcesForRange(sources, ranges[i], schema)
-  }
-  return sources
-}
-
-
-function subscriptionStore(currentVersions, schema) {
-  currentVersions = currentVersions || {}
-  const subscriptions = new Map // Map from listener -> {}
-
-  return {
-    // Versions is a range [start, end]. Listening automatically stops at end.
-    streamOps(ranges, reqVersions, listener, callback) {
-      const versions = {}
-      // - Discard versions for sources we don't know
-      // - If a source is named at an early version we'll error (we don't have
-      // a historical op store)
-      // - If a source is named at a future version, don't send to this
-      // listener until the version matches the start of the requested range
-      // - If a source isn't named, default it to the current version. (??? We
-      // need a way to do this but this is sort of a weird / awkward way of
-      // expressing that.)
-      const sources = getSourcesForRanges(ranges, schema)
-      for (let s of sources) {
-        // TODO: If the version isn't specified this should actually find the
-        // minimum version of docs in the requested range
-        const v = currentVersions[s]
-        const reqV = (reqVersions && reqVersions[s]) || [v, Infinity]
-        const [a, b] = reqV
-
-        if (a < v) {
-          // TODO: A million ways to fix this error:
-          // - Have a short window MVCC store
-          // - Have an op store we can chain query
-          // - Client should be allowed to request catchup in this case (not
-          // managed here) where we send them an 'op' replacing the doc with
-          // the current document.
-          return callback(Error('Requested version irretrevably in the past'))
-        }
-
-        versions[s] = reqV
-      }
-
-      subscriptions.set(listener, {
-        ranges,
-        versions,
-      })
-
-      callback(null, {
-        versions,
-        cancel() { subscriptions.delete(listener) },
-      })
-    },
-
-    // txn is a map from key -> {newVal, optional opType, optional op}
-    op(txn, opVersions) {
-      //console.log('op', txn, opVersions)
-
-      for (s in opVersions) currentVersions[s] = opVersions[s]
-
-      for (let [listener, {ranges, versions}] of subscriptions) {
-        // Version stuff. We'll only send the client the operation if at least
-        // one of the versions matches on a range that is being listened to.
-        
-        let foundOne = false
-        for (let s in versions) {
-          let opv = opVersions[s]
-          if (opv == null) continue
-
-          // The subscription version range.
-          let [a,b] = versions[s]
-
-          assert(opv >= a)
-          if (opv > b) {
-            delete versions[s]
-          } else {
-            foundOne = true
-          }
-        }
-
-        if (!foundOne) {
-          if (isEmpty(versions)) {
-            // The subscription has expired.
-            console.log('Subscription expired', ranges)
-            listener(null)
-            subscriptions.delete(listener)
-          }
-          continue // Ignore op - Non-overlapping versions in subscription.
-        }
-
-        // Ok now lets look at the actual keys that were updated...
-        let view = null
-
-        for (let [key, data] of txn) {
-          // Ignore if not in subscribed ranges
-          if (!inRanges(key, ranges)) continue
-
-          // Ignore if version isn't listened to
-          const source = getSourceForKey(key, schema)
-          assert(source, `No schema information for key ${key}`)
-
-          // Check that at least one of the versions matches
-          if (versions[source] == null) continue
-
-          if (view == null) view = {ops: new Map, versions:{}}
-          view.ops.set(key, data)
-          view.versions[source] = opVersions[source]
-        }
-
-        if (view != null) listener(view)
-      }
-    },
-  }
-}
 
 module.exports = () => {
-  const db = {}
+  const db = {} // Map from key -> value.
   let v = 0
 
   const source = require('crypto').randomBytes(12).toString('base64')
   const schema = [{range:['a', 'z'], source:source}]
-  const subscriptions = subscriptionStore({[source]: v}, schema)
+  //const subscriptions = require('./simplesubscriptions')({[source]: v}, schema)
+
+  // It should be a map from key -> sub, but for this prototype I'll just scan all the subscriptions.
+  const subs = new Set
 
   const alphabet = "abcdefghijklmnopqrstuvwxyz"
   const gen = () => {
@@ -180,7 +38,9 @@ module.exports = () => {
       opType: 'inc',
       opData: 1
     }]])
-    subscriptions.op(txn, {[source]: v})
+
+    notifySubs(txn, v)
+    //subscriptions.op(txn, {[source]: v})
 
     //console.log(db)
   }
@@ -188,10 +48,153 @@ module.exports = () => {
   for (let i = 0; i < 100; i++) gen()
   setInterval(gen, 300)
 
+  function notifySubs(txn, v) {
+    for (let sub of subs) {
+      let notify = null
+      for (let k of sub.query) {
+        if (!txn.has(k)) continue
+
+        if (notify == null) notify = new Map
+        notify.set(k, txn.get(k))
+        sub.data.set(k, txn.get(k).newVal)
+      }
+
+      if (notify != null) {
+        sub.versions[source] = [v, v]
+      } else {
+        sub.versions[source][1] = v
+      }
+
+      if (notify != null || sub.options.notifyAll) {
+        sub.emit('txn', notify || new Map, {[source]: v})
+      }
+    }
+
+  }
+
 
   return {
     source,
-    fetch(ranges, versions, callback) {
+
+    // Fetch for plain KV pairs.
+    fetchKV(docs, versions, callback) {
+      // Since any store that supports SVK supports KV, we should be able to
+      // have a generic fallback to SVK that'll work here. But I'll write that
+      // later.
+      
+      // docs should be a json set.
+      if (Array.isArray(docs)) docs = new Set(docs)
+
+      const vrange = versions[source] || [0, Infinity]
+      if (vrange[0] > v) {
+        // TODO: Hold the query until the version catches up. Or something???
+        return callback(Error('Version in the future'))
+      }
+
+      const results = {} // ugh this should be a map.
+      let minVersion = -1
+
+      for (let k of docs) {
+        const cell = db[k]
+        if (cell == null) continue // Is this right? I think this is right..?
+        
+        results[k] = cell.data
+        minVersion = Math.max(minVersion, cell.lastMod)
+      }
+
+      callback(null, {results, versions:{[source]: [minVersion, v]}})
+    },
+
+    subscribeKV(initial, versions, options = {}) {
+      //const {Readable} = require('stream')
+      const EventEmitter = require('events')
+      const type = require('./setops')
+
+      // For now I'm going to ignore the requested versions.
+      if (versions[source]) throw Error('Requesting versions not yet supported')
+
+      // Options are:
+      // - Supported operation types (forced ALL)
+      // - Do initial fetch? (default YES, currently forced YES)
+      // - Raw? (If raw then we don't attach a copy of the data. Must be raw if no initial fetch.) (false)
+      // - Notify re version bump always? (options.notifyAll)
+      // - What to do if there's no ops available from requested version (nyi)
+      // - Follow symlinks? (nyi)
+
+      // But none of the options are supported at the moment.
+      
+      const query = type.create(initial)
+
+      const sub = new EventEmitter()
+      /*
+      sub.stream = new Readable({
+        read(size) {},
+        objectMode: true,
+      })*/
+      sub.query = query
+      sub.data = null
+      sub.options = options
+      sub.clientVersion = 0
+      sub.modify = (op, callback) => {
+        // There's a whole bunch of super fun timing issues here.
+        const newData = {}
+        if (op.add) op.add.forEach(k => {
+          const cell = db[k]
+          if (!cell) return
+
+          sub.data.set(k, newData[k] = cell.data)
+          sub.versions[source][0] = Math.max(sub.versions[source][1], cell.lastMod)
+        })
+        if (op.remove) op.remove.forEach(k => {
+          sub.data.delete(k)
+        })
+        sub.query = type.apply(query, op)
+        sub.clientVersion++
+
+        callback && callback(null, newData)
+      }
+
+      sub.cancel = () => {
+        subs.delete(sub)
+      }
+
+      subs.add(sub)
+
+      // Mmmm we should fetch the data async, but there's weird timing
+      // implications of doing that here because all the client version changes
+      // need to be ordered. Ehhhhhhhh its going to be janky.
+      sub.data = new Map
+      let minVersion = -1
+      query.forEach(k => {
+        let cell = db[k]
+        if (cell == null) return
+        sub.data.set(k, cell.data)
+        minVersion = Math.max(minVersion, cell.lastMod)
+      })
+      sub.versions = {[source]: [minVersion, v]}
+      process.nextTick(() => sub.emit('ready', sub.data))
+
+      return sub
+    },
+
+    
+
+
+
+
+    simpleSubKV(query, versions, listener, callback) {
+      const sub = this.subscribeKV(query, versions || {}, {})
+      sub.on('ready', () => {
+        callback(null, {
+          versions: sub.versions,
+          cancel() { sub.cancel() },
+        })
+      })
+      sub.on('txn', listener)
+    },
+
+    // Fetch for sorted key values
+    fetchSKV(ranges, versions, callback) {
       normalizeRanges(ranges)
 
       const vrange = versions[source] || [0, Infinity]
@@ -226,9 +229,11 @@ module.exports = () => {
       callback(null, {results, versions:{[source]: [minVersion, v]}})
     },
 
-    streamOps(ranges, versions, listener, callback) {
-      subscriptions.streamOps(ranges, versions, listener, callback)
-    },
+
+    /*
+    streamOpsSVK(ranges, versions, listener, callback) {
+      subscriptions.streamOpsSVK(ranges, versions, listener, callback)
+    },*/
 
     /*
     fetchOps(ranges, versions, callback) {

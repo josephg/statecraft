@@ -30,9 +30,35 @@ router.mount(remoteRoot, '', ['a', 'a~'], 'yo/')
 router.mount(remoteRoot, '', ['j', 'k~'], 'yo/')
 router.mount(remoteRoot, '', ['a', 'q~'], 'zz/')
 
-console.log(router.routes)
+//console.log('routes', router.routes)
 
 
-root.streamOps([['a', 'b']], null, (x => console.log('l', x)), (err, result) => {
+
+root.simpleSubKV(['a', 'b'], null, (x => console.log('l', x)), (err, result) => {
   console.log('streaming', err, result)
 })
+
+
+root.fetchKV(['a', 'b', 'c'], {}, (err, results) => {
+  console.log(err, results)
+})
+
+
+const sub = root.subscribeKV(['a', 'b', 'c'/*, 'f', 'g', 'h', 'j', 'k'*/], {}, {notifyAll:true})
+//sub.stream.on('data', val => console.log(val, stream.data))
+
+sub.on('ready', data => {
+  console.log('ready', data)
+})
+sub.on('txn', (data, v) => {
+  console.log('txn', data, v)
+
+  console.log(sub.data, sub.versions)
+})
+
+setTimeout(() => {
+  console.log('modifying subscription')
+  sub.modify({remove:['a'], add:['z']}, (err, newData) => {
+    console.log('subscription modified', newData)
+  })
+}, 3000)

@@ -1,4 +1,3 @@
-const es = require('event-stream')
 const {Writable} = require('stream')
 const {normalizeRanges} = require('./util')
 
@@ -30,6 +29,7 @@ const resultsAsObj = (res) => {
 // {"a":"streamOps","ref":1,"versions":{},"query":[["a","b"]]}
 // {"a":"cancelStream","ref":1}
 
+const prefixFor = { kv: 'KV', sortedkv: 'SVK' }
 
 const serve = (client, source) => {
   let finished = false
@@ -45,11 +45,24 @@ const serve = (client, source) => {
 
   const streamsByRef = new Map
 
+  const fetch = (queryType, ...args) => {
+    const fetchfn = ({kv: source.fetchKV, sortedkv: source.fetchSVK})[queryType]
+    fetchfn(...args)
+  }
+
+  const subscribe = (queryType, ...args) => {
+    const subfn = ({kv: source.subscribeKV, sortedkv: source.subscribeSKV})[queryType]
+    subfn(...args)
+  }
+
+  // First we send the client a capabilities message.
+  write({a:'hello', queryTypes:['kv', 'sortedkv'], opTypes:['json1']}) // TODO.
+
   client.on('data', (msg) => {
     switch(msg.a) {
       case 'fetch': {
-        const {query, versions, ref} = msg
-        source.fetch(query, versions, (err, data) => {
+        const {queryType, query, versions, ref} = msg
+        fetch(queryType, query, versions, (err, data) => {
           if (err) {
             console.error('Error in fetch', query, versions, err)
             return write({a:'fetch', ref, error: err.message})
@@ -60,50 +73,9 @@ const serve = (client, source) => {
         break
       }
 
-      case 'streamOps': {
-        const {query, versions, ref} = msg
-        const listener = (data) => {
-          if (!streamsByRef.has(ref)) return
-          if (data == null) {
-            // This will happen if the requested range doesn't include the new key
-            throw Error('Not implemented')
-          }
-
-          const {ops, versions} = data
-          write({a:'stream', ref, versions, ops: resultsAsObj(ops)})
-        }
-
-        streamsByRef.set(ref, null)
-        source.streamOps(query, versions, listener, (err, stream) => {
-          if (err) {
-            console.error('Error subscribing', query, versions, err)
-            return write({a:'streamOps', ref, error: err.message})
-          }
-
-          const {versions, cancel} = stream
-          if (streamsByRef.get(ref) !== null) {
-            // Stream was deleted
-            cancel()
-          }
-          write({a:'streamOps', ref, versions, status: 'ok'})
-          streamsByRef.set(ref, stream)
-        })
-        break
-      }
-
-      case 'cancelStream': {
-        const {ref} = msg
-        if (!streamsByRef.has(ref)) {
-          return write({a:'cancelStream', ref, error: 'Ref not found'})
-        }
-
-        const s = streamsByRef.get(ref)
-        if (s !== null) {
-          s.cancel()
-        }
-        streamsByRef.delete(ref)
-        write({a:'cancelStream', ref, status: 'ok'})
-        break
+      case 'sub': {
+        
+        break;
       }
 
       default:
@@ -115,6 +87,7 @@ const serve = (client, source) => {
 
 exports.tcpServer = function(source) {
   const net = require('net')
+  const es = require('event-stream')
 
   return net.createServer(c => {
     console.log('got client')
