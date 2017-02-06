@@ -51,13 +51,13 @@ module.exports = () => {
   function notifySubs(txn, v) {
     for (let sub of subs) {
       let diff = null
-      for (let k of sub.query) {
+      for (let k of sub._query) {
         const change = txn.get(k)
         if (!change) continue
 
         if (diff == null) diff = new Map
 
-        if (sub.options.supportedOps.has(change.opType)) {
+        if (sub.opts.supportedTypes.has(change.opType)) {
           diff.set(k, {type: change.opType, data: change.opData})
         } else {
           diff.set(k, {type: 'set', data: change.newVal})
@@ -70,8 +70,8 @@ module.exports = () => {
       if (diff != null) vs[0] = v
       vs[1] = v
 
-      if (diff != null || sub.options.notifyAll) {
-        sub.emit('txn', {data: diff || new Map, versions: sub.versions})
+      if (diff != null || sub.opts.notifyAll) {
+        process.nextTick(() => sub.emit('txn', diff || new Map, sub.versions))
       }
     }
 
@@ -110,24 +110,22 @@ module.exports = () => {
       callback(null, {results, versions:{[source]: [minVersion, v]}})
     },
 
-    subscribeKV(initial, versions, options = {}, listener) {
+    subscribeKV(initial, versions, opts = {}, listener, callback) {
       //const {Readable} = require('stream')
       const EventEmitter = require('events')
       const type = require('./setops')
 
       // For now I'm going to ignore the requested versions.
-      if (versions[source]) throw Error('Requesting versions not yet supported')
+      if (versions[source]) throw Error('Requesting versions not yet implemented')
 
       // Options are:
-      // - Supported operation types (supportedOps)
-      // - Do initial fetch? (default YES, currently forced YES)
+      // - Supported operation types (opts.supportedTypes)
+      // - Do initial fetch? (NYI, forced YES)
       // - Raw? (If raw then we don't attach a copy of the data. Must be raw if no initial fetch.) (false)
-      // - Notify re version bump always? (options.notifyAll)
+      // - Notify re version bump always? (opts.notifyAll)
       // - What to do if there's no ops available from requested version (nyi)
-      // - Follow symlinks? (nyi)
+      // - Follow symlinks? (NYI)
 
-      // But none of the options are supported at the moment.
-      
 
       const sub = new EventEmitter()
       /*
@@ -135,12 +133,13 @@ module.exports = () => {
         read(size) {},
         objectMode: true,
       })*/
-      sub.query = type.create()
-      sub.data = new Map
+      sub._query = type.create() // Private
+      sub.data = new Map // In theory only if opts.raw is false
 
-      options.supportedOps = new Set(options.supportedOps)
-      sub.options = options
-      sub.versions = {[source]: [0, v], _client: [0, 0]}
+      opts.supportedTypes = new Set(opts.supportedTypes)
+      sub.opts = opts
+
+      sub.versions = {[source]: [0, v], _client: [-1, -1]}
 
       sub.cancel = () => {
         subs.delete(sub)
@@ -149,7 +148,9 @@ module.exports = () => {
       subs.add(sub)
 
       // Modify the subscription with a setop operation
-      sub.modify = (op, callback) => {
+      sub.modify = (op, newCV, callback) => {
+        if (typeof newCV === 'function') [newCV, callback] = [null, newCV]
+
         // There's a whole bunch of super fun timing issues here.
         const diff = new Map
         let minVersion = sub.versions[source][0]
@@ -168,21 +169,22 @@ module.exports = () => {
           diff.set(k, {type: 'rm'})
           sub.data.delete(k)
         })
-        sub.query = type.apply(sub.query, op)
+        sub._query = type.apply(sub._query, op)
 
         sub.versions[source][0] = minVersion
         const cv = sub.versions._client
-        cv[0] = cv[1] = cv[1] + 1
+        newCV = newCV == null ? cv[1] + 1 : newCV
+        cv[0] = cv[1] = newCV
 
-        sub.emit('txn', {data: diff, versions: sub.versions})
-        callback && callback(null, diff, versions)
+        callback && process.nextTick(() => callback(null, newCV))
+        process.nextTick(() => sub.emit('txn', diff, sub.versions))
       }
 
       if (listener) sub.on('txn', listener)
 
       // Creating a subscription with a query is shorthand for creating an
       // empty subscription then modifying its query.
-      if (initial) sub.modify({add:Array.from(initial)})
+      sub.modify({add:Array.from(initial)}, opts.cv || 0, callback)
 
       return sub
     },

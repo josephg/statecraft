@@ -1,23 +1,12 @@
+const assert = require('assert')
 const {Writable} = require('stream')
 const {normalizeRanges} = require('./util')
-
-const resultsAsObj = (res) => {
-  if (res.constructor === Map) {
-    const obj = {}
-    for (let [k, v] of res) {
-      obj[k] = v
-    }
-    return obj
-  } else {
-    return res
-  }
-}
 
 /* Protocol
  *
  * Fetch:
- * C: {a:'fetch', query:_, versions:_, ref:_}
- * S: {a:'fetch', ref:_, results:_, versions:_}
+ * C: {a:'fetch', queryType:'kv', ref:_, query:_, versions:_}
+ * S: {a:'fetch', queryType:'kv', ref:_, results:_, versions:_}
  * or
  * S: {a:'fetch', ref:_, error:_}
  *
@@ -25,7 +14,9 @@ const resultsAsObj = (res) => {
  */
 
 // Copy pasta
-// {"a":"fetch","query":[["a","b"]],"versions":{}}
+// {"a":"fetch","queryType":"skv","query":[["a","b"]],"versions":{}}
+//
+// xxx
 // {"a":"streamOps","ref":1,"versions":{},"query":[["a","b"]]}
 // {"a":"cancelStream","ref":1}
 
@@ -33,7 +24,14 @@ const prefixFor = { kv: 'KV', sortedkv: 'SVK' }
 
 const serve = (client, source) => {
   let finished = false
-  client.on('finish', () => {finished = true})
+
+  const subForRef = new Map
+
+  client.on('finish', () => {
+    finished = true
+    subForRef.forEach((ref, sub) => sub.cancel())
+    subForRef.clear()
+  })
   const write = msg => {
     if (!finished && client.writable) client.write(JSON.stringify(msg)+'\n')
   }
@@ -43,7 +41,7 @@ const serve = (client, source) => {
     //client.close()
   }
 
-  const streamsByRef = new Map
+  const supportedQueryTypes = ['kv', 'sortedkv'] // TODO: generate from source
 
   const fetch = (queryType, ...args) => {
     const fetchfn = ({kv: source.fetchKV, sortedkv: source.fetchSVK})[queryType]
@@ -52,31 +50,75 @@ const serve = (client, source) => {
 
   const subscribe = (queryType, ...args) => {
     const subfn = ({kv: source.subscribeKV, sortedkv: source.subscribeSKV})[queryType]
-    subfn(...args)
+    return subfn(...args)
   }
 
   // First we send the client a capabilities message.
-  write({a:'hello', queryTypes:['kv', 'sortedkv'], opTypes:['json1']}) // TODO.
+  write({a:'hello', queryTypes:supportedQueryTypes, opTypes:['json1']}) // TODO.
 
   client.on('data', (msg) => {
+    //console.log('server got', msg)
+
     switch(msg.a) {
       case 'fetch': {
-        const {queryType, query, versions, ref} = msg
+        const {queryType, ref, query, versions} = msg
+        assert(supportedQueryTypes.indexOf(queryType) !== -1) // TODO proper error handling
         fetch(queryType, query, versions, (err, data) => {
           if (err) {
             console.error('Error in fetch', query, versions, err)
             return write({a:'fetch', ref, error: err.message})
           }
 
-          write({a:'fetch', ref, results: resultsAsObj(data.results), versions: data.versions})
+          write({a:'fetch', ref, results: Array.from(data.results), versions: data.versions})
         })
         break
       }
 
       case 'sub': {
-        
+        const {queryType, ref, query, versions, opts} = msg
+        assert(supportedQueryTypes.indexOf(queryType) !== -1) // TODO proper error handling
+        assert(!subForRef.has(ref))
+
+        opts.raw = true // No need to keep a live document set on the subscription on this side.
+
+        const listener = (data, versions) => { write({a:'txn', ref, data: Array.from(data), versions}) }
+        const sub = subscribe(queryType, query, versions, opts, listener, (err, cv) => {
+          assert(!err) // TODO
+          write({a:'sub', ref, version:cv}) // Not sure about the arguments to pass back here.
+        })
+        subForRef.set(ref, sub)
+
         break;
       }
+
+      case 'modifySub': {
+        const {ref, op, version} = msg
+        const sub = subForRef.get(ref)
+        if (!sub) {
+          return write({a:'modifySub', ref, error:'Ref not found'})
+        }
+
+        sub.modify(op, version, (err, newCV) => {
+          assert(!err) // TODO
+          write({a:'modifySub', ref, version: newCV})
+        })
+        break
+      }
+
+      case 'cancelSub': {
+        const {ref} = msg
+        const sub = subForRef.get(ref)
+        if (!sub) {
+          return write({a:'cancelSub', ref, error:'Ref not found'})
+        }
+
+        sub.cancel()
+        subForRef.delete(ref)
+        write({a:'cancelSub', ref, status:'ok'})
+        break
+      }
+
+
 
       default:
         console.error('Invalid msg.a', msg.a)

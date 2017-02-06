@@ -10,9 +10,10 @@ const root = require('./root')()
 {
   const view = require('./view')(root, (x => -x))
 
+  /*
   require('./tcpserver').tcpServer(view).listen(port, () => {
     console.log('listening on TCP port', port)
-  })
+  })*/
 
   /*
   view.streamOps([['a', 'z']], null, (x => console.log('l', x)), (err, result) => {
@@ -24,7 +25,7 @@ const root = require('./root')()
 
 const router = require('./router')()
 
-const remoteRoot = root//require('./tcpclient').tcpClient(5747, 'localhost')
+const remoteRoot = root//require('./tcpclient').tcpClient(port, 'localhost')
 router.mount(remoteRoot, '', ['a', 'b'], '')
 router.mount(remoteRoot, '', ['a', 'a~'], 'yo/')
 router.mount(remoteRoot, '', ['j', 'k~'], 'yo/')
@@ -46,9 +47,10 @@ root.fetchKV(['a', 'b', 'c'], {}, (err, results) => {
 })
 
 
-const sub = root.subscribeKV(['a', 'b', 'c'], {}, {notifyAll:false, supportedOps:['inc']}, function({data, versions}) {
+/*
+const sub = root.subscribeKV(['a', 'b', 'c'], {}, {notifyAll:false}, function(data, versions) {
   console.log('txn', data, versions)
-  console.log(this.data)
+  console.log('data result', this.data)
 })
 
 setTimeout(() => {
@@ -57,3 +59,22 @@ setTimeout(() => {
     console.log('subscription modified', newData)
   })
 }, 3000)
+*/
+
+require('./tcpserver').tcpServer(root).listen(port, () => {
+  console.log('listening on TCP port', port)
+
+  const remoteRoot = require('./tcpclient').tcpClient(port, 'localhost')
+  const sub = remoteRoot.subscribeKV(['a', 'b', 'c'], {}, {notifyAll:false}, function(data, versions) {
+    console.log('txn', data, versions)
+    console.log('data result', this.data)
+  })
+
+  setTimeout(() => {
+    console.log('modifying subscription')
+    sub.modify({remove:['a'], add:['z']}, (err, newData) => {
+      console.log('subscription modified', newData)
+    })
+  }, 3000)
+
+})
