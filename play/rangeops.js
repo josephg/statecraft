@@ -129,12 +129,12 @@ const type = module.exports = {
   apply(snapshot, op) {
     // We'll walk the snapshot and operation together, copying resulting values in.
     const result = []
-    let lastKey = null
+    let lastKey = ''
 
     const take = doubleIter(snapshot, op)
     let next
     while ((next = take())) {
-      let [snapval, opval, to] = next
+      const [snapval, opval, to] = next
       append(result, lastKey, snapval + opval, to)
       lastKey = to
     }
@@ -142,6 +142,40 @@ const type = module.exports = {
   },
   compose(op1, op2) {
     return this.apply(op1, op2) // HOW MYSTERIOUSLY CONVENIENT
+  },
+
+
+  // **** Helper functions
+ 
+  forEach(range, fn) { // Helper function for iterating over a range. Yields (k1, val, k2) to fn.
+    const {peek, consumeTo} = iter(range)
+    let lastKey = ''
+
+    let next 
+    while ((next = peek())) {
+      const [val, to] = next
+      if (val !== 0) fn(lastKey, val, to)
+      lastKey = to
+      consumeTo(to)
+    }
+  },
+
+  fromKeys(keys) { // Ranges from a list or set of individual keys.
+    keys = Array.from(keys).sort()
+    const result = []
+    for (let i = 0; i < keys.length; i++) {
+      result.push('<'+keys[i], 1, '.')
+    }
+    return result
+  },
+
+  // Convert from a sorted list of inclusive [[a,b], [c,d]] pairs.
+  fromInclusivePairs(pairs) {
+    const result = []
+    for (let i = 0; i < keys.length; i++) {
+      append(result, '<'+pairs[i][0], 1, '>'+pairs[i][1])
+    }
+    return result
   },
 }
 

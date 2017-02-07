@@ -1,10 +1,15 @@
 const concat = require('concat-stream')
 const assert = require('assert')
 
-const {inRange, inRanges, normalizeRanges} = require('./util')
+const rangeops = require('./rangeops')
+
+const {arrayCursor, eachInRanges} = require('./rangeutil')
+
+//const {inRange, inRanges, normalizeRanges} = require('./util')
 
 const min = (a, b) => a < b ? a : b
 const max = (a, b) => a > b ? a : b
+
 
 
 module.exports = () => {
@@ -12,7 +17,8 @@ module.exports = () => {
   let v = 0
 
   const source = require('crypto').randomBytes(12).toString('base64')
-  const schema = [{range:['a', 'z'], source:source}]
+
+  //const schema = [{range:['a', 'z'], source:source}]
   //const subscriptions = require('./simplesubscriptions')({[source]: v}, schema)
 
   // It should be a map from key -> sub, but for this prototype I'll just scan all the subscriptions.
@@ -107,7 +113,7 @@ module.exports = () => {
         minVersion = Math.max(minVersion, cell.lastMod)
       }
 
-      callback(null, {results, versions:{[source]: [minVersion, v]}})
+      process.nextTick(() => callback(null, {results, versions:{[source]: [minVersion, v]}}))
     },
 
     subscribeKV(initial, versions, opts = {}, listener, callback) {
@@ -189,8 +195,7 @@ module.exports = () => {
       return sub
     },
 
-
-
+    // Is this important?
     simpleSubKV(query, versions, listener, callback) {
       const sub = this.subscribeKV(query, versions || {}, {})
       sub.on('ready', () => {
@@ -202,10 +207,9 @@ module.exports = () => {
       sub.on('txn', listener)
     },
 
-    // Fetch for sorted key values
-    fetchSKV(ranges, versions, callback) {
-      normalizeRanges(ranges)
 
+    // Fetch for sorted key values. The query is a range op object.
+    fetchSKV(ranges, versions, callback) {
       const vrange = versions[source] || [0, Infinity]
 
       if (vrange[0] > v) {
@@ -213,29 +217,23 @@ module.exports = () => {
         return callback(Error('Version in the future'))
       }
 
-      const results = {}
+      const results = new Map
       let minVersion = -1
 
-      console.log('fetchSKV', ranges, vrange)
+      //console.log('fetchSKV', ranges, vrange)
 
       // Start read transaction
-      ranges.forEach(([a, b]) => {
-        //console.log('range', a, b)
-        // Range query from a to b. But we know they're all single letters, so whatevs.
-        const aa = a.charCodeAt(0)
-        const bb = b.charCodeAt(0)
-
-        for (let i = aa; i <= bb; i++) {
-          const c = String.fromCharCode(i)
-          const cell = db[c]
-          if (!cell) continue
-          //console.log('got cell', c, cell)
-          minVersion = Math.max(minVersion, cell.lastMod)
-          results[c] = cell.data
-        }
+      eachInRanges(ranges, arrayCursor(alphabet), c => {
+        const cell = db[c]
+        if (!cell) return
+        //console.log('got cell', c, cell)
+        minVersion = Math.max(minVersion, cell.lastMod)
+        results.set(c, cell.data)
       })
 
-      callback(null, {results, versions:{[source]: [minVersion, v]}})
+      //console.log('results', results)
+
+      process.nextTick(() => callback(null, {results, versions:{[source]: [minVersion, v]}}))
     },
 
 

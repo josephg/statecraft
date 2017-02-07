@@ -46,6 +46,11 @@ root.fetchKV(['a', 'b', 'c'], {}, (err, results) => {
   console.log('fetchkv', err, results)
 })
 
+root.fetchSKV(['<a', 1, '>c'], {}, (err, results) => {
+  console.log('fetchskv', err, results)
+})
+
+return
 
 /*
 const sub = root.subscribeKV(['a', 'b', 'c'], {}, {notifyAll:false}, function(data, versions) {
