@@ -5,22 +5,25 @@ const rangeops = require('./rangeops')
 
 const {arrayCursor, eachInRanges} = require('./rangeutil')
 
+//const {inRange, inRanges, normalizeRanges} = require('./util')
+
 const min = (a, b) => a < b ? a : b
 const max = (a, b) => a > b ? a : b
 
 
+
 module.exports = () => {
-  const db = new Map
+  const db = {} // Map from key -> value.
   let v = 0
 
   const source = require('crypto').randomBytes(12).toString('base64')
 
   //const schema = [{range:['a', 'z'], source:source}]
+  //const subscriptions = require('./simplesubscriptions')({[source]: v}, schema)
 
   // It should be a map from key -> sub, but for this prototype I'll just scan all the subscriptions.
   const subs = new Set
 
-  /*
   const alphabet = "abcdefghijklmnopqrstuvwxyz"
   const gen = () => {
     const char = alphabet[(Math.random() * alphabet.length)|0]
@@ -50,7 +53,6 @@ module.exports = () => {
 
   for (let i = 0; i < 100; i++) gen()
   setInterval(gen, 300)
-  */
 
   function notifySubs(txn, v) {
     for (let sub of subs) {
@@ -78,93 +80,38 @@ module.exports = () => {
         process.nextTick(() => sub.emit('txn', diff || new Map, sub.versions))
       }
     }
+
   }
 
 
   return {
     source,
 
-    // Modify the db. txn is a map from key => {opType, opData}. versions is just source => v.
-    mutate(txn, versions, options = {}, callback) {
-      // I'm convinced there's some more parameters we should be passing to
-      // mutate, but I'm not sure what they are.
-      //
-      // At the very least I'll probably need the client to be more specific
-      // about whether transforms are allowed. I think?
-      //
-      // TODO: add txn metadata (source, etc)
+    // Fetch for plain KV pairs.
+    fetchKV(docs, versions, callback) {
+      // Since any store that supports SVK supports KV, we should be able to
+      // have a generic fallback to SVK that'll work here. But I'll write that
+      // later.
+      
+      // docs should be a json set.
+      if (Array.isArray(docs)) docs = new Set(docs)
 
-      // Options:
-      // - Additional keys that we should conflict with if they've changed
-      //   since the named version. This could be implemented with noops in the
-      //   txn, though thats kind of nasty. NYI.
-
-      // First check the versions.
-      const opv = versions[source]
-      if (opv != null && opv < v) {
-        // Version is old. Check all the modified keys to see if we actually conflict with anything.
-        for (let k of db.keys()) {
-          const cell = db.get(k)
-          if (cell && cell.lastMod > v) return callback(Error('Write conflict - txn out of date'))
-        }
-        // TODO: Also check options.conflictKeys.
-      }
-
-      // TODO: Also check operations are valid - which is to say, the types are
-      // legit and any check() functions run successfully.
-
-      // TODO: Give operation ID, timestamp. Do operation dedup detection.
-
-      // ***** Ok, transaction going ahead.
-      v++
-
-      const {applyOne} = require('./resultset')
-      for (let [k, op] of txn) {
-        let cell = db.get(k)
-        if (cell == null) db.set(k, (cell = {}))
-
-        const result = applyOne(cell ? cell.data : null, op)
-        // If the result is undefined we still need to keep the cell to store
-        // the lastMod value.
-        //
-        // This can be purged later, when the named op is forgotten to history.
-        cell.data = result
-        cell.lastMod = v
-
-        // This is added to the transaction so clients which don't understand
-        // the op type can still subscribe.
-        op.newVal = result
-      }
-
-      notifySubs(txn, v)
-
-      process.nextTick(() => callback(null, v))
-    },
-
-    // Fetch for sorted key values. The query is a range op object.
-    fetchSKV(ranges, versions, callback) {
       const vrange = versions[source] || [0, Infinity]
-
       if (vrange[0] > v) {
-        // TODO: Hold the query until the version catches up
+        // TODO: Hold the query until the version catches up. Or something???
         return callback(Error('Version in the future'))
       }
 
       const results = new Map
       let minVersion = -1
 
-      //console.log('fetchSKV', ranges, vrange)
-
-      // Start read transaction
-      eachInRanges(ranges, db.keys(), c => {
-        const cell = db.get(c)
-        if (!cell) return
-        //console.log('got cell', c, cell)
+      for (let k of docs) {
+        const cell = db[k]
+        if (cell == null) continue // Is this right? I think this is right..?
+        
+        results.set(k, cell.data)
         minVersion = Math.max(minVersion, cell.lastMod)
-        if (cell.data !== undefined) results.set(c, cell.data)
-      })
-
-      //console.log('results', results)
+      }
 
       process.nextTick(() => callback(null, {results, versions:{[source]: [minVersion, v]}}))
     },
@@ -207,34 +154,127 @@ module.exports = () => {
       return sub
     },
 
+    subscribeKV(initial, versions, opts, listener, callback) {
+      const type = require('./setops')
+      const sub = this._sub(type, versions, opts, listener, callback)
+
+      // Modify the subscription with a setop operation
+      sub.modify = (op, newCV, callback) => {
+        if (typeof newCV === 'function') [newCV, callback] = [null, newCV]
+
+        const diff = new Map
+        let minVersion = sub.versions[source][0]
+        if (op.add) op.add.forEach(k => {
+          const cell = db[k]
+          if (!cell) return
+
+          minVersion = Math.max(minVersion, cell.lastMod)
+          diff.set(k, {type: 'set', data: cell.data})
+          if (!sub.opts.raw) sub.data.set(k, cell.data)
+        })
+        if (op.remove) op.remove.forEach(k => {
+          const cell = db[k]
+          if (!cell) return
+
+          // Note that I don't need to set minVersion here. Actually the min /
+          // max versions might be overly tight at this point after some keys
+          // have been removed, but thats in spec.
+          diff.set(k, {type: 'rm'})
+          if (!sub.opts.raw) sub.data.delete(k)
+        })
+        sub._query = type.apply(sub._query, op)
+
+        sub.versions[source][0] = minVersion
+        const cv = sub.versions._client
+        newCV = newCV == null ? cv[1] + 1 : newCV
+        cv[0] = cv[1] = newCV
+
+        callback && process.nextTick(() => callback(null, newCV))
+        process.nextTick(() => sub.emit('txn', diff, sub.versions))
+      }
+
+      sub._filterTxn = (txn, fn) => {
+        for (let k of sub._query) {
+          if (txn.has(k)) fn(k)
+        }
+      }
+
+      // Creating a subscription with a query is shorthand for creating an
+      // empty subscription then modifying its query.
+      sub.modify({add:Array.from(initial)}, sub.opts.cv || 0, callback)
+
+      return sub
+    },
+
+    // Is this important?
+    simpleSubKV(query, versions, listener, callback) {
+      const sub = this.subscribeKV(query, versions || {}, {})
+      sub.on('ready', () => {
+        callback(null, {
+          versions: sub.versions,
+          cancel() { sub.cancel() },
+        })
+      })
+      sub.on('txn', listener)
+    },
+
+
+    // Fetch for sorted key values. The query is a range op object.
+    fetchSKV(ranges, versions, callback) {
+      const vrange = versions[source] || [0, Infinity]
+
+      if (vrange[0] > v) {
+        // TODO: Hold the query until the version catches up
+        return callback(Error('Version in the future'))
+      }
+
+      const results = new Map
+      let minVersion = -1
+
+      //console.log('fetchSKV', ranges, vrange)
+
+      // Start read transaction
+      eachInRanges(ranges, alphabet, c => {
+        const cell = db[c]
+        if (!cell) return
+        //console.log('got cell', c, cell)
+        minVersion = Math.max(minVersion, cell.lastMod)
+        results.set(c, cell.data)
+      })
+
+      //console.log('results', results)
+
+      process.nextTick(() => callback(null, {results, versions:{[source]: [minVersion, v]}}))
+    },
+
     subscribeSKV(initial, versions, opts = {}, listener, callback) {
       const type = rangeops
       const sub = this._sub(type, versions, opts, listener, callback)
 
       sub.modify = (op, newCV, callback) => {
-        console.log('sub.modify', op, newCV)
         if (typeof newCV === 'function') [newCV, callback] = [null, newCV]
   
         const diff = new Map
         let minVersion = sub.versions[source][0]
 
+        // *******
+        // Now the actually changed part from subscribeKV.
+        //
         // TODO: This is janky because right now its just looking at whether
         // the number is increased or decreased, not which items have been
         // added and removed from the query ranges. Pretty fixable though, just
         // need a bit more plumbing.
         
-        eachInRanges(op, db.keys(), (k, v) => {
+        eachInRanges(op, alphabet, (k, v) => {
           // v is 1 if a range is being added, -1 if its being removed.
-          const cell = db.get(k)
+          const cell = db[k]
           if (!cell) return
 
           if (v > 0) {
             minVersion = Math.max(minVersion, cell.lastMod)
-            if (cell.data !== undefined) {
-              diff.set(k, {type:'set', data:cell.data})
-              // TODO: Could use result ops to modify sub.data.
-              if (!sub.opts.raw) sub.data.set(k, cell.data)
-            }
+            diff.set(k, {type:'set', data:cell.data})
+            // TODO: Could use result ops to modify sub.data.
+            if (!sub.opts.raw) sub.data.set(k, cell.data)
           } else {
             diff.set(k, {type:'rm'})
             if (!sub.opts.raw) sub.data.delete(k)
@@ -259,6 +299,24 @@ module.exports = () => {
 
       return sub
     }
+
+    /*
+    streamOpsSVK(ranges, versions, listener, callback) {
+      subscriptions.streamOpsSVK(ranges, versions, listener, callback)
+    },*/
+
+    /*
+    fetchOps(ranges, versions, callback) {
+      callback(Error('Ops not available'))
+    },
+    
+    streamDocs() {},
+
+    fetchAndSubscribe() {
+
+    },
+*/
+
   }
 }
 

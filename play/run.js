@@ -112,3 +112,11 @@ require('./tcpserver').tcpServer(root).listen(port, () => {
 
 
 })
+
+setTimeout(() => {
+  const txn = new Map([['a', {type:'set', data:1000}], ['c', {type:'set', data:'hi'}]])
+  root.mutate(txn, {[root.source]:0}, {}, (err, v) => {
+    if (err) throw err
+    console.log('operation accepted at version', v)
+  })
+}, 1000)
