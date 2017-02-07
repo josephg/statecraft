@@ -169,10 +169,10 @@ const client = (stream) => {
     // and wait until we get the hello message before allowing any of this
     // stuff to get called.
     fetchKV(...args) { this.fetch('kv', ...args) },
-    fetchSKV(...args) { this.fetch('skv', ...args) },
+    fetchSKV(...args) { this.fetch('sortedkv', ...args) },
 
     subscribeKV(...args) { return this.subscribe('kv', ...args) },
-    subscribeSKV(...args) { return this.subscribe('skv', ...args) },
+    subscribeSKV(...args) { return this.subscribe('sortedkv', ...args) },
   }
 }
 

@@ -52,7 +52,7 @@ root.fetchSKV(['<a', 1, '>c'], {}, (err, results) => {
 
 */
 
-
+/*
 const sub = root.subscribeSKV(['<a', 1, '>c'], {}, {supportedTypes:['inc'], notifyAll:false}, function(data, versions) {
   console.log('txn', data, versions)
   console.log('data result', this.data)
@@ -64,6 +64,7 @@ setTimeout(() => {
     console.log('subscription modified', newData)
   })
 }, 3000)
+*/
 
 /*
 const sub = root.subscribeKV(['a', 'b', 'c'], {}, {notifyAll:false}, function(data, versions) {
@@ -79,11 +80,11 @@ setTimeout(() => {
 }, 3000)
 */
 
-/*
 require('./tcpserver').tcpServer(root).listen(port, () => {
   console.log('listening on TCP port', port)
 
   const remoteRoot = require('./tcpclient').tcpClient(port, 'localhost')
+  /*
   const sub = remoteRoot.subscribeKV(['a', 'b', 'c'], {}, {notifyAll:false}, function(data, versions) {
     console.log('txn', data, versions)
     console.log('data result', this.data)
@@ -95,6 +96,19 @@ require('./tcpserver').tcpServer(root).listen(port, () => {
       console.log('subscription modified', newData)
     })
   }, 3000)
+*/
+
+  const sub = remoteRoot.subscribeSKV(['<a', 1, '>c'], {}, {supportedTypes:['inc'], notifyAll:false}, function(data, versions) {
+    console.log('txn', data, versions)
+    console.log('data result', this.data)
+  })
+
+  setTimeout(() => {
+    console.log('modifying subscription')
+    sub.modify(['<c', -1, '.', 0, '<z', 1, '.'], (err, newData) => {
+      console.log('subscription modified', newData)
+    })
+  }, 3000)
+
 
 })
-*/

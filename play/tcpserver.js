@@ -50,7 +50,7 @@ const serve = (client, source) => {
 
   const subscribe = (queryType, ...args) => {
     const subfn = ({kv: source.subscribeKV, sortedkv: source.subscribeSKV})[queryType]
-    return subfn(...args)
+    return subfn.apply(source, args)
   }
 
   // First we send the client a capabilities message.
