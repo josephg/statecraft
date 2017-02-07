@@ -121,12 +121,14 @@ const append = (range, from, val, to) => {
   }
 }
 
+const add = (a, b) => a + b
+
 const type = module.exports = {
   name: 'range',
   create(data) {
     return data ? Array.from(data) : []
   },
-  apply(snapshot, op) {
+  apply(snapshot, op, combine = add) {
     // We'll walk the snapshot and operation together, copying resulting values in.
     const result = []
     let lastKey = ''
@@ -135,7 +137,7 @@ const type = module.exports = {
     let next
     while ((next = take())) {
       const [snapval, opval, to] = next
-      append(result, lastKey, snapval + opval, to)
+      append(result, lastKey, combine(snapval, opval, lastKey, to), to)
       lastKey = to
     }
     return result

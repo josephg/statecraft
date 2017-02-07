@@ -41,7 +41,7 @@ root.simpleSubKV(['a', 'b'], null, (x => console.log('l', x)), (err, result) => 
 })
 */
 
-
+/*
 root.fetchKV(['a', 'b', 'c'], {}, (err, results) => {
   console.log('fetchkv', err, results)
 })
@@ -50,7 +50,20 @@ root.fetchSKV(['<a', 1, '>c'], {}, (err, results) => {
   console.log('fetchskv', err, results)
 })
 
-return
+*/
+
+
+const sub = root.subscribeSKV(['<a', 1, '>c'], {}, {supportedTypes:['inc'], notifyAll:false}, function(data, versions) {
+  console.log('txn', data, versions)
+  console.log('data result', this.data)
+})
+
+setTimeout(() => {
+  console.log('modifying subscription')
+  sub.modify(['<c', -1, '.', 0, '<z', 1, '.'], (err, newData) => {
+    console.log('subscription modified', newData)
+  })
+}, 3000)
 
 /*
 const sub = root.subscribeKV(['a', 'b', 'c'], {}, {notifyAll:false}, function(data, versions) {
@@ -66,6 +79,7 @@ setTimeout(() => {
 }, 3000)
 */
 
+/*
 require('./tcpserver').tcpServer(root).listen(port, () => {
   console.log('listening on TCP port', port)
 
@@ -83,3 +97,4 @@ require('./tcpserver').tcpServer(root).listen(port, () => {
   }, 3000)
 
 })
+*/

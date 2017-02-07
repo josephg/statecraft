@@ -24,15 +24,16 @@ function arrayCursor(values) {
 
 // Go through the range object and yield each matching object the cursor has, in turn.
 function eachInRanges(range, cursor, fn) {
+  if (Array.isArray(cursor) || typeof cursor === 'string') cursor = arrayCursor(cursor)
+  else if (cursor.next) cursor = arrayCursor(Array.from(cursor)) // iterators.
+
   rangeops.forEach(range, (a, val, b) => {
-    console.log(a, val, b)
     const a_ = a.slice(1), b_ = b.slice(1), bInclusive = b[0] === '>'
     cursor.skip(a_)
     if (a.slice(0) === '>' && cursor.peek() === a_) cursor.next()
 
     let k
     while ((k = cursor.peek()) != null) {
-      console.log('k', k, 'b_', b_, 'kinc', bInclusive)
       if (k > b_ || k === b_ && !bInclusive) break
       fn(k, val)
       cursor.next()

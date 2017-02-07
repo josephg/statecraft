@@ -57,9 +57,9 @@ module.exports = () => {
   function notifySubs(txn, v) {
     for (let sub of subs) {
       let diff = null
-      for (let k of sub._query) {
+      sub._filterTxn(txn, (k) => {
         const change = txn.get(k)
-        if (!change) continue
+        if (!change) return
 
         if (diff == null) diff = new Map
 
@@ -69,8 +69,8 @@ module.exports = () => {
           diff.set(k, {type: 'set', data: change.newVal})
         }
 
-        sub.data.set(k, change.newVal)
-      }
+        if (!sub.opts.raw) sub.data.set(k, change.newVal)
+      })
 
       const vs = sub.versions[source]
       if (diff != null) vs[0] = v
@@ -116,10 +116,8 @@ module.exports = () => {
       process.nextTick(() => callback(null, {results, versions:{[source]: [minVersion, v]}}))
     },
 
-    subscribeKV(initial, versions, opts = {}, listener, callback) {
-      //const {Readable} = require('stream')
+    _sub(type, versions, opts = {}, listener) {
       const EventEmitter = require('events')
-      const type = require('./setops')
 
       // For now I'm going to ignore the requested versions.
       if (versions[source]) throw Error('Requesting versions not yet implemented')
@@ -132,15 +130,11 @@ module.exports = () => {
       // - What to do if there's no ops available from requested version (nyi)
       // - Follow symlinks? (NYI)
 
-
       const sub = new EventEmitter()
-      /*
-      sub.stream = new Readable({
-        read(size) {},
-        objectMode: true,
-      })*/
+
+      sub._type = type
       sub._query = type.create() // Private
-      sub.data = new Map // In theory only if opts.raw is false
+      sub.data = opts.raw ? null : new Map
 
       opts.supportedTypes = new Set(opts.supportedTypes)
       sub.opts = opts
@@ -153,11 +147,21 @@ module.exports = () => {
 
       subs.add(sub)
 
+      // MUST BE OVERRIDDEN.
+      sub.modify = (op, newCV, callback) => { throw Error('Not overridden by implementor') }
+
+      if (listener) sub.on('txn', listener)
+      return sub
+    },
+
+    subscribeKV(initial, versions, opts, listener, callback) {
+      const type = require('./setops')
+      const sub = this._sub(type, versions, opts, listener, callback)
+
       // Modify the subscription with a setop operation
       sub.modify = (op, newCV, callback) => {
         if (typeof newCV === 'function') [newCV, callback] = [null, newCV]
 
-        // There's a whole bunch of super fun timing issues here.
         const diff = new Map
         let minVersion = sub.versions[source][0]
         if (op.add) op.add.forEach(k => {
@@ -166,14 +170,17 @@ module.exports = () => {
 
           minVersion = Math.max(minVersion, cell.lastMod)
           diff.set(k, {type: 'set', data: cell.data})
-          sub.data.set(k, cell.data)
+          if (!sub.opts.raw) sub.data.set(k, cell.data)
         })
         if (op.remove) op.remove.forEach(k => {
           const cell = db[k]
           if (!cell) return
 
+          // Note that I don't need to set minVersion here. Actually the min /
+          // max versions might be overly tight at this point after some keys
+          // have been removed, but thats in spec.
           diff.set(k, {type: 'rm'})
-          sub.data.delete(k)
+          if (!sub.opts.raw) sub.data.delete(k)
         })
         sub._query = type.apply(sub._query, op)
 
@@ -186,11 +193,15 @@ module.exports = () => {
         process.nextTick(() => sub.emit('txn', diff, sub.versions))
       }
 
-      if (listener) sub.on('txn', listener)
+      sub._filterTxn = (txn, fn) => {
+        for (let k of sub._query) {
+          if (txn.has(k)) fn(k)
+        }
+      }
 
       // Creating a subscription with a query is shorthand for creating an
       // empty subscription then modifying its query.
-      sub.modify({add:Array.from(initial)}, opts.cv || 0, callback)
+      sub.modify({add:Array.from(initial)}, sub.opts.cv || 0, callback)
 
       return sub
     },
@@ -223,7 +234,7 @@ module.exports = () => {
       //console.log('fetchSKV', ranges, vrange)
 
       // Start read transaction
-      eachInRanges(ranges, arrayCursor(alphabet), c => {
+      eachInRanges(ranges, alphabet, c => {
         const cell = db[c]
         if (!cell) return
         //console.log('got cell', c, cell)
@@ -236,6 +247,58 @@ module.exports = () => {
       process.nextTick(() => callback(null, {results, versions:{[source]: [minVersion, v]}}))
     },
 
+    subscribeSKV(initial, versions, opts = {}, listener, callback) {
+      const type = rangeops
+      const sub = this._sub(type, versions, opts, listener, callback)
+
+      sub.modify = (op, newCV, callback) => {
+        if (typeof newCV === 'function') [newCV, callback] = [null, newCV]
+  
+        const diff = new Map
+        let minVersion = sub.versions[source][0]
+
+        // *******
+        // Now the actually changed part from subscribeKV.
+        //
+        // TODO: This is janky because right now its just looking at whether
+        // the number is increased or decreased, not which items have been
+        // added and removed from the query ranges. Pretty fixable though, just
+        // need a bit more plumbing.
+        
+        eachInRanges(op, alphabet, (k, v) => {
+          // v is 1 if a range is being added, -1 if its being removed.
+          const cell = db[k]
+          if (!cell) return
+
+          if (v > 0) {
+            minVersion = Math.max(minVersion, cell.lastMod)
+            diff.set(k, {type:'set', data:cell.data})
+            // TODO: Could use result ops to modify sub.data.
+            if (!sub.opts.raw) sub.data.set(k, cell.data)
+          } else {
+            diff.set(k, {type:'rm'})
+            if (!sub.opts.raw) sub.data.delete(k)
+          }
+        })
+
+        sub._query = type.apply(sub._query, op)
+        sub.versions[source][0] = minVersion
+        const cv = sub.versions._client
+        newCV = newCV == null ? cv[1] + 1 : newCV
+        cv[0] = cv[1] = newCV
+
+        callback && process.nextTick(() => callback(null, newCV))
+        process.nextTick(() => sub.emit('txn', diff, sub.versions))
+      }
+
+      sub._filterTxn = (txn, fn) => {
+        eachInRanges(sub._query, txn.keys(), fn)
+      }
+
+      sub.modify(initial, sub.opts.cv || 0, callback)
+
+      return sub
+    }
 
     /*
     streamOpsSVK(ranges, versions, listener, callback) {
