@@ -118,5 +118,7 @@ setTimeout(() => {
   root.mutate(txn, {[root.source]:0}, {}, (err, v) => {
     if (err) throw err
     console.log('operation accepted at version', v)
+
+    root.mutate(new Map([['a', {type:'inc', data:1}]]), {[root.source]:1}, {})
   })
 }, 1000)

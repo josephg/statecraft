@@ -20,38 +20,6 @@ module.exports = () => {
   // It should be a map from key -> sub, but for this prototype I'll just scan all the subscriptions.
   const subs = new Set
 
-  /*
-  const alphabet = "abcdefghijklmnopqrstuvwxyz"
-  const gen = () => {
-    const char = alphabet[(Math.random() * alphabet.length)|0]
-
-    // Transaction!
-    v++
-    let cell = db[char]
-    if (cell == null) {
-      db[char] = {data:1, lastMod:v}
-    } else {
-      cell.data++
-      cell.lastMod = v
-    }
-    // Transaction ended!
-
-    const txn = new Map([[char, {
-      newVal: db[char].data,
-      opType: 'inc',
-      opData: 1
-    }]])
-
-    notifySubs(txn, v)
-    //subscriptions.op(txn, {[source]: v})
-
-    //console.log(db)
-  }
-
-  for (let i = 0; i < 100; i++) gen()
-  setInterval(gen, 300)
-  */
-
   function notifySubs(txn, v) {
     for (let sub of subs) {
       let diff = null
@@ -61,8 +29,8 @@ module.exports = () => {
 
         if (diff == null) diff = new Map
 
-        if (sub.opts.supportedTypes.has(change.opType)) {
-          diff.set(k, {type: change.opType, data: change.opData})
+        if (sub.opts.supportedTypes.has(change.type)) {
+          diff.set(k, {type: change.type, data: change.data})
         } else {
           diff.set(k, {type: 'set', data: change.newVal})
         }
@@ -84,7 +52,7 @@ module.exports = () => {
   return {
     source,
 
-    // Modify the db. txn is a map from key => {opType, opData}. versions is just source => v.
+    // Modify the db. txn is a map from key => {type, data}. versions is just source => v.
     mutate(txn, versions, options = {}, callback) {
       // I'm convinced there's some more parameters we should be passing to
       // mutate, but I'm not sure what they are.
@@ -105,7 +73,9 @@ module.exports = () => {
         // Version is old. Check all the modified keys to see if we actually conflict with anything.
         for (let k of db.keys()) {
           const cell = db.get(k)
-          if (cell && cell.lastMod > v) return callback(Error('Write conflict - txn out of date'))
+          if (cell && cell.lastMod > v) {
+            return callback && callback(Error('Write conflict - txn out of date'))
+          }
         }
         // TODO: Also check options.conflictKeys.
       }
@@ -138,7 +108,7 @@ module.exports = () => {
 
       notifySubs(txn, v)
 
-      process.nextTick(() => callback(null, v))
+      if (callback) process.nextTick(() => callback(null, v))
     },
 
     // Fetch for sorted key values. The query is a range op object.
