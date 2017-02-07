@@ -47,6 +47,8 @@ const lt = (a, b) => {
 }
 
 const min = (a, b) => lt(a, b) ? a : b
+const expandKey = (k, prev) => k !== '.' ? k : '>' + prev.slice(1)
+const shortKey = (k, prev) => (prev[0] === '<' && k[0] === '>' && prev.slice(1) === k.slice(1)) ? '.' : k
 
 const iter = (range) => {
   let i = -1
@@ -56,15 +58,16 @@ const iter = (range) => {
       // Arbitrarily i points to the index of the current value
       if (range.length === 0 || i >= range.length) return null
       assert(i < range.length - 1)
-      // So we have to specialcase this. Can't skip it because we need to set lastKey below.
-      if (i === -1) return [0, range[0]] 
-      return [range[i], range[i+1]]
+      // We have to specialcase -1. Can't skip it because we need to track lastKey in append.
+      return (i === -1) ? [0, range[0]] : [range[i], expandKey(range[i+1], range[i-1])]
     },
+
     consumeTo(k) {
       // Based on the current code below I think this'll never loop more than once, but still.
       while (true) {
         if (i >= range.length - 1) break
-        const nextKey = range[i+1]
+        const nextKey = expandKey(range[i+1], range[i-1])
+        
         if (lt(k, nextKey)) break
         i += 2
       }
@@ -102,17 +105,18 @@ const doubleIter = (a, b) => {
 
 const append = (range, from, val, to) => {
   if (val === 0) return
-  else if (range.length === 0) range.push(from, val, to)
+  else if (range.length === 0) range.push(from, val, shortKey(to, from))
   else {
-    const lastK = range[range.length - 1]
+    const lastK = expandKey(range[range.length - 1], range[range.length - 3])
+
     if (from === lastK) {
       if (val === range[range.length - 2]) {
-        range[range.length - 1] = to
+        range[range.length - 1] = to // Its impossible that this could be '.'.
       } else {
-        range.push(val, to)
+        range.push(val, shortKey(to, from))
       }
     } else {
-      range.push(0, from, val, to)
+      range.push(0, shortKey(from, lastK), val, shortKey(to, from))
     }
   }
 }
