@@ -1,0 +1,9 @@
+[package]
+authors = ["Joseph Gentle <me@josephg.com>"]
+name = "statecraft"
+version = "0.1.0"
+
+[dependencies]
+futures = "0.1"
+lmdb-rs = "0.7.4"
+rand = "0.3.15"
