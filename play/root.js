@@ -119,6 +119,10 @@ module.exports = () => {
         // TODO: Hold the query until the version catches up
         return callback(Error('Version in the future'))
       }
+      if (vrange[1] < v) {
+        // TODO: Add operation cache.
+        return callback(Error('Version too old'))
+      }
 
       const results = new Map
       let minVersion = -1
@@ -130,7 +134,7 @@ module.exports = () => {
         const cell = db.get(c)
         if (!cell) return
         //console.log('got cell', c, cell)
-        minVersion = Math.max(minVersion, cell.lastMod)
+        minVersion = max(minVersion, cell.lastMod)
         if (cell.data !== undefined) results.set(c, cell.data)
       })
 
@@ -177,7 +181,8 @@ module.exports = () => {
       return sub
     },
 
-    subscribeSKV(initial, versions, opts = {}, listener, callback) {
+    subscribeSKV(initialQuery, versions, opts = {}, listener, callback) {
+      // TODO: The query needs a skip and a limit
       const type = rangeops
       const sub = this._sub(type, versions, opts, listener, callback)
 
@@ -199,7 +204,7 @@ module.exports = () => {
           if (!cell) return
 
           if (v > 0) {
-            minVersion = Math.max(minVersion, cell.lastMod)
+            minVersion = max(minVersion, cell.lastMod)
             if (cell.data !== undefined) {
               diff.set(k, {type:'set', data:cell.data})
               // TODO: Could use result ops to modify sub.data.
@@ -225,7 +230,7 @@ module.exports = () => {
         eachInRanges(sub._query, txn.keys(), fn)
       }
 
-      sub.modify(initial, sub.opts.cv || 0, callback)
+      sub.modify(initialQuery, sub.opts.cv || 0, callback)
 
       return sub
     }

@@ -10,7 +10,7 @@ function arrayCursor(values) {
   let i = 0
 
   return {
-    skip(k) {
+    skip(k) { // Skip to >= k
       while (i < values.length && values[i] < k) i++
     },
 
