@@ -4,16 +4,17 @@
 
 extern crate futures;
 use futures::{future, Future};
+use futures::future::BoxFuture;
 
 use std::borrow::Cow;
 use std::rc::Rc;
 use std::collections::HashMap;
 
 type Version = u64;
-type Bytes = Rc<Box<[u8]>>;
+type Bytes = Box<[u8]>;
 type Source = Bytes; //Vec<u8>;
 
-fn _vs(s: &str) -> Bytes { Rc::new(s.as_bytes().to_vec().into_boxed_slice()) }
+fn _vs(s: &str) -> Bytes { s.as_bytes().to_vec().into_boxed_slice() }
 
 type VersionRanges = HashMap<Source, (Version, Version)>;
 
@@ -38,13 +39,13 @@ enum Op {
     Inc(u64),
 }
 
-fn apply_one(data: Option<Bytes>, op: &Op) -> Option<Bytes> {
+fn apply_one(data: Option<Bytes>, op: Op) -> Option<Bytes> {
     use Op::*;
     match op {
-        &Ins(ref i) => Some(i.clone()), // ?? And check if the data is empty?
-        &Set(ref i) => Some(i.clone()),
-        &Rm => None,
-        &Inc(num) => unimplemented!(),
+        Ins(i) => Some(i), // ?? And check if the data is empty?
+        Set(i) => Some(i),
+        Rm => None,
+        Inc(num) => unimplemented!(),
     }
 }
 
@@ -76,10 +77,10 @@ trait Store {
     type Query;
 
     fn mutate(&mut self, txn: HashMap<Bytes, Op>, versions: HashMap<Source, Version>, options: MutateOpts)
-        -> Box<Future<Item = (), Error = SCError>>;
+        -> BoxFuture<(), SCError>;
 
     fn fetch(&self, query: Self::Query, versions: HashMap<Source, (Version, Version)>)
-        -> Box<Future<Item = FetchResults, Error = SCError>>;
+        -> BoxFuture<FetchResults, SCError>;
 
     fn subscribe(&self, query: Self::Query, versions: HashMap<Source, Version>, opts: SubscriptionOpts)
         -> Subscription<Vec<Bytes>>;
@@ -116,7 +117,7 @@ impl Store for Db {
     type Query = Vec<Bytes>;
 
     fn mutate(&mut self, txn: HashMap<Bytes, Op>, versions: HashMap<Source, Version>, options: MutateOpts)
-            -> Box<Future<Item = (), Error = SCError>> {
+            -> BoxFuture<(), SCError> {
 
         let txn_v = versions.get(&self.source);
 
@@ -146,8 +147,8 @@ impl Store for Db {
         // **** Ok, transaction going ahead!
         self.version += 1;
 
-        for (key, op) in &txn {
-            if let Some(cell) = self.data.get_mut(key) {
+        for (key, op) in txn { // Eat the transaction.
+            if let Some(cell) = self.data.get_mut(&key) {
                 cell.val = apply_one(cell.val.take(), op);
                 cell.last_mod = self.version;
                 continue; // Written without an else for scoping reasons.
@@ -157,14 +158,14 @@ impl Store for Db {
                 val: apply_one(None, op),
                 last_mod: self.version,
             };
-            self.data.insert(key.clone(), cell);
+            self.data.insert(key, cell);
         }
 
         Box::new(future::ok(()))
     }
 
     fn fetch(&self, query: Self::Query, versions: HashMap<Source, (Version, Version)>)
-            -> Box<Future<Item = FetchResults, Error = SCError>> {
+            -> BoxFuture<FetchResults, SCError> {
         if let Some(&(minv, maxv)) = versions.get(&self.source) {
             // TODO: Add option to hold query until specified version.
             if minv > self.version { return Box::new(future::err(SCError::VersionInFuture)); }
@@ -176,8 +177,8 @@ impl Store for Db {
         let mut result = HashMap::<Bytes, Bytes>::new();
         let mut min_version: Version = 0;
 
-        for ref k in query {
-            if let Some(cell) = self.data.get(k) {
+        for k in query {
+            if let Some(cell) = self.data.get(&k) {
                 if let Some(val) = cell.val.as_ref() { result.insert(k.clone(), val.clone()); }
                 if min_version < cell.last_mod { min_version = cell.last_mod; }
             }
@@ -198,22 +199,101 @@ impl Store for Db {
 }
 
 
-fn dbset<DB: Store<Query = Vec<Bytes>>>(db: &mut DB, key: Bytes, val: Bytes) -> Result<(), SCError> {
+fn dbset<DB: Store<Query = Vec<Bytes>>>(db: &mut DB, key: Bytes, val: Bytes) -> BoxFuture<(), SCError> {
     let mut txn = HashMap::new();
     txn.insert(key, Op::Set(val)); // Ins??
-    db.mutate(txn, HashMap::new(), MutateOpts {}).wait()
+    db.mutate(txn, HashMap::new(), MutateOpts {})
 }
 
+
+
+
+// *** Net stuff.
+
+extern crate tokio_core;
+use tokio_core::reactor::Core;
+use tokio_core::io::{Codec, EasyBuf, Io};
+use tokio_core::net::TcpListener;
+use std::io;
+use futures::{Stream, Sink};
+
+use std::sync::Arc;
+
+
+pub struct LineCodec;
+impl Codec for LineCodec {
+    type In = String;
+    type Out = String;
+
+    fn decode(&mut self, buf: &mut EasyBuf) -> io::Result<Option<Self::In>> {
+        if let Some(i) = buf.as_slice().iter().position(|&b| b == b'\n') {
+            let line = buf.drain_to(i);
+
+            // Remove the newline
+            buf.drain_to(1);
+            
+            match std::str::from_utf8(line.as_slice()) {
+                Ok(s) => Ok(Some(s.to_string())),
+                Err(_) => Err(io::Error::new(io::ErrorKind::Other, "invalid utf-8")), // std::string::FromUtf8Error.
+            }
+        } else { Ok(None) }
+    }
+
+    fn encode(&mut self, msg: Self::Out, buf: &mut Vec<u8>) -> io::Result<()> {
+        buf.extend(msg.as_bytes());
+        buf.push(b'\n');
+        Ok(())
+    }
+}
+
+struct DbClient {
+    db: Arc<Store<Query = Vec<Bytes>>>,
+    
+}
+
+fn host<D: Store<Query = Vec<Bytes>>>(db: Arc<D>) -> io::Result<()> {
+    let mut core = Core::new()?;
+
+    let handle = core.handle();
+    let address = "0.0.0.0:5748".parse().unwrap();
+    let listener = TcpListener::bind(&address, &handle)?;
+
+    let connections = listener.incoming();
+    let server = connections.for_each(move |(socket, _peer_addr)| {
+        println!("Got connection");
+        let (writer, reader) = socket.framed(LineCodec).split();
+
+        let results = reader.and_then(move |req| {
+            println!("yo {}", req);
+            let r = dbset(Arc::get_mut(&mut db).unwrap(), _vs("a"), _vs("1"));
+            //handle.spawn(r.or_else(|_| Ok(())));
+            Ok(req)
+        });
+        handle.spawn(writer.send_all(results).then(|_| Ok(())));
+
+        Ok(())
+    });
+
+    println!("Listening on 5748");
+
+    core.run(server)
+}
+
+
+
 fn main() {
-    let mut db = Db::new();
+    let mut db = Arc::new(Db::new());
+    //let mut dbref = &mut db;
 
     let result = db.fetch(vec![_vs("a")], HashMap::new()).wait();
     println!("{:?}", result);
 
-    dbset(&mut db, _vs("a"), _vs("1")).unwrap();
-    dbset(&mut db, _vs("b"), _vs("2")).unwrap();
-    dbset(&mut db, _vs("c"), _vs("3")).unwrap();
+    dbset(Arc::get_mut(&mut db).unwrap(), _vs("a"), _vs("1")).wait().unwrap();
+    //dbset(&mut db, _vs("b"), _vs("2")).unwrap();
+    //dbset(&mut db, _vs("c"), _vs("3")).unwrap();
 
     let result = db.fetch(vec![_vs("a"), _vs("b")], HashMap::new()).wait();
     println!("{:?}", result);
+
+    host(db.clone()).unwrap();
 }
