@@ -23,29 +23,34 @@ function test(createStore, teardownStore, prefix, queryWithKeys) {
       skv: [store.fetchSKV, store.subscribeSKV],
     })[qtype]
 
-    let results = null
-    const check = (err, r) => {
-      if (err) return callback(err)
+    let fetchresults, subresults
 
-      if (results == null) results = r
-      else {
-        // For now, just assert that we're up to date everywhere.
-        assert.deepEqual(results.versions, r.versions)
-        assertMapEq(results.results, r.results)
-        callback(null, results)
-      }
+    const check = () => {
+      if (fetchresults == null || subresults == null) return
+
+      // For now, just assert that we're up to date everywhere.
+      console.log('fr', fetchresults)
+      assert.deepEqual(fetchresults.versions, subresults.versions)
+      assertMapEq(fetchresults.results, subresults.results)
+      callback(null, fetchresults)
     }
 
-    fetch.call(store, query, versions, {}, check)
+    fetch.call(store, query, versions, {}, (err, r) => {
+      if (err) return callback(err)
+      fetchresults = r
+      check()
+    })
 
     const sub = subscribe.call(store, query, versions, {
       raw: false,
       // initialFetch: true,
     }, () => {}, (err, cv) => {
+      if (err) return callback(err)
       const versions = Object.assign({}, sub.versions)
       delete versions._client
-      check(err, sub && {results: sub.data, versions})
+      subresults = {results: sub.data, versions}
       sub.cancel()
+      check()
     })
   }
 
@@ -74,7 +79,14 @@ function test(createStore, teardownStore, prefix, queryWithKeys) {
     it('returns nothing when fetching a nonexistant document', function(done) {
       assertKVResults(this.store, [], [], done)
     })
-    it('can store things and return them')
+
+    it('can store things and return them', function(done) {
+      const txn = new Map([['a', {type:'set', data:'hi there'}]])
+      this.store.mutate(txn, {}, {}, (err, v) => {
+        if (err) throw err
+        assertKVResults(this.store, ['a'], [['a', 'hi there']], done)
+      })
+    })
 
     describe('subscribe', () => {
 

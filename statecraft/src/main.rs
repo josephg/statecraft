@@ -264,6 +264,7 @@ fn host<D: Store<Query = Vec<Bytes>>>(db: Arc<D>) -> io::Result<()> {
         let (writer, reader) = socket.framed(LineCodec).split();
 
         let results = reader.and_then(move |req| {
+            let mut db = db;
             println!("yo {}", req);
             let r = dbset(Arc::get_mut(&mut db).unwrap(), _vs("a"), _vs("1"));
             //handle.spawn(r.or_else(|_| Ok(())));
