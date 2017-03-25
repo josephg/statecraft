@@ -29,7 +29,7 @@ function test(createStore, teardownStore, prefix, queryWithKeys) {
       if (fetchresults == null || subresults == null) return
 
       // For now, just assert that we're up to date everywhere.
-      console.log('fr', fetchresults)
+      //console.log('fr', fetchresults)
       assert.deepEqual(fetchresults.versions, subresults.versions)
       assertMapEq(fetchresults.results, subresults.results)
       callback(null, fetchresults)
@@ -54,12 +54,38 @@ function test(createStore, teardownStore, prefix, queryWithKeys) {
     })
   }
 
-  const assertKVResults = (store, query, expected, callback) => {
+  const assertKVResults = (store, query, expectedVal, expectedVer = {}, callback) => {
+    //const query = queryNoPrefix.map(x => `${prefix}x`)
     eachFetchMethod(store, 'kv', query, {}, (err, actual) => {
       if (err) throw err
-      if (Array.isArray(expected)) expected = new Map(expected)
-      assertMapEq(actual.results, expected)
+
+      // Check value
+      if (Array.isArray(expectedVal)) expectedVal = new Map(expectedVal)
+      assertMapEq(actual.results, expectedVal)
+
+      // Check version
+      for (let source in expectedVer) {
+        let expectv = expectedVer[source]
+        if (!Array.isArray(expectv)) expectv = [expectv, expectv]
+
+        // We sort of just want to check that the version returned is contained
+        // within expectedVer.
+        actualv = actual.versions[source]
+        assert(actualv)
+        assert.strictEqual(actualv[0], expectv[0])
+        //console.log('ev', expectv, 'av', actualv)
+        assert.strictEqual(actualv[1], expectv[1])
+      }
+
       callback()
+    })
+  }
+
+  const set = (store, key, value, callback) => {
+    const txn = new Map([[key, {type:'set', data:value}]])
+    store.mutate(txn, {}, {}, (err, vs) => {
+      if (err) throw err
+      callback(null, vs && Object.keys(vs)[0], vs && Object.values(vs)[0])
     })
   }
 
@@ -76,15 +102,35 @@ function test(createStore, teardownStore, prefix, queryWithKeys) {
       this.store.close()
     })
 
+    // Some simple sanity tests
     it('returns nothing when fetching a nonexistant document', function(done) {
-      assertKVResults(this.store, [], [], done)
+      assertKVResults(this.store, [], [], null, done)
     })
 
     it('can store things and return them', function(done) {
       const txn = new Map([['a', {type:'set', data:'hi there'}]])
-      this.store.mutate(txn, {}, {}, (err, v) => {
+      this.store.mutate(txn, {}, {}, (err, vs) => {
         if (err) throw err
-        assertKVResults(this.store, ['a'], [['a', 'hi there']], done)
+
+        // The version we get back here should contain exactly 1 source with a
+        // single integer version.
+        assert.strictEqual(Object.keys(vs).length, 1)
+        assert.strictEqual(typeof Object.values(vs)[0], 'number')
+
+        assertKVResults(this.store, ['a'], [['a', 'hi there']], vs, done)
+      })
+    })
+
+    // This test relies on the full version semantics of statecraft's native stores.
+    it('returns acceptable version ranges for queries', function(done) {
+      // Set in 3 different transactions so we get a document version range.
+      set(this.store, 'a', 1, (_, source, v1) => {
+        set(this.store, 'b', 2, (_, source, v2) => {
+          set(this.store, 'c', 3, (_, source, v3) => {
+            assert(v1 < v2 && v2 < v3)
+            assertKVResults(this.store, ['a'], [['a', 1]], {[source]: [v1, v3]}, done)
+          })
+        })
       })
     })
 
