@@ -55,6 +55,9 @@ function test(createStore, teardownStore, prefix, queryWithKeys) {
   }
 
   const assertKVResults = (store, query, expectedVal, expectedVer = {}, callback) => {
+    // TODO: Make this function convert the query to other types (SVK) as well
+    // and test those APIs directly.
+
     //const query = queryNoPrefix.map(x => `${prefix}x`)
     eachFetchMethod(store, 'kv', query, {}, (err, actual) => {
       if (err) throw err
@@ -81,11 +84,42 @@ function test(createStore, teardownStore, prefix, queryWithKeys) {
     })
   }
 
-  const set = (store, key, value, callback) => {
+  // Convert from a version object with 1 entry to a [source, version] pair
+  const splitSingleVersions = (versions) => {
+    const sources = Object.keys(versions)
+    assert.strictEqual(sources.length, 1)
+    const source = sources[0]
+    return [source, versions[source]]
+  }
+
+  const set = (store, key, value, versions, callback) => {
+    if (typeof versions === 'function') [versions, callback] = [{}, versions]
+
     const txn = new Map([[key, {type:'set', data:value}]])
-    store.mutate(txn, {}, {}, (err, vs) => {
-      if (err) throw err
-      callback(null, vs && Object.keys(vs)[0], vs && Object.values(vs)[0])
+    store.mutate(txn, versions, {}, (err, vs) => {
+      if (err) return callback(err)
+      const [source, version] = splitSingleVersions(vs)
+      callback(null, source, version)
+    })
+  }
+
+  const get = (store, key, callback) => {
+    store.fetchKV([key], {}, {}, (err, data) => {
+      if (err) return callback(err)
+
+      const {results, versions} = data
+      // Results should contain either 0 or 1 items.
+      assert(results.size <= 1)
+      callback(null, results.entries().next().value || null, ...splitSingleVersions(versions))
+    })
+  }
+
+  const getVersionForKeys = (store, keys, callback) => {
+    if (!Array.isArray(keys)) keys = [keys]
+    // TODO: Set options to elide actual data in response
+    store.fetchKV(keys, {}, {}, (err, data) => {
+      if (err) return callback(err)
+      else callback(null, ...splitSingleVersions(data.versions))
     })
   }
 
@@ -124,9 +158,12 @@ function test(createStore, teardownStore, prefix, queryWithKeys) {
     // This test relies on the full version semantics of statecraft's native stores.
     it('returns acceptable version ranges for queries', function(done) {
       // Set in 3 different transactions so we get a document version range.
-      set(this.store, 'a', 1, (_, source, v1) => {
-        set(this.store, 'b', 2, (_, source, v2) => {
-          set(this.store, 'c', 3, (_, source, v3) => {
+      set(this.store, 'a', 1, (err, source, v1) => {
+        if (err) throw err
+        set(this.store, 'b', 2, (err, source, v2) => {
+          if (err) throw err
+          set(this.store, 'c', 3, (err, source, v3) => {
+            if (err) throw err
             assert(v1 < v2 && v2 < v3)
             assertKVResults(this.store, ['a'], [['a', 1]], {[source]: [v1, v3]}, done)
           })
@@ -134,10 +171,57 @@ function test(createStore, teardownStore, prefix, queryWithKeys) {
       })
     })
 
+    it('makes conflicting edits to the same key collide', function(done) {
+      // TODO: Make a parallel version of this function.
+      getVersionForKeys(this.store, 'a', (err, source, vrange) => {
+        if (err) throw err
+        const v = vrange[1]
+
+        // Now set it. This should succeed...
+        set(this.store, 'a', 1, {[source]:v}, (err) => {
+          if (err) throw err
+
+          // ... Then 'concurrently' set it again.
+          set(this.store, 'a', 2, {[source]:v}, (err) => {
+            // TODO: Check that the error type is a write conflict.
+            assert(err)
+            done()
+          })
+        })
+      })
+    })
+
+    it('allows concurrent edits to different keys', function(done) {
+      getVersionForKeys(this.store, ['a', 'b'], (err, source, vrange) => {
+        if (err) throw err
+        const v = vrange[1]
+        set(this.store, 'a', 1, {[source]:v}, (err) => {
+          if (err) throw err
+
+          // TODO: Make a parallel variant of this function
+          set(this.store, 'b', 1, {[source]:v}, (err) => {
+            if (err) throw err
+            done()
+          })
+        })
+      })
+    })
+
+    it('supports OT')
+    it('supports conflicting read keys')
+
+    describe('skv', () => {
+      it('supports subscribing to a range')
+      it('includes deleted documents in version information')
+      it('supports skip and limit') // ??? TODO
+    })
+
     describe('subscribe', () => {
 
       it('works in raw mode')
       it('can receive create ops')
+      it('allows editing the query')
+
     })
 
     describe('fetch', () => {})

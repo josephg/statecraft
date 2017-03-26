@@ -162,11 +162,14 @@ const type = module.exports = {
     }
   },
 
-  fromKeys(keys) { // Ranges from a list or set of individual keys.
-    keys = Array.from(keys).sort()
+  fromKeys(keys, val = 1) { // Ranges from a list or set of individual keys.
+    keys = (Array.isArray(keys) ? keys : Array.from(keys))
+      .sort()
+
     const result = []
     for (let i = 0; i < keys.length; i++) {
-      result.push('<'+keys[i], 1, '.')
+      if (result.length !== 0) result.push(0)
+      result.push('<'+keys[i], val, '.')
     }
     return result
   },
