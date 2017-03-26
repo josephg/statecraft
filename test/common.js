@@ -1,6 +1,5 @@
-const fs = require('fs')
 const assert = require('assert')
-const withkv = require('./tools/withkv')
+const withkv = require('../tools/withkv')
 
 function assertMapEq(m1, m2) {
   assert.strictEqual(m1.constructor, Map)
@@ -12,7 +11,7 @@ function assertMapEq(m1, m2) {
   }
 }
 
-function test(createStore, teardownStore, prefix, queryWithKeys) {
+module.exports = function test(createStore, teardownStore, prefix, queryWithKeys) {
   // Fetch using fetch() and through subscribe.
   const eachFetchMethod = (store, qtype, query, versions, callback) => {
     assert(store.supportedQueryTypes[qtype],
@@ -196,7 +195,7 @@ function test(createStore, teardownStore, prefix, queryWithKeys) {
         if (err) throw err
         const v = vrange[1]
         set(this.store, 'a', 1, {[source]:v}, (err) => {
-          if (err) throw err
+         if (err) throw err
 
           // TODO: Make a parallel variant of this function
           set(this.store, 'b', 1, {[source]:v}, (err) => {
@@ -234,39 +233,4 @@ function test(createStore, teardownStore, prefix, queryWithKeys) {
 }
 
 
-
-
-const dbroot = require('./lib/dbroot')
-
-const rmdir = (path) => {
-  //console.log('rmdir path', path)
-  require('child_process').exec('rm -r ' + path)
-}
-
-const pathOfDb = new Map
-let _dbid = 1
-test(
-  () => {
-    let path
-    do {
-      path = __dirname + '/_test' + _dbid++
-    } while (fs.existsSync(path))
-
-    const store = dbroot(path, {})
-    pathOfDb.set(store, path)
-    return store
-  },
-  (store) => { // teardown. Nuke it.
-    store.close()
-    const path = pathOfDb.get(store)
-    rmdir(path)
-    pathOfDb.delete(store)
-  }
-)
-
-process.on('exit', function() {
-  for (let p of pathOfDb.values()) {
-    rmdir(p)
-  }
-})
 
