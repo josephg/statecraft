@@ -1,5 +1,5 @@
 const assert = require('assert')
-const withkv = require('../tools/withkv')
+const withkv = require('../lib/withkv')
 
 function assertMapEq(m1, m2) {
   assert.strictEqual(m1.constructor, Map)
@@ -30,6 +30,7 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
       // For now, just assert that we're up to date everywhere.
       //console.log('fr', fetchresults)
       assert.deepEqual(fetchresults.versions, subresults.versions)
+      //console.error('fr', fetchresults, '\nsr', subresults)
       assertMapEq(fetchresults.results, subresults.results)
       callback(null, fetchresults)
     }
@@ -122,17 +123,24 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
     })
   }
 
+  const asAsync = fn => fn.length === 1 ? fn : cb => cb(null, fn())
+
   describe('statecraft', () => {
-    beforeEach(function() {
-      this.store = createStore()
-      if (!this.store.supportedQueryTypes.kv) {
-        this.store = withkv(this.store)
-      }
+    beforeEach(function(done) {
+      asAsync(createStore)((err, store) => {
+        if (err) throw err
+        this.rawStore = this.store = store
+        if (!store.supportedQueryTypes.kv) {
+          this.store = withkv(store)
+        }
+        done()
+      })
     })
 
     afterEach(function() {
       // TODO: And nuke all the contents.
       this.store.close()
+      if (teardownStore) teardownStore(this.rawStore)
     })
 
     // Some simple sanity tests

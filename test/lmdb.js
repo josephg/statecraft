@@ -27,7 +27,6 @@ exports.create = () => {
 }
 
 exports.close = (store) => { // teardown. Nuke it.
-  store.close()
   const path = pathOfDb.get(store)
   rmdir(path)
   pathOfDb.delete(store)
