@@ -10,7 +10,7 @@ describe('remote database endpoints', () => {
   runTests((callback) => {
     const root = create()
     // ... And wrap it in a server.
-    const server = require('../lib/tcpServer').tcpServer(root)
+    const server = require('../lib/tcpserver').tcpServer(root)
     // Could use a socket here instead, but this is fine too.
     server.listen(() => {
       const port = server.address().port

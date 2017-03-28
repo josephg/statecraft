@@ -1,5 +1,7 @@
 const assert = require('assert')
 const withkv = require('../lib/withkv')
+const easyapi = require('../lib/easyapi')
+
 
 function assertMapEq(m1, m2) {
   assert.strictEqual(m1.constructor, Map)
@@ -17,11 +19,6 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
     assert(store.supportedQueryTypes[qtype],
       `${qtype} queries not supported by store`)
 
-    const [fetch, subscribe] = ({
-      kv: [store.fetchKV, store.subscribeKV],
-      skv: [store.fetchSKV, store.subscribeSKV],
-    })[qtype]
-
     let fetchresults, subresults
 
     const check = () => {
@@ -35,13 +32,13 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
       callback(null, fetchresults)
     }
 
-    fetch.call(store, query, versions, {}, (err, r) => {
+    store.fetch(qtype, query, versions, {}, (err, r) => {
       if (err) return callback(err)
       fetchresults = r
       check()
     })
 
-    const sub = subscribe.call(store, query, versions, {
+    const sub = store.subscribe(qtype, query, versions, {
       raw: false,
       // initialFetch: true,
     }, () => {}, (err, cv) => {
@@ -92,11 +89,9 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
     return [source, versions[source]]
   }
 
-  const set = (store, key, value, versions, callback) => {
+  const setSingle = (store, key, value, versions, callback) => {
     if (typeof versions === 'function') [versions, callback] = [{}, versions]
-
-    const txn = new Map([[key, {type:'set', data:value}]])
-    store.mutate(txn, versions, {}, (err, vs) => {
+    store.set(key, value, versions, (err, vs) => {
       if (err) return callback(err)
       const [source, version] = splitSingleVersions(vs)
       callback(null, source, version)
@@ -104,11 +99,11 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
   }
 
   const get = (store, key, callback) => {
-    store.fetchKV([key], {}, {}, (err, data) => {
+    store.fetch('kv', [key], {}, {}, (err, data) => {
       if (err) return callback(err)
 
       const {results, versions} = data
-      // Results should contain either 0 or 1 items.
+      // Results must contain either 0 or 1 items.
       assert(results.size <= 1)
       callback(null, results.entries().next().value || null, ...splitSingleVersions(versions))
     })
@@ -117,7 +112,7 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
   const getVersionForKeys = (store, keys, callback) => {
     if (!Array.isArray(keys)) keys = [keys]
     // TODO: Set options to elide actual data in response
-    store.fetchKV(keys, {}, {}, (err, data) => {
+    store.fetch('kv', keys, {}, {}, (err, data) => {
       if (err) return callback(err)
       else callback(null, ...splitSingleVersions(data.versions))
     })
@@ -129,10 +124,8 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
     beforeEach(function(done) {
       asAsync(createStore)((err, store) => {
         if (err) throw err
-        this.rawStore = this.store = store
-        if (!store.supportedQueryTypes.kv) {
-          this.store = withkv(store)
-        }
+        this.rawStore = store
+        this.store = easyapi(withkv(store))
         done()
       })
     })
@@ -165,11 +158,11 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
     // This test relies on the full version semantics of statecraft's native stores.
     it('returns acceptable version ranges for queries', function(done) {
       // Set in 3 different transactions so we get a document version range.
-      set(this.store, 'a', 1, (err, source, v1) => {
+      setSingle(this.store, 'a', 1, (err, source, v1) => {
         if (err) throw err
-        set(this.store, 'b', 2, (err, source, v2) => {
+        setSingle(this.store, 'b', 2, (err, source, v2) => {
           if (err) throw err
-          set(this.store, 'c', 3, (err, source, v3) => {
+          setSingle(this.store, 'c', 3, (err, source, v3) => {
             if (err) throw err
             assert(v1 < v2 && v2 < v3)
             assertKVResults(this.store, ['a'], [['a', 1]], {[source]: [v1, v3]}, done)
@@ -185,11 +178,11 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
         const v = vrange[1]
 
         // Now set it. This should succeed...
-        set(this.store, 'a', 1, {[source]:v}, (err) => {
+        setSingle(this.store, 'a', 1, {[source]:v}, (err) => {
           if (err) throw err
 
           // ... Then 'concurrently' set it again.
-          set(this.store, 'a', 2, {[source]:v}, (err) => {
+          setSingle(this.store, 'a', 2, {[source]:v}, (err) => {
             // TODO: Check that the error type is a write conflict.
             assert(err)
             done()
@@ -202,11 +195,11 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
       getVersionForKeys(this.store, ['a', 'b'], (err, source, vrange) => {
         if (err) throw err
         const v = vrange[1]
-        set(this.store, 'a', 1, {[source]:v}, (err) => {
+        setSingle(this.store, 'a', 1, {[source]:v}, (err) => {
          if (err) throw err
 
           // TODO: Make a parallel variant of this function
-          set(this.store, 'b', 1, {[source]:v}, (err) => {
+          setSingle(this.store, 'b', 1, {[source]:v}, (err) => {
             if (err) throw err
             done()
           })
@@ -225,7 +218,8 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
 
     describe('subscribe', () => {
 
-      it('works in raw mode')
+      it('returns data when not in raw mode')
+      it('can hold until a future version is specified')
       it('can receive create ops')
       it('allows editing the query')
 
