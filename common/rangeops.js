@@ -121,14 +121,15 @@ const append = (range, from, val, to) => {
   }
 }
 
-const add = (a, b) => a + b
+const plus = (a, b) => a + b
+const minus = (a, b) => a - b
 
 const type = module.exports = {
   name: 'range',
   create(data) {
     return data ? Array.from(data) : []
   },
-  apply(snapshot, op, combine = add) {
+  apply(snapshot, op, combine = plus) {
     // We'll walk the snapshot and operation together, copying resulting values in.
     const result = []
     let lastKey = ''
@@ -143,7 +144,8 @@ const type = module.exports = {
     return result
   },
   compose(op1, op2) {
-    return this.apply(op1, op2) // HOW MYSTERIOUSLY CONVENIENT
+    // TODO: Not sure what this should do about values ending up >1.
+    return type.apply(op1, op2) // HOW MYSTERIOUSLY CONVENIENT
   },
 
 
@@ -181,6 +183,10 @@ const type = module.exports = {
       append(result, '<'+pairs[i][0], 1, '>'+pairs[i][1])
     }
     return result
+  },
+
+  subtract(op1, op2) {
+    return type.apply(op1, op2, minus)
   },
 }
 
