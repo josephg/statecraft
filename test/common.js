@@ -2,16 +2,7 @@ const assert = require('assert')
 const withkv = require('../lib/withkv')
 const easyapi = require('../lib/easyapi')
 
-
-function assertMapEq(m1, m2) {
-  assert.strictEqual(m1.constructor, Map)
-  assert.strictEqual(m2.constructor, Map)
-
-  assert.strictEqual(m1.size, m2.size)
-  for (let [k, v] of m1) {
-    assert.deepEqual(m2.get(k), v)
-  }
-}
+const {assertMapEq} = require('./util')
 
 module.exports = function test(createStore, teardownStore, prefix, queryWithKeys) {
   // Fetch using fetch() and through subscribe.
@@ -120,7 +111,7 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
 
   const asAsync = fn => fn.length === 1 ? fn : cb => cb(null, fn())
 
-  describe('statecraft', () => {
+  describe('common tests', () => {
     beforeEach(function(done) {
       asAsync(createStore)((err, store) => {
         if (err) throw err
@@ -207,7 +198,13 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
       })
     })
 
-    it('supports OT')
+    /*
+    describe('ot tests', function() {
+      return
+      it('asdf')
+
+    })*/
+
     it('supports conflicting read keys')
 
     describe('skv', () => {

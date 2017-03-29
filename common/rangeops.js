@@ -25,7 +25,7 @@
 // Ranges should always be stored in a normalized canonical (collapsed) form.
 // Its invalid to have the same value either side of a marker:
 // [ ..., 1, '>b', 1 ... ]
-// Its invalid to end with a value - you should always end with a key.
+// Its also invalid to end with a value - you should always end with a key.
 //
 // Operations:
 // Operations express a set of additive changes to the keys stored in the
