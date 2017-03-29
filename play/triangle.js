@@ -80,6 +80,7 @@ const makeStore = () => {
         if (opts.limitDocs !== 0 && resultSize >= opts.limitDocs) break
       }
 
+      //console.log('_fetchSync', docs, results)
       return {results, versions:{[source]:[rv, version]}}
     },
 
@@ -101,7 +102,7 @@ function addTriangleSupport(store) {
     triangles.forEach(t => t._onOp(source, version, txn))
   })
 
-  store.triangle = (opts = {}, listener) => {
+  store.triangle = (initialQuery, opts = {}, listener) => {
     // TODO: Also pass in starting version.
 
     // Traingle constructor.
@@ -120,7 +121,7 @@ function addTriangleSupport(store) {
     // The state of the triangle is
     // - the set of keys which the client knows about and
     // - the set of keys it *wants* to know about.
-    const workingKeys = new Set, pendingKeys = opts.noFetch ? null : new Set
+    const workingKeys = new Set, pendingKeys = initialQuery
 
     // And the version range at which the triangle is valid. The lower part of
     // the range is the version of the most recent op which we told the client
@@ -185,6 +186,7 @@ function addTriangleSupport(store) {
         // Always update the upper bound if vs exists.
         if (vs) vs[1] = version
         
+        assert(update === null || update.size > 0)
         if (update || (opts.alwaysNotify && this.versions[source])) {
           listener('txn', update, source, version)
         }
@@ -213,6 +215,7 @@ function addTriangleSupport(store) {
               assert.strictEqual(trianglevs[1], resultvs[1])
             }
           }
+          this.versions._client[0] = this.versions._client[1] // Not always needed but this is easier than bookkeeping
 
           const update = new Map
           for (let [k, doc] of results) {
@@ -223,7 +226,7 @@ function addTriangleSupport(store) {
             if (doc != null) update.set(k, {type:'set', newVal:doc})
           }
 
-          listener('poll', update) // TODO: Does it make sense to tag this with a source?
+          if (update.size !== 0) listener('poll', update) // TODO: Does it make sense to tag this with a source?
         })
 
         return this.needsPoll()
@@ -255,11 +258,13 @@ if (require.main === module) {
     const key = alphabet[(Math.random() * alphabet.length)|0]
     const val = (Math.random() * 1000)|0
     const txn = new Map([[key, {type: 'set', newVal: val}]])
-    return txn
+    store.mutate(txn)
   }
 
+  for (let i = 0; i < 20; i++) gen()
+
   setInterval(() => {
-    store.mutate(gen())
+    gen()
   }, 1000)
 
   store.onTxn((source, v, txn) => {
@@ -267,7 +272,7 @@ if (require.main === module) {
   })
 
   addTriangleSupport(store)
-  const triangle = store.triangle({}, (type, update) => { console.log('triangle update', type, update) })
+  const triangle = store.triangle(new Set(['x', 'y', 'z']), {limitDocs:1}, (type, update) => { console.log('triangle', type, update, triangle.versions) })
 
   console.log('needsPoll', triangle.needsPoll())
 
@@ -276,7 +281,7 @@ if (require.main === module) {
 
   setInterval(() => {
     triangle.next()
-  }, 150)
+  }, 600)
 
 }
 
