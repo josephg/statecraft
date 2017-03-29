@@ -67,21 +67,28 @@ const makeStore = () => {
       const results = new Map
       let rv = 0
 
+      const isPartial = opts.limitDocs || opts.limitBytes
+      // TODO: Not convinced by this variable name, especially since its public.
+      const queryActualized = isPartial ? new Set : null 
+
       let resultSize = 0 // Using this instead of results.size so we don't count deleted docs.
       for (let k of docs) {
         const snapshot = db.get(k)
         const [lastMod, data] = (snapshot == null ? [0, null] : snapshot)
 
-        results.set(k, data)
-        if (data != null) resultSize++
+        if (data != null) {
+          results.set(k, data)
+          resultSize++
+        }
 
         rv = Math.max(rv, lastMod)
         
+        if (isPartial) queryActualized.add(k)
         if (opts.limitDocs !== 0 && resultSize >= opts.limitDocs) break
       }
 
       //console.log('_fetchSync', docs, results)
-      return {results, versions:{[source]:[rv, version]}}
+      return {results, versions:{[source]:[rv, version]}, queryActualized}
     },
 
     fetch(qtype, docs, versions, opts, callback) {
@@ -121,7 +128,7 @@ function addTriangleSupport(store) {
     // The state of the triangle is
     // - the set of keys which the client knows about and
     // - the set of keys it *wants* to know about.
-    const workingKeys = new Set, pendingKeys = initialQuery
+    const workingKeys = new Set, pendingKeys = initialQuery || new Set
 
     // And the version range at which the triangle is valid. The lower part of
     // the range is the version of the most recent op which we told the client
@@ -201,7 +208,7 @@ function addTriangleSupport(store) {
         process.nextTick(() => {
           if (pendingKeys.size === 0) return
 
-          const {results, versions} = store._fetchSync('kv', pendingKeys, {}, {
+          const {results, versions, queryActualized} = store._fetchSync('kv', pendingKeys, {}, {
             limitDocs: opts.limitDocs,
             limitBytes: opts.limitBytes
           })
@@ -217,13 +224,17 @@ function addTriangleSupport(store) {
           }
           this.versions._client[0] = this.versions._client[1] // Not always needed but this is easier than bookkeeping
 
-          const update = new Map
-          for (let [k, doc] of results) {
+          for (let k of (queryActualized || pendingKeys)) {
+            assert(!this.data.has(k))
             assert(pendingKeys.has(k))
             pendingKeys.delete(k)
             workingKeys.add(k)
-            this.data.set(k, doc) // TODO: Even if its null? .. Probably?
-            if (doc != null) update.set(k, {type:'set', newVal:doc})
+          }
+
+          const update = new Map
+          for (let [k, doc] of results) {
+            this.data.set(k, doc)
+            update.set(k, {type:'set', newVal:doc})
           }
 
           if (update.size !== 0) listener('poll', update) // TODO: Does it make sense to tag this with a source?
