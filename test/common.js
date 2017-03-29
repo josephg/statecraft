@@ -146,6 +146,8 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
       })
     })
 
+    it('allows you to delete a key')
+
     // This test relies on the full version semantics of statecraft's native stores.
     it('returns acceptable version ranges for queries', function(done) {
       // Set in 3 different transactions so we get a document version range.
