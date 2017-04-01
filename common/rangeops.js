@@ -38,6 +38,7 @@
 
 const assert = require('assert')
 
+// a < b
 const lt = (a, b) => {
   if (a === b) return false
   const a_ = a.slice(1), b_ = b.slice(1)
@@ -45,9 +46,14 @@ const lt = (a, b) => {
   // actually be faster.
   return (a_ === b_) ? (a < b) : (a_ < b_)
 }
+const lte = (a, b) => a === b || lt(a, b)
+
+// a > b
+const gt = (a, b) => lt(b, a)
 
 const min = (a, b) => lt(a, b) ? a : b
 const expandKey = (k, prev) => k !== '.' ? k : '>' + prev.slice(1)
+const expandItem = (range, idx) => expandKey(range[idx], range[idx - 2])
 const shortKey = (k, prev) => (prev[0] === '<' && k[0] === '>' && prev.slice(1) === k.slice(1)) ? '.' : k
 
 const iter = (range) => {
@@ -59,14 +65,14 @@ const iter = (range) => {
       if (range.length === 0 || i >= range.length) return null
       assert(i < range.length - 1)
       // We have to specialcase -1. Can't skip it because we need to track lastKey in append.
-      return (i === -1) ? [0, range[0]] : [range[i], expandKey(range[i+1], range[i-1])]
+      return (i === -1) ? [0, range[0]] : [range[i], expandItem(range, i+1)]
     },
 
     consumeTo(k) {
       // Based on the current code below I think this'll never loop more than once, but still.
       while (true) {
         if (i >= range.length - 1) break
-        const nextKey = expandKey(range[i+1], range[i-1])
+        const nextKey = expandItem(range, i+1)
         
         if (lt(k, nextKey)) break
         i += 2
@@ -104,10 +110,10 @@ const doubleIter = (a, b) => {
 }
 
 const append = (range, from, val, to) => {
-  if (val === 0) return
+  if (val === 0 || from === to) return
   else if (range.length === 0) range.push(from, val, shortKey(to, from))
   else {
-    const lastK = expandKey(range[range.length - 1], range[range.length - 3])
+    const lastK = expandItem(range, range.length - 1)
 
     if (from === lastK) {
       if (val === range[range.length - 2]) {
@@ -187,6 +193,17 @@ const type = module.exports = {
 
   subtract(op1, op2) {
     return type.apply(op1, op2, minus)
+  },
+
+  // Append an op component onto the end of the (mutable) op.
+  append(op, from, val, to) {
+    // The op must be valid and the specified range must be after all other
+    // ranges.
+    assert(op.length === 0
+      || (op.length >= 3 && lte(expandItem(op, op.length - 1), from)))
+    assert(lte(from, to))
+    append(op, from, val, to)
+    return op
   },
 }
 

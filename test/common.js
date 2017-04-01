@@ -207,12 +207,18 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
 
     })*/
 
+    it('supports limits in fetch') // though this is advisory only.
     it('supports conflicting read keys')
 
     describe('skv', () => {
       it('supports subscribing to a range')
       it('includes deleted documents in version information')
       it('supports skip and limit') // ??? TODO
+    })
+
+    describe('triangle', () => {
+      it('can fetch all keys')
+
     })
 
     describe('subscribe', () => {

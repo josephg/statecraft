@@ -1,5 +1,5 @@
 const fs = require('fs')
-const dbroot = require('../lib/dbroot')
+const lmdb = require('../lib/lmdb')
 
 const rmdir = (path) => {
   //console.log('rmdir path', path)
@@ -21,7 +21,7 @@ exports.create = () => {
     path = __dirname + '/_test' + _dbid++
   } while (fs.existsSync(path))
 
-  const store = dbroot(path, {})
+  const store = lmdb(path, {})
   pathOfDb.set(store, path)
   return store
 }
