@@ -205,5 +205,60 @@ const type = module.exports = {
     append(op, from, val, to)
     return op
   },
+
+  // Split an operation into two parts - the part which overlaps with the given
+  // op and the part which doesn't.
+  split(op, other) {
+    const inner = [], outer = []
+    
+    let lastKey = ''
+    const take = doubleIter(op, other)
+    let next
+    while ((next = take())) {
+      const [opval, otherval, to] = next
+
+      if (otherval !== 0) append(inner, lastKey, opval, to)
+      else append(outer, lastKey, opval, to)
+
+      lastKey = to
+    }
+
+    return [inner, outer]
+  },
+
+  map(op, fn) {
+    if (op.length === 0) return op
+
+    // The output will match the input in every way but value.
+    const result = op.slice()
+
+    let from = op[0]
+    for (let i = 0; i < op.length - 2; i+= 2) {
+      // i points to the start of the current range.
+      const to = expandKey(op[i+2], from)
+      if (op[i+1] !== 0) result[i+1] = fn(from, op[i+1], to)
+      from = to
+    }
+
+    // TODO: This doesn't handle the function returning 0 - it'll generate
+    // invalid range ops.
+
+    return result
+  },
+
+  asAddOp(snapshot) { return snapshot }, // range snapshots and ops are interchangable
+  asRemoveOp(snapshot) {
+    // Basically, invert the snapshot.
+    return type.map(snapshot, (from, x, to) => -x)
+  },
+
+  isEmpty(snapshot) { return snapshot.length === 0 },
+  isNoop(op) { return op.length === 0 },
 }
 
+// TODO: make me into a test. Should return 
+// [ [ '<b', 1, '.' ], [ '<a', 1, '<b', 0, '.', 1, '>m' ] ]
+// console.log(type.split(['<a', 1, '>m'], ['<b', 1, '.']))
+
+// [ '<a', 2, '.', 0, '<m', 2, '>z' ]
+// console.log(type.map(['<a', 1, '.', 0, '<m', 1, '>z'], (from, x, to) => x+1))
