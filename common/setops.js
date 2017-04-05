@@ -51,6 +51,14 @@ const type = module.exports = {
     return [inner, outer]
   },
 
+  checkOp(op) {
+    assert(typeof op === 'object' && !Array.isArray(op))
+    for (const k in op) {
+      assert(k === 'add' || k === 'remove')
+      assert(Array.isArray(op[k]))
+    }
+  },
+
   asAddOp(snapshot) {
     return snapshot.size ? {add: Array.from(snapshot)} : {}
   },

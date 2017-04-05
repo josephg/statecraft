@@ -154,6 +154,11 @@ const type = module.exports = {
     return type.apply(op1, op2) // HOW MYSTERIOUSLY CONVENIENT
   },
 
+  checkOp(op) {
+    // This is in no way exhaustive, but still worth running.
+    assert(Array.isArray(op))
+    assert(op.length === 0 || (op.length >= 3 && (op.length % 2) === 1))
+  },
 
   // **** Helper functions
  
