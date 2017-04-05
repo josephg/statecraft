@@ -65,7 +65,7 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
       //if (source) subresults2.versions[source] = [version, version]
     }
 
-    const sub = store.subscribe(qtype, query, versions, {
+    const sub = store.trackingSub(qtype, query, versions, {
       supportedTypes: [], // Make sure the listener gets passed sets.
     }, listener)
     sub.cursorAll(err => {
