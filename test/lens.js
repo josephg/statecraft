@@ -65,4 +65,13 @@ describe('lens', function() {
 
 
   })
+
+  {
+    const {create: createLmdb, close: closeLmdb} = require('./lmdb')
+    const runTests = require('./common')
+    runTests(() => {
+      const inner = createLmdb()
+      return lens(inner, 'x/')
+    }, closeLmdb)
+  }
 })

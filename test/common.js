@@ -296,6 +296,7 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
     })*/
 
     it('supports limits in fetch') // though limits are advisory only.
+    it('supports opts.noDocs in fetch')
     it('supports conflicting read keys') // but NYI.
 
     describe('skv', () => {
