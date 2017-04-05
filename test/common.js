@@ -136,6 +136,15 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
     })
   }
 
+  const delSingle = (store, key, versions, callback) => {
+    if (typeof versions === 'function') [versions, callback] = [{}, versions]
+    store.delete(key, versions, (err, vs) => {
+      if (err) return callback(err)
+      const [source, version] = splitSingleVersions(vs)
+      callback(null, source, version)
+    })
+  }
+
   const get = (store, key, callback) => {
     store.fetch('kv', [key], {}, {}, (err, data) => {
       if (err) return callback(err)
@@ -197,7 +206,35 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
       })
     })
 
-    it('allows you to delete a key')
+    it('allows you to delete a key', function(done) {
+      setSingle(this.store, 'a', 1, (err, s, v1) => {
+        if (err) throw err
+
+        delSingle(this.store, 'a', (err, s, v2) => {
+          if (err) throw err
+          assert(v2 > v1)
+
+          get(this.store, 'a', (err, value, s, v3s) => {
+            if (err) throw err
+            assert.equal(value, null)
+            assert.strictEqual(v2, v3s[1])
+            done()
+          })
+        })
+      })
+    })
+
+    it('allows you to delete a nonexistant key', function(done) {
+      delSingle(this.store, 'a', (err, s, v1) => {
+        if (err) throw err
+        get(this.store, 'a', (err, value, s, v2s) => {
+          if (err) throw err
+          assert.equal(value, null)
+          assert.strictEqual(v1, v2s[1])
+          done()
+        })
+      })
+    })
 
     // This test relies on the full version semantics of statecraft's native stores.
     it('returns acceptable version ranges for queries', function(done) {
@@ -258,8 +295,8 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
 
     })*/
 
-    it('supports limits in fetch') // though this is advisory only.
-    it('supports conflicting read keys')
+    it('supports limits in fetch') // though limits are advisory only.
+    it('supports conflicting read keys') // but NYI.
 
     describe('skv', () => {
       it('supports subscribing to a range')
@@ -267,12 +304,8 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
       it('supports skip and limit') // ??? TODO
     })
 
-    describe('triangle', () => {
-      it('can fetch all keys')
-
-    })
-
     describe('subscribe', () => {
+      it('can fetch all keys')
 
       it('returns data when not in raw mode')
       it('can hold until a future version is specified')
