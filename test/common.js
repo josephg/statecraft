@@ -30,13 +30,14 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
         // For now, just assert that we're up to date everywhere.
         //console.log('fr', fetchresults)
         assert.deepEqual(fetchresults.versions, subresults1.versions)
+        assert.deepEqual(fetchresults.versions, subresults2.versions)
         //assert.deepEqual(fetchresults.versions, subresults2.versions)
 
         //console.error('fr', fetchresults, '\nsr', subresults1)
         assertMapEq(fetchresults.results, subresults1.results)
         assertMapEq(fetchresults.results, subresults2.results)
       } catch (e) {
-        console.error('Results do not match')
+        console.error('Results do not match', qtype)
         console.error('fetch results:', fetchresults)
         console.error('subscribe data', subresults1)
         console.error('data sent to subscribe listener', subresults2)
@@ -52,10 +53,12 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
       check()
     })
 
-    subresults2 = {versions:'NOT CHECKED', results:new Map}
-    const listener = (type, update, source, version) => {
-      //console.log('listener', type, update)
+    subresults2 = {versions:{}, results:new Map}
+    const listener = (type, update, versionUpd) => {
       resultset.type.applyMut(subresults2.results, update)
+      for (const s in versionUpd) {
+        if (s[0] !== '_') subresults2.versions[s] = versionUpd[s]
+      }
       //console.log('->', subresults2.results)
 
       // TODO: How should I be passing back result versions?
