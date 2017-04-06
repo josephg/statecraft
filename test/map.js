@@ -6,6 +6,7 @@ describe('map', () => {
   it('maps subscribe results')
   
   {
+    // TODO: Rewrite me to use the memory store when we have it
     const {create: createLmdb, close: closeLmdb} = require('./lmdb')
     const runTests = require('./common')
     describe('through an identity function', () => {

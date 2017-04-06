@@ -145,8 +145,9 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
     })
   }
 
-  const get = (store, key, callback) => {
-    store.fetch('kv', [key], {}, (err, data) => {
+  const get = (store, key, opts, callback) => {
+    if (typeof opts === 'function') [opts, callback] = [{}, opts]
+    store.fetch('kv', [key], opts, (err, data) => {
       if (err) return callback(err)
 
       const {results, versions} = data
@@ -288,15 +289,23 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
       })
     })
 
-    /*
     describe('ot tests', function() {
-      return
-      it('asdf')
+    })
 
-    })*/
+    it('supports opts.noDocs in fetch', function(done) {
+      setSingle(this.store, 'a', {some:'big object'}, (err, source, v1) => {
+        if (err) throw err
+        get(this.store, 'a', {noDocs:true}, (err, value, s, v2s) => {
+          if (err) throw err
+          assert.strictEqual(value[0], 'a') // This testing api sucks.
+          assert(value[1] === true || value[1] === 1)
+          assert(v2s[1] === v1)
+          done()
+        })
+      })
+    })
 
     it('supports limits in fetch') // though limits are advisory only.
-    it('supports opts.noDocs in fetch')
     it('supports conflicting read keys') // but NYI.
 
     describe('skv', () => {
