@@ -47,7 +47,7 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
       callback(null, fetchresults)
     }
 
-    store.fetch(qtype, query, versions, {}, (err, r) => {
+    store.fetch(qtype, query, {atVersions: versions}, (err, r) => {
       if (err) return callback(err)
       fetchresults = {results: r.results, versions: r.versions}
       check()
@@ -146,7 +146,7 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
   }
 
   const get = (store, key, callback) => {
-    store.fetch('kv', [key], {}, {}, (err, data) => {
+    store.fetch('kv', [key], {}, (err, data) => {
       if (err) return callback(err)
 
       const {results, versions} = data
@@ -159,7 +159,7 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
   const getVersionForKeys = (store, keys, callback) => {
     if (!Array.isArray(keys)) keys = [keys]
     // TODO: Set options to elide actual data in response
-    store.fetch('kv', keys, {}, {}, (err, data) => {
+    store.fetch('kv', keys, {}, (err, data) => {
       if (err) return callback(err)
       else callback(null, ...splitSingleVersions(data.versions))
     })

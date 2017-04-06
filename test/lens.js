@@ -14,11 +14,10 @@ describe('lens', function() {
 
   describe('fetch', () => {
     it('correctly scopes in kv queries', function(done) {
-      const vs = {}, opts = {}
-      this.store.fetch = (qtype, query, versions, options, callback) => {
+      const opts = {}
+      this.store.fetch = (qtype, query, options, callback) => {
         assert.strictEqual(qtype, 'kv')
         assert.deepEqual(query, ['x/a', 'x/b']) // TODO: Also ok to get a set here.
-        assert.strictEqual(versions, vs)
         assert.strictEqual(options, opts)
 
         callback(null, {
@@ -28,7 +27,7 @@ describe('lens', function() {
 
       }
 
-      this.lens.fetch('kv', ['a', 'b'], vs, opts, (err, {results, versions}) => {
+      this.lens.fetch('kv', ['a', 'b'], opts, (err, {results, versions}) => {
         if (err) throw err
         assert.deepEqual(results, new Map([['a', 5], ['b', 7]]))
         done()
@@ -36,11 +35,10 @@ describe('lens', function() {
     })
 
     it('correctly scopes in skv queries', function(done) {
-      const vs = {}, opts = {}
-      this.store.fetch = (qtype, query, versions, options, callback) => {
+      const opts = {}
+      this.store.fetch = (qtype, query, options, callback) => {
         assert.strictEqual(qtype, 'sortedkv')
         assert.deepEqual(query, ['<x/a', 1, '.', 0, '>x/b', 1, '>x/c'])
-        assert.strictEqual(versions, vs)
         assert.strictEqual(options, opts)
 
         callback(null, {
@@ -50,7 +48,7 @@ describe('lens', function() {
 
       }
 
-      this.lens.fetch('sortedkv', ['<a', 1, '.', 0, '>b', 1, '>c'], vs, opts, (err, {results, versions}) => {
+      this.lens.fetch('sortedkv', ['<a', 1, '.', 0, '>b', 1, '>c'], opts, (err, {results, versions}) => {
         if (err) throw err
         assert.deepEqual(results, new Map([['a', 5], ['c', 7]]))
         done()
