@@ -15,6 +15,28 @@ const trimVersions = (vs) => {
   return result
 }
 
+// Consider moving this to ./util
+const assertResultsEqual = (actual, {results:expectedVal, versions:expectedVer}) => {
+  if (Array.isArray(expectedVal)) expectedVal = new Map(expectedVal)
+
+  // Check value
+  assertMapEq(actual.results, expectedVal)
+
+  // Check version
+  for (let source in expectedVer) {
+    let expectv = expectedVer[source]
+    if (!Array.isArray(expectv)) expectv = [expectv, expectv]
+
+    // We sort of just want to check that the version returned is contained
+    // within expectedVer.
+    actualv = actual.versions[source]
+    assert(actualv)
+    assert.strictEqual(actualv[0], expectv[0])
+    //console.log('ev', expectv, 'av', actualv)
+    assert.strictEqual(actualv[1], expectv[1])
+  }
+}
+
 module.exports = function test(createStore, teardownStore, prefix, queryWithKeys) {
   // Fetch using fetch() and through subscribe.
   const eachFetchMethod = (store, qtype, query, versions, callback) => {
@@ -76,38 +98,12 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
     })
   }
 
-  const assertResults = (qtype, store, query, expectedVal, expectedVer = {}, callback) => {
-    // TODO: Make this function convert the query to other types (SVK) as well
-    // and test those APIs directly.
-    if (Array.isArray(expectedVal)) expectedVal = new Map(expectedVal)
+  const fetchEachQType = (store, keys, versions, callback) => {
+    if (typeof versions === 'function') [versions, callback] = [{}, versions]
 
-    //const query = queryNoPrefix.map(x => `${prefix}x`)
-    eachFetchMethod(store, qtype, query, {}, (err, actual) => {
-      if (err) return callback(err)
-
-      // Check value
-      assertMapEq(actual.results, expectedVal)
-
-      // Check version
-      for (let source in expectedVer) {
-        let expectv = expectedVer[source]
-        if (!Array.isArray(expectv)) expectv = [expectv, expectv]
-
-        // We sort of just want to check that the version returned is contained
-        // within expectedVer.
-        actualv = actual.versions[source]
-        assert(actualv)
-        assert.strictEqual(actualv[0], expectv[0])
-        //console.log('ev', expectv, 'av', actualv)
-        assert.strictEqual(actualv[1], expectv[1])
-      }
-
-      callback()
-    })
-  }
-
-  const assertKVResults = (store, keys, expectedVals, expectedVer, callback) => {
     assert(store.supportedQueryTypes.kv || store.supportedQueryTypes.sortedkv)
+
+    let results = null
     eachAsync(['kv', 'sortedkv'], (qtype, i, done) => {
       if (!store.supportedQueryTypes[qtype]) return done()
 
@@ -115,8 +111,23 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
         kv: keys => keys,
         sortedkv: keys => rangeops.fromKeys(keys),
       })[qtype](keys)
-      assertResults(qtype, store, q, expectedVals, expectedVer, done)
-    }, callback)
+      eachFetchMethod(store, qtype, q, versions, (err, r) => {
+        if (err) return done(err)
+
+        if (results == null) results = r
+        else assertResultsEqual(results, r)
+        done()
+      })
+    }, err => callback(err, results))
+  }
+
+  const assertKVResults = (store, keys, expectedVals, expectedVer, callback) => {
+    fetchEachQType(store, keys, {}, (err, results) => {
+      if (err) return callback(err)
+
+      assertResultsEqual(results, {results:expectedVals, versions:expectedVer})
+      callback()
+    })
   }
 
   // Convert from a version object with 1 entry to a [source, version] pair
@@ -305,8 +316,34 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
       })
     })
 
-    it('supports limits in fetch') // though limits are advisory only.
-    it('supports conflicting read keys') // but NYI.
+    describe('limits', () => {
+      // limits are advisory only. We'll check for conformance and if it fails
+      // we'll mark the test as skipped.
+      beforeEach(function(done) {
+        const txn = new Map([
+          ['a', {type:'set', data:'a data'}],
+          ['b', {type:'set', data:'b data'}],
+          ['c', {type:'set', data:'c data'}],
+          ['d', {type:'set', data:'d data'}],
+        ])
+        this.store.mutate(txn, {}, {}, (err, vs) => done(err))
+      })
+
+      it('supports doc limits in fetch', function(done) {
+        eachAsync([1,2,3,4], (limit, _, done) => {
+          this.store.fetch('kv', ['a', 'b', 'c', 'd'], {limitDocs:limit}, (err, results) => {
+            if (err) throw err
+
+            if (results.results.size !== limit) done(Error('Limit not respected'))
+            else done()
+          })
+        }, err => {
+          if (err && err.message === 'Limit not respected') return this.skip()
+          else done()
+        })
+      })
+      it('supports conflicting read keys') // but NYI.
+    })
 
     describe('skv', () => {
       it('supports subscribing to a range')
