@@ -56,6 +56,7 @@ describe('map', () => {
     it('maps subscribe results')
     it('flattens operations through subscription')
 
+    it('flattens operations through getOps')
   })
   
   {
