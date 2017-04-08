@@ -1,4 +1,4 @@
-const assert = require('assert')
+const assert = require('assert6') // Once node 8 is out we can go back to the old version.
 const eachAsync = require('each-async')
 
 const withkv = require('../lib/withkv')
@@ -77,7 +77,7 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
 
     subresults2 = {versions:{}, results:new Map}
     const listener = (type, update, versionUpd) => {
-      resultset.type.applyMut(subresults2.results, update)
+      resultset.applyMut(subresults2.results, update)
       for (const s in versionUpd) {
         if (s[0] !== '_') subresults2.versions[s] = versionUpd[s]
       }
@@ -334,6 +334,7 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
           this.store.fetch('kv', ['a', 'b', 'c', 'd'], {limitDocs:limit}, (err, results) => {
             if (err) throw err
 
+            // TODO: Check results.queryRun as well.
             if (results.results.size !== limit) done(Error('Limit not respected'))
             else done()
           })
@@ -342,13 +343,133 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
           else done()
         })
       })
-      it('supports conflicting read keys') // but NYI.
+
+      it('supports byte limits in fetch', function(done) {
+        this.store.fetch('kv', ['a', 'b', 'c', 'd'], {limitBytes: 1}, (err, results) => {
+          if (err) throw err
+
+          // TODO: also check results.queryRun
+
+          if (results.results.size !== 1) return this.skip()
+          done()
+        })
+      })
     })
+
+    it('supports conflicting read keys') // but NYI.
 
     describe('skv', () => {
       it('supports subscribing to a range')
       it('includes deleted documents in version information')
       it('supports skip and limit') // ??? TODO
+    })
+
+    describe('getOps', () => {
+      beforeEach(function(done) {
+        setSingle(this.store, 'a', 1, (err, source, v1) => {
+          if (err) throw err
+          this.source = source
+          this.v1 = v1
+
+          setSingle(this.store, 'b', 2, (err, source, v2) => {
+            if (err) throw err
+            this.v2 = v2
+            setSingle(this.store, 'a', 3, (err, source, v3) => {
+              if (err) throw err
+              this.v3 = v3
+              setSingle(this.store, 'b', 4, (err, source, v4) => {
+                if (err) throw err
+                this.v4 = v4
+
+                this.expectedOps = [
+                  {source:this.source, v:this.v1, meta:{ts:0}, txn:new Map([['a', {type:'set', data:1}]])},
+                  {source:this.source, v:this.v2, meta:{ts:0}, txn:new Map([['b', {type:'set', data:2}]])},
+                  {source:this.source, v:this.v3, meta:{ts:0}, txn:new Map([['a', {type:'set', data:3}]])},
+                  {source:this.source, v:this.v4, meta:{ts:0}, txn:new Map([['b', {type:'set', data:4}]])},
+                ]
+                done()
+              })
+            })
+          })
+        })
+      })
+
+      const cleanTs = (ops) => ops.forEach(
+        op => { if (op.meta && op.meta.ts) op.meta.ts = 0 }
+      )
+      
+      // TODO: Write wrapper to call getOps through both sortedkv and kv
+
+      it('returns an empty list when no versions are requested', function(done) {
+        this.store.getOps('kv', ['a', 'b', 'c', 'd'], {}, {}, (err, ops) => {
+          if (err) throw err
+          assert.deepStrictEqual(ops, [])
+          done()
+        })
+      })
+
+      it('returns an empty list for closed ranges', function(done) {
+        this.store.getOps('kv', ['a', 'b', 'c', 'd'], {[this.source]: [this.v1, this.v1]}, {}, (err, ops) => {
+          if (err) throw err
+          assert.deepStrictEqual(ops, [])
+          done()
+        })
+      })
+
+      it('returns operations in specified range', function(done) {
+        this.store.getOps('kv', ['a', 'b'], {[this.source]: [this.v1-1, this.v4]}, {}, (err, ops) => {
+          if (err) throw err
+          cleanTs(ops)
+          assert.deepStrictEqual(ops, this.expectedOps)
+          done()
+        })
+      })
+
+      it('filters operations by query', function(done) {
+        this.store.getOps('kv', ['a'], {[this.source]: [this.v1-1, this.v4]}, {}, (err, ops) => {
+          if (err) throw err
+          cleanTs(ops)
+          assert.deepStrictEqual(ops, [this.expectedOps[0], this.expectedOps[2]])
+          done()
+        })
+      })
+
+      it('filters returned txn entries by the query', function(done) {
+        const txn = new Map([
+          ['a', {type:'set', data:5}],
+          ['b', {type:'set', data:6}],
+          ['c', {type:'set', data:7}],
+        ])
+        this.store.mutate(txn, {}, {}, (err, sv5) => {
+          if (err) throw err
+          const [_, v5] = splitSingleVersions(sv5)
+
+          this.store.getOps('kv', ['a', 'b'], {[this.source]: [this.v4, v5]}, {}, (err, ops) => {
+            if (err) throw err
+            cleanTs(ops)
+            assert.deepStrictEqual(ops, [
+              {source:this.source, v:v5, meta:{ts:0}, txn:new Map([
+                ['a', {type:'set', data:5}],
+                ['b', {type:'set', data:6}] // But c is missing because we didn't ask for it.
+              ])},
+            ])
+            done()
+          })
+        })
+      })
+
+      it('returns all operations if the upper range is -1', function(done) {
+        this.store.getOps('kv', ['a', 'b'], {[this.source]: [this.v1-1, -1]}, {}, (err, ops) => {
+          if (err) throw err
+          cleanTs(ops)
+          assert.deepStrictEqual(ops, this.expectedOps)
+          done()
+        })
+      })
+
+      // Should it wait? Should it return what it can? Should it be based on the options? ???
+      it('acts in [unspecified way] when the range contains future versions')
+
     })
 
     describe('subscribe', () => {

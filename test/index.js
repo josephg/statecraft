@@ -2,8 +2,6 @@
 const runTests = require('./common')
 const {create, close} = require('./lmdb')
 
-describe('raw local database', () => runTests(create, close))
-
 const serverForSource = new WeakMap
 
 describe('remote database endpoints', () => {

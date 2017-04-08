@@ -32,3 +32,6 @@ exports.close = (store) => { // teardown. Nuke it.
   pathOfDb.delete(store)
 }
 
+// I'm relying on require's caching to get mocha to run these tests once.
+describe('local lmdb database', () => require('./common')(exports.create, exports.close))
+
