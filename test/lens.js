@@ -7,11 +7,17 @@ describe('lens', () => {
     beforeEach(function() {
       // Just using a stub. TODO: Replace me with a memory store or something.
       this.store = {
-        supportedQueryTypes: {kv:true, sortedkv:true},
+        capabilities: {
+          mutationTypes: new Set(['kv', 'othermutation']),
+          opTypes: new Set(['otherop']),
+          queryTypes: new Set(['kv', 'sortedkv']),
+        }
       }
 
       this.lens = lens(this.store, 'x/')
     })
+
+    it('filters capabilities')
 
     describe('fetch', () => {
       it('correctly scopes in kv queries', function(done) {

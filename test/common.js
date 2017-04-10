@@ -40,7 +40,7 @@ const assertResultsEqual = (actual, {results:expectedVal, versions:expectedVer})
 module.exports = function test(createStore, teardownStore, prefix, queryWithKeys) {
   // Fetch using fetch() and through subscribe.
   const eachFetchMethod = (store, qtype, query, versions, callback) => {
-    assert(store.supportedQueryTypes[qtype],
+    assert(store.capabilities.queryTypes.has(qtype),
       `${qtype} queries not supported by store`)
 
     let fetchresults, subresults1, subresults2
@@ -101,11 +101,11 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
   const fetchEachQType = (store, keys, versions, callback) => {
     if (typeof versions === 'function') [versions, callback] = [{}, versions]
 
-    assert(store.supportedQueryTypes.kv || store.supportedQueryTypes.sortedkv)
+    assert(store.capabilities.queryTypes.has('kv') || store.capabilities.queryTypes.has('sortedkv'))
 
     let results = null
     eachAsync(['kv', 'sortedkv'], (qtype, i, done) => {
-      if (!store.supportedQueryTypes[qtype]) return done()
+      if (!store.capabilities.queryTypes.has(qtype)) return done()
 
       const q = ({
         kv: keys => keys,

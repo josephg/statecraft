@@ -6,7 +6,12 @@ describe('map', () => {
     beforeEach(function() {
       // Just using a stub. TODO: Replace me with a memory store or something.
       this.store = {
-        supportedQueryTypes: {kv:true},
+        capabilities: {
+          mutationTypes: new Set(['kv']),
+          opTypes: new Set(['otherop']),
+          queryTypes: new Set(['kv', 'sortedkv']),
+        },
+
         fetch(qtype, query, opts, callback) {
           const results = new Map
           if (query.has('obj')) results.set('obj', opts.noDocs ? 1 : {x:5})
@@ -20,6 +25,8 @@ describe('map', () => {
       this.mapped = map(this.store, (v, k) => this.mappingFn(v, k))
     })
 
+    it('filters capabilities')
+    
     it('maps fetch results', function(done) {
       this.mappingFn = (v, k) => {
         // Won't be called for nonexistant objects.
