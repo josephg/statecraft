@@ -15,6 +15,8 @@ const trimVersions = (vs) => {
   return result
 }
 
+const setOp = (val) => ({type: 'set', data: val})
+
 // Consider moving this to ./util
 const assertResultsEqual = (actual, {results:expectedVal, versions:expectedVer}) => {
   if (Array.isArray(expectedVal)) expectedVal = new Map(expectedVal)
@@ -366,6 +368,7 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
 
     describe('getOps', () => {
       beforeEach(function(done) {
+        // Setting these in a series of operations so we have something to query over.
         setSingle(this.store, 'a', 1, (err, source, v1) => {
           if (err) throw err
           this.source = source
@@ -473,9 +476,107 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
     })
 
     describe('subscribe', () => {
-      it('can fetch all keys')
+      // TODO: Make this subscribe using both methods.
+      const subscribeKV = (store, query, versions, opts, listener) => store.subscribe('kv', query, versions, opts, listener)
 
-      it('returns data when not in raw mode')
+      const listenerCheck = (expectedValues, done) => {
+        let pos = 0
+        return (type, update, versionUpdate, sub) => {
+          //console.log('listener hit with', type, update, versionUpdate, 'complete', sub.isComplete(), expectedValues[pos])
+
+          assert(pos < expectedValues.length)
+          let expected = expectedValues[pos]
+
+          if (expected.type) assert.deepStrictEqual(type, expected.type)
+          if (expected.update) assert.deepStrictEqual(update, new Map(expected.update))
+          if (expected.versions) for (const s in expected.versions) {
+            assert.deepStrictEqual(versionUpdate[s], expected.versions[s])
+          }
+          if (expected.complete != null) assert.strictEqual(sub.isComplete(), expected.complete)
+
+          pos++
+          if (pos === expectedValues.length) {
+            sub.cancel()
+            done()
+          }
+
+          if (expected.poll) sub.cursorNext()
+        }
+      }
+
+      it('can fetch requested keys', function(done) {
+        setSingle(this.store, 'a', 1, (err, source, v1) => {
+          if (err) throw err
+
+          const sub = subscribeKV(this.store, ['a'], {}, {limitDocs:1}, listenerCheck([
+            {update: [['a', setOp(1)]], versions: {[source]: [v1, v1]}, complete: true}
+          ], done))
+
+          sub.cursorNext()
+        })
+      })
+
+      it('gets operations on subscribed fields', function(done) {
+        let called = false
+
+        const sub = subscribeKV(this.store, ['a'], {}, {limitDocs:1}, listenerCheck([
+          {update: [], complete:true},
+          {update: [['a', setOp('hi')]], complete:true},
+        ], done))
+
+        sub.cursorNext({}, (err) => {
+          if (err) throw err
+          setSingle(this.store, 'a', 'hi')
+        })
+      })
+
+      describe('modifying subscriptions', () => {
+        beforeEach(function(done) {
+          // Setting these in a series of operations so we have something to query over.
+          setSingle(this.store, 'a', 'aa', (err, source, v1) => {
+            if (err) throw err
+            this.source = source
+            this.v1 = v1
+
+            setSingle(this.store, 'b', 'bb', (err, source, v2) => {
+              if (err) throw err
+              this.v2 = v2
+              done()
+            })
+          })
+        })
+
+        it('allows modifying the query after the data has been read', function(done) {
+          const sub = subscribeKV(this.store, ['a'], {}, {limitDocs:1}, listenerCheck([
+            {update: [['a', setOp('aa')]], complete: true},
+            {type: 'modify', versions: {_query: [10, 10]}, complete: false, poll:true},
+            {update: [['b', setOp('bb')]], complete: true},
+          ], done))
+
+          sub.cursorNext({}, err => {
+            if (err) throw err
+            // We should have gotten the first update now. Lets modify the query...
+            sub.modify({remove:['a'], add:['b']}, 10)
+          })
+        })
+
+        it('allows modifying the query before its read any data', function(done) {
+          const sub = subscribeKV(this.store, ['a'], {}, {limitDocs:1}, listenerCheck([
+            {update: [], complete: false, poll:true}, // Hit by the modify
+            {update: [['b', setOp('bb')]], complete: true},
+          ], done))
+
+          process.nextTick(() => {
+            // Without even hitting the cursor we'll modify the query.
+            sub.modify({remove:['a'], add:['b']})
+          })
+        })
+      })
+
+      it('removes keys from the cursor when the sub is modified')
+      it('sends cursor updates if opts.trackCursor is set')
+      it('does not fetch if noFetch flag is passed')
+
       it('can hold until a future version is specified')
       it('can receive create ops')
       it('allows editing the query')
