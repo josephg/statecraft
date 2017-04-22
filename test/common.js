@@ -404,7 +404,7 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
       // TODO: Write wrapper to call getOps through both sortedkv and kv
 
       it('returns an empty list when no versions are requested', function(done) {
-        this.store.getOps('kv', ['a', 'b', 'c', 'd'], {}, {}, (err, ops) => {
+        this.store.getOps('kv', ['a', 'b', 'c', 'd'], {}, {}, (err, {ops}) => {
           if (err) throw err
           assert.deepStrictEqual(ops, [])
           done()
@@ -412,7 +412,7 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
       })
 
       it('returns an empty list for closed ranges', function(done) {
-        this.store.getOps('kv', ['a', 'b', 'c', 'd'], {[this.source]: [this.v1, this.v1]}, {}, (err, ops) => {
+        this.store.getOps('kv', ['a', 'b', 'c', 'd'], {[this.source]: [this.v1, this.v1]}, {}, (err, {ops}) => {
           if (err) throw err
           assert.deepStrictEqual(ops, [])
           done()
@@ -420,16 +420,38 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
       })
 
       it('returns operations in specified range', function(done) {
-        this.store.getOps('kv', ['a', 'b'], {[this.source]: [this.v1-1, this.v4]}, {}, (err, ops) => {
+        this.store.getOps('kv', ['a', 'b'], {[this.source]: [this.v1-1, this.v4]}, {}, (err, {ops}) => {
           if (err) throw err
           cleanTs(ops)
           assert.deepStrictEqual(ops, this.expectedOps)
           done()
         })
       })
+      
+      it('limits the operations returned using opts.limitOps', function(done) {
+        if (!this.store.capabilities.limitBy.has('docs')) return this.skip()
+
+        this.store.getOps('kv', ['a', 'b'], {[this.source]: [this.v1-1, this.v4]}, {limitOps: 2}, (err, {ops}) => {
+          if (err) throw err
+          cleanTs(ops)
+          assert.deepStrictEqual(ops, [this.expectedOps[0], this.expectedOps[1]])
+          done()
+        })
+      })
+
+      it('limits the operations returned when we limit the requested versions', function(done) {
+        if (!this.store.capabilities.limitBy.has('docs')) return this.skip()
+
+        this.store.getOps('kv', ['a', 'b'], {[this.source]: [this.v1-1, this.v2]}, {}, (err, {ops}) => {
+          if (err) throw err
+          cleanTs(ops)
+          assert.deepStrictEqual(ops, [this.expectedOps[0], this.expectedOps[1]])
+          done()
+        })
+      })
 
       it('filters operations by query', function(done) {
-        this.store.getOps('kv', ['a'], {[this.source]: [this.v1-1, this.v4]}, {}, (err, ops) => {
+        this.store.getOps('kv', ['a'], {[this.source]: [this.v1-1, this.v4]}, {}, (err, {ops}) => {
           if (err) throw err
           cleanTs(ops)
           assert.deepStrictEqual(ops, [this.expectedOps[0], this.expectedOps[2]])
@@ -447,7 +469,7 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
           if (err) throw err
           const [_, v5] = splitSingleVersions(sv5)
 
-          this.store.getOps('kv', ['a', 'b'], {[this.source]: [this.v4, v5]}, {}, (err, ops) => {
+          this.store.getOps('kv', ['a', 'b'], {[this.source]: [this.v4, v5]}, {}, (err, {ops}) => {
             if (err) throw err
             cleanTs(ops)
             assert.deepStrictEqual(ops, [
@@ -462,7 +484,7 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
       })
 
       it('returns all operations if the upper range is -1', function(done) {
-        this.store.getOps('kv', ['a', 'b'], {[this.source]: [this.v1-1, -1]}, {}, (err, ops) => {
+        this.store.getOps('kv', ['a', 'b'], {[this.source]: [this.v1-1, -1]}, {}, (err, {ops}) => {
           if (err) throw err
           cleanTs(ops)
           assert.deepStrictEqual(ops, this.expectedOps)
@@ -473,6 +495,7 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
       // Should it wait? Should it return what it can? Should it be based on the options? ???
       it('acts in [unspecified way] when the range contains future versions')
 
+      it('limits the number of documents returned by the query (opts.limitDocs)')
     })
 
     describe('subscribe', () => {
@@ -504,6 +527,17 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
         }
       }
 
+      const addSampleData = (store, callback) => {
+        // Setting these in a series of operations so we have something to query over.
+        setSingle(store, 'a', 'aa', (err, source, v1) => {
+          if (err) return callback(err)
+          setSingle(store, 'b', 'bb', (err, source, v2) => {
+            if (err) return callback(err)
+            callback(null, source, v1, v2)
+          })
+        })
+      }
+
       it('can fetch requested keys', function(done) {
         setSingle(this.store, 'a', 1, (err, source, v1) => {
           if (err) throw err
@@ -530,19 +564,13 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
         })
       })
 
-      describe('modifying subscriptions', () => {
+      describe.skip('modifying subscriptions', () => {
         beforeEach(function(done) {
-          // Setting these in a series of operations so we have something to query over.
-          setSingle(this.store, 'a', 'aa', (err, source, v1) => {
+          addSampleData(this.store, (err, source, v1, v2) => {
             if (err) throw err
             this.source = source
             this.v1 = v1
-
-            setSingle(this.store, 'b', 'bb', (err, source, v2) => {
-              if (err) throw err
-              this.v2 = v2
-              done()
-            })
+            this.v2 = v2
           })
         })
 
@@ -573,13 +601,30 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
         })
       })
 
-      it('removes keys from the cursor when the sub is modified')
+      it.skip('receives operations sent in the past', function(done) {
+        addSampleData(this.store, (err, source, v1, v2) => {
+          if (err) throw err
+
+          subscribeKV(this.store, ['a'], {[source]: v1}, {}, listenerCheck([
+            {update: [['a', setOp('aa')]], versions: {[source]: [v1, v1]}, complete: true},
+
+          ], done))
+        })
+      })
+
+      it('expires after sending a certain number of operations if limitOps is set')
+
       it('sends cursor updates if opts.trackCursor is set')
       it('does not fetch if noFetch flag is passed')
 
       it('can hold until a future version is specified')
       it('can receive create ops')
-      it('allows editing the query')
+
+      describe('tracking sub', () => {
+        it('sets data values')
+        it('removes keys from the cursor when the sub is modified')
+
+      })
 
     })
 
