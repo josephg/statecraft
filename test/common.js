@@ -401,6 +401,7 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
         op => { if (op.meta && op.meta.ts) op.meta.ts = 0 }
       )
 
+      // Its really gross that I have to list the strategies here instead of pulling them off the store.
       ;['forwards', 'backwards'].forEach(strategy => describe(`strategy ${strategy}`, () => {
         beforeEach(function() {
           if (!this.store.capabilities.getOpsStrategies.has(strategy)) this.skip()
