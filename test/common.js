@@ -400,102 +400,113 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
       const cleanTs = (ops) => ops.forEach(
         op => { if (op.meta && op.meta.ts) op.meta.ts = 0 }
       )
-      
-      // TODO: Write wrapper to call getOps through both sortedkv and kv
 
-      it('returns an empty list when no versions are requested', function(done) {
-        this.store.getOps('kv', ['a', 'b', 'c', 'd'], {}, {}, (err, {ops}) => {
-          if (err) throw err
-          assert.deepStrictEqual(ops, [])
-          done()
+      ;['forwards', 'backwards'].forEach(strategy => describe(`strategy ${strategy}`, () => {
+        beforeEach(function() {
+          if (!this.store.capabilities.getOpsStrategies.has(strategy)) this.skip()
         })
-      })
+      //this.store.capabilities.getOpsStrategies.forEach(strategy => describe('strategy', () => {
+        const getOps = (store, query, versions, opts, callback) => {
+          // TODO: Write wrapper to call getOps through both sortedkv and kv
+          opts.strategy = strategy
+          store.getOps('kv', query, versions, opts, callback)
+        }
 
-      it('returns an empty list for closed ranges', function(done) {
-        this.store.getOps('kv', ['a', 'b', 'c', 'd'], {[this.source]: [this.v1, this.v1]}, {}, (err, {ops}) => {
-          if (err) throw err
-          assert.deepStrictEqual(ops, [])
-          done()
-        })
-      })
-
-      it('returns operations in specified range', function(done) {
-        this.store.getOps('kv', ['a', 'b'], {[this.source]: [this.v1-1, this.v4]}, {}, (err, {ops}) => {
-          if (err) throw err
-          cleanTs(ops)
-          assert.deepStrictEqual(ops, this.expectedOps)
-          done()
-        })
-      })
-      
-      it('limits the operations returned using opts.limitOps', function(done) {
-        if (!this.store.capabilities.limitBy.has('docs')) return this.skip()
-
-        this.store.getOps('kv', ['a', 'b'], {[this.source]: [this.v1-1, this.v4]}, {limitOps: 2}, (err, {ops}) => {
-          if (err) throw err
-          cleanTs(ops)
-          assert.deepStrictEqual(ops, [this.expectedOps[0], this.expectedOps[1]])
-          done()
-        })
-      })
-
-      it('limits the operations returned when we limit the requested versions', function(done) {
-        if (!this.store.capabilities.limitBy.has('docs')) return this.skip()
-
-        this.store.getOps('kv', ['a', 'b'], {[this.source]: [this.v1-1, this.v2]}, {}, (err, {ops}) => {
-          if (err) throw err
-          cleanTs(ops)
-          assert.deepStrictEqual(ops, [this.expectedOps[0], this.expectedOps[1]])
-          done()
-        })
-      })
-
-      it('filters operations by query', function(done) {
-        this.store.getOps('kv', ['a'], {[this.source]: [this.v1-1, this.v4]}, {}, (err, {ops}) => {
-          if (err) throw err
-          cleanTs(ops)
-          assert.deepStrictEqual(ops, [this.expectedOps[0], this.expectedOps[2]])
-          done()
-        })
-      })
-
-      it('filters returned txn entries by the query', function(done) {
-        const txn = new Map([
-          ['a', {type:'set', data:5}],
-          ['b', {type:'set', data:6}],
-          ['c', {type:'set', data:7}],
-        ])
-        this.store.mutate(txn, {}, {}, (err, sv5) => {
-          if (err) throw err
-          const [_, v5] = splitSingleVersions(sv5)
-
-          this.store.getOps('kv', ['a', 'b'], {[this.source]: [this.v4, v5]}, {}, (err, {ops}) => {
+        it('returns an empty list when no versions are requested', function(done) {
+          getOps(this.store, ['a', 'b', 'c', 'd'], {}, {}, (err, {ops}) => {
             if (err) throw err
-            cleanTs(ops)
-            assert.deepStrictEqual(ops, [
-              {source:this.source, v:v5, meta:{ts:0}, txn:new Map([
-                ['a', {type:'set', data:5}],
-                ['b', {type:'set', data:6}] // But c is missing because we didn't ask for it.
-              ])},
-            ])
+            assert.deepStrictEqual(ops, [])
             done()
           })
         })
-      })
 
-      it('returns all operations if the upper range is -1', function(done) {
-        this.store.getOps('kv', ['a', 'b'], {[this.source]: [this.v1-1, -1]}, {}, (err, {ops}) => {
-          if (err) throw err
-          cleanTs(ops)
-          assert.deepStrictEqual(ops, this.expectedOps)
-          done()
+        it('returns an empty list for closed ranges', function(done) {
+          getOps(this.store, ['a', 'b', 'c', 'd'], {[this.source]: [this.v1, this.v1]}, {}, (err, {ops}) => {
+            if (err) throw err
+            assert.deepStrictEqual(ops, [])
+            done()
+          })
         })
-      })
 
-      // Should it wait? Should it return what it can? Should it be based on the options? ???
-      it('acts in [unspecified way] when the range contains future versions')
+        it('returns operations in specified range', function(done) {
+          getOps(this.store, ['a', 'b'], {[this.source]: [this.v1-1, this.v4]}, {}, (err, {ops}) => {
+            if (err) throw err
+            cleanTs(ops)
+            assert.deepStrictEqual(ops, this.expectedOps)
+            done()
+          })
+        })
 
-      it('limits the number of documents returned by the query (opts.limitDocs)')
+        it('limits the operations returned using opts.limitOps', function(done) {
+          if (!this.store.capabilities.limitBy.has('docs')) return this.skip()
+
+          getOps(this.store, ['a', 'b'], {[this.source]: [this.v1-1, this.v4]}, {limitOps: 2}, (err, {ops}) => {
+            if (err) throw err
+            cleanTs(ops)
+            assert.deepStrictEqual(ops, [this.expectedOps[0], this.expectedOps[1]])
+            done()
+          })
+        })
+
+        it('limits the operations returned when we limit the requested versions', function(done) {
+          if (!this.store.capabilities.limitBy.has('docs')) return this.skip()
+
+          getOps(this.store, ['a', 'b'], {[this.source]: [this.v1-1, this.v2]}, {}, (err, {ops}) => {
+            if (err) throw err
+            cleanTs(ops)
+            assert.deepStrictEqual(ops, [this.expectedOps[0], this.expectedOps[1]])
+            done()
+          })
+        })
+
+        it('filters operations by query', function(done) {
+          getOps(this.store, ['a'], {[this.source]: [this.v1-1, this.v4]}, {}, (err, {ops}) => {
+            if (err) throw err
+            cleanTs(ops)
+            assert.deepStrictEqual(ops, [this.expectedOps[0], this.expectedOps[2]])
+            done()
+          })
+        })
+
+        it('filters returned txn entries by the query', function(done) {
+          const txn = new Map([
+            ['a', {type:'set', data:5}],
+            ['b', {type:'set', data:6}],
+            ['c', {type:'set', data:7}],
+          ])
+          this.store.mutate(txn, {}, {}, (err, sv5) => {
+            if (err) throw err
+            const [_, v5] = splitSingleVersions(sv5)
+
+            getOps(this.store, ['a', 'b'], {[this.source]: [this.v4, v5]}, {}, (err, {ops}) => {
+              if (err) throw err
+              cleanTs(ops)
+              assert.deepStrictEqual(ops, [
+                {source:this.source, v:v5, meta:{ts:0}, txn:new Map([
+                  ['a', {type:'set', data:5}],
+                  ['b', {type:'set', data:6}] // But c is missing because we didn't ask for it.
+                ])},
+              ])
+              done()
+            })
+          })
+        })
+
+        it('returns all operations if the upper range is -1', function(done) {
+          getOps(this.store, ['a', 'b'], {[this.source]: [this.v1-1, -1]}, {}, (err, {ops}) => {
+            if (err) throw err
+            cleanTs(ops)
+            assert.deepStrictEqual(ops, this.expectedOps)
+            done()
+          })
+        })
+
+        // Should it wait? Should it return what it can? Should it be based on the options? ???
+        it('acts in [unspecified way] when the range contains future versions')
+
+        it('limits the number of documents returned by the query (opts.limitDocs)')
+
+      }))
     })
 
     describe('subscribe', () => {
