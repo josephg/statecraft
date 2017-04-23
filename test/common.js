@@ -1,4 +1,4 @@
-const assert = require('assert6') // Once node 8 is out we can go back to the old version.
+const assert = require('assert6') // Once node 8 is out we can use that directly.
 const eachAsync = require('each-async')
 
 const withkv = require('../lib/withkv')
@@ -100,9 +100,7 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
     })
   }
 
-  const fetchEachQType = (store, keys, versions, callback) => {
-    if (typeof versions === 'function') [versions, callback] = [{}, versions]
-
+  const runBothQueryTypes = (store, keys, assertEq, fn, callback) => {
     assert(store.capabilities.queryTypes.has('kv') || store.capabilities.queryTypes.has('sortedkv'))
 
     let results = null
@@ -113,18 +111,20 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
         kv: keys => keys,
         sortedkv: keys => rangeops.fromKeys(keys),
       })[qtype](keys)
-      eachFetchMethod(store, qtype, q, versions, (err, r) => {
+      fn(qtype, q, (err, r) => {
         if (err) return done(err)
 
         if (results == null) results = r
-        else assertResultsEqual(results, r)
+        else assertEq(results, r)
         done()
       })
     }, err => callback(err, results))
   }
 
   const assertKVResults = (store, keys, expectedVals, expectedVer, callback) => {
-    fetchEachQType(store, keys, {}, (err, results) => {
+    runBothQueryTypes(store, keys, assertResultsEqual, (qtype, q, callback) => {
+      eachFetchMethod(store, qtype, q, {}, callback)
+    }, (err, results) => {
       if (err) return callback(err)
 
       assertResultsEqual(results, {results:expectedVals, versions:expectedVer})
@@ -406,16 +406,22 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
         beforeEach(function() {
           if (!this.store.capabilities.getOpsStrategies.has(strategy)) this.skip()
         })
-      //this.store.capabilities.getOpsStrategies.forEach(strategy => describe('strategy', () => {
-        const getOps = (store, query, versions, opts, callback) => {
-          // TODO: Write wrapper to call getOps through both sortedkv and kv
+
+        const getOps = (store, keys, versions, opts, callback) => {
+          // TODO: call getOps through both sortedkv and kv
           opts.strategy = strategy
-          store.getOps('kv', query, versions, opts, callback)
+
+          runBothQueryTypes(store, keys, assert.deepStrictEqual, (qtype, query, callback) => {
+            store.getOps(qtype, query, versions, opts, (err, data) => {
+              callback(err, data)
+            })
+          }, callback)
         }
 
         it('returns an empty list when no versions are requested', function(done) {
           getOps(this.store, ['a', 'b', 'c', 'd'], {}, {}, (err, {ops}) => {
             if (err) throw err
+            // TODO: Check returned versions
             assert.deepStrictEqual(ops, [])
             done()
           })
@@ -423,6 +429,7 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
 
         it('returns an empty list for closed ranges', function(done) {
           getOps(this.store, ['a', 'b', 'c', 'd'], {[this.source]: [this.v1, this.v1]}, {}, (err, {ops}) => {
+            // TODO: Check returned versions
             if (err) throw err
             assert.deepStrictEqual(ops, [])
             done()
@@ -430,10 +437,11 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
         })
 
         it('returns operations in specified range', function(done) {
-          getOps(this.store, ['a', 'b'], {[this.source]: [this.v1-1, this.v4]}, {}, (err, {ops}) => {
+          getOps(this.store, ['a', 'b'], {[this.source]: [this.v1-1, this.v4]}, {}, (err, {ops, versions}) => {
             if (err) throw err
             cleanTs(ops)
             assert.deepStrictEqual(ops, this.expectedOps)
+            assert.deepStrictEqual(versions, {[this.source]: [this.v1-1, this.v4]})
             done()
           })
         })
@@ -441,10 +449,11 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
         it('limits the operations returned using opts.limitOps', function(done) {
           if (!this.store.capabilities.limitBy.has('docs')) return this.skip()
 
-          getOps(this.store, ['a', 'b'], {[this.source]: [this.v1-1, this.v4]}, {limitOps: 2}, (err, {ops}) => {
+          getOps(this.store, ['a', 'b'], {[this.source]: [this.v1-1, this.v4]}, {limitOps: 2}, (err, {ops, versions}) => {
             if (err) throw err
             cleanTs(ops)
             assert.deepStrictEqual(ops, [this.expectedOps[0], this.expectedOps[1]])
+            assert.deepStrictEqual(versions, {[this.source]: [this.v1-1, this.v2]})
             done()
           })
         })
@@ -452,19 +461,21 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
         it('limits the operations returned when we limit the requested versions', function(done) {
           if (!this.store.capabilities.limitBy.has('docs')) return this.skip()
 
-          getOps(this.store, ['a', 'b'], {[this.source]: [this.v1-1, this.v2]}, {}, (err, {ops}) => {
+          getOps(this.store, ['a', 'b'], {[this.source]: [this.v1-1, this.v2]}, {}, (err, {ops, versions}) => {
             if (err) throw err
             cleanTs(ops)
             assert.deepStrictEqual(ops, [this.expectedOps[0], this.expectedOps[1]])
+            assert.deepStrictEqual(versions, {[this.source]: [this.v1-1, this.v2]})
             done()
           })
         })
 
         it('filters operations by query', function(done) {
-          getOps(this.store, ['a'], {[this.source]: [this.v1-1, this.v4]}, {}, (err, {ops}) => {
+          getOps(this.store, ['a'], {[this.source]: [this.v1-1, this.v4]}, {}, (err, {ops, versions}) => {
             if (err) throw err
             cleanTs(ops)
             assert.deepStrictEqual(ops, [this.expectedOps[0], this.expectedOps[2]])
+            assert.deepStrictEqual(versions, {[this.source]: [this.v1-1, this.v4]})
             done()
           })
         })
