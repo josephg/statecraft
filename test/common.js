@@ -587,13 +587,14 @@ module.exports = function test(createStore, teardownStore, prefix, queryWithKeys
         })
       })
 
-      describe.skip('modifying subscriptions', () => {
+      describe('modifying subscriptions', () => {
         beforeEach(function(done) {
           addSampleData(this.store, (err, source, v1, v2) => {
             if (err) throw err
             this.source = source
             this.v1 = v1
             this.v2 = v2
+            done()
           })
         })
 
