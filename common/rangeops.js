@@ -68,7 +68,7 @@ const iter = (range) => {
       return (i === -1) ? [0, range[0]] : [range[i], expandItem(range, i+1)]
     },
 
-    consumeTo(k) {
+    skipTo(k) {
       // Based on the current code below I think this'll never loop more than once, but still.
       while (true) {
         if (i >= range.length - 1) break
@@ -91,19 +91,19 @@ const doubleIter = (a, b) => {
     if (anext == null) {
       if (bnext == null) return null
       const [bval, to] = bnext
-      biter.consumeTo(to) // or no argument?
+      biter.skipTo(to) // or no argument?
       return [0, bval, to]
     } else if (bnext == null) {
       const [aval, to] = anext
-      aiter.consumeTo(to)
+      aiter.skipTo(to)
       return [aval, 0, to]
     } else {
       const [aval, ato] = anext
       const [bval, bto] = bnext
 
       const k = min(ato, bto)
-      aiter.consumeTo(k)
-      biter.consumeTo(k)
+      aiter.skipTo(k)
+      biter.skipTo(k)
       return [aval, bval, k]
     }
   }
@@ -135,19 +135,24 @@ const type = module.exports = {
   create(data) {
     return data ? Array.from(data) : []
   },
-  apply(snapshot, op, combine = plus) {
-    // We'll walk the snapshot and operation together, copying resulting values in.
+
+  map2(a, b, fn) {
+    // Walk a and b together, combining values into a final resulting array.
     const result = []
     let lastKey = ''
 
-    const take = doubleIter(snapshot, op)
+    const take = doubleIter(a, b)
     let next
     while ((next = take())) {
-      const [snapval, opval, to] = next
-      append(result, lastKey, combine(snapval, opval, lastKey, to), to)
+      const [aval, bval, to] = next
+      append(result, lastKey, fn(aval, bval, lastKey, to), to)
       lastKey = to
     }
     return result
+  },
+
+  apply(snapshot, op, combine = plus) {
+    return this.map2(snapshot, op, combine)
   },
   compose(op1, op2) {
     // TODO: Not sure what this should do about values ending up >1.
@@ -163,7 +168,7 @@ const type = module.exports = {
   // **** Helper functions
  
   forEach(range, fn) { // Helper function for iterating over a range. Yields (k1, val, k2) to fn.
-    const {peek, consumeTo} = iter(range)
+    const {peek, skipTo} = iter(range)
     let lastKey = ''
 
     let next 
@@ -171,7 +176,7 @@ const type = module.exports = {
       const [val, to] = next
       if (val !== 0) fn(lastKey, val, to)
       lastKey = to
-      consumeTo(to)
+      skipTo(to)
     }
   },
 
@@ -249,6 +254,14 @@ const type = module.exports = {
     // invalid range ops.
 
     return result
+  },
+
+  intersectDocs(op1, op2, fn = (a, b) => a) {
+    // This will also work for ops.
+    map2(op1, op2, (a, b, from, to) => {
+      if (a === 0 || b === 0) return 0
+      else return fn(a, b, from, to)
+    })
   },
 
   asAddOp(snapshot) { return snapshot }, // range snapshots and ops are interchangable

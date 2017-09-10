@@ -66,6 +66,15 @@ const type = module.exports = {
     return snapshot.size ? {remove: Array.from(snapshot)} : {}
   },
 
+  intersectDocs(a, b) {
+    // Take the intersection of two documents
+    //
+    // TODO: Flip a and b if b.size < a.size
+    const result = new Set
+    for (let k of a) if (b.has(k)) result.add(k)
+    return result
+  },
+
   isEmpty(snapshot) { return snapshot.size === 0 },
   isNoop(op) {
     return (!op.remove || op.remove.length === 0) && (!op.add || op.add.length === 0)
