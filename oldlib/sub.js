@@ -36,7 +36,7 @@ const eachIntersect = (c1, c2, fn) => {
   }
 }
 
-queryops.kv.eachTxnMatching = (txn, query, fn) => eachIntersect(c1, c2, k => fn(k, txn.get(k)))
+queryops.kv.eachTxnMatching = (txn, query, fn) => eachIntersect(txn, query, k => fn(k, txn.get(k)))
 queryops.sortedkv.eachTxnMatching = (txn, query, fn) => rangeutil.eachInRanges(query, txn, fn)
 
 // Used as a placeholder for notifying an empty update. Never modified.

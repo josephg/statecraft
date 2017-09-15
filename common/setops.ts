@@ -2,7 +2,15 @@
 //
 // Set ops are simply an object with optional .remove and .add keys, which each
 // contain lists of items to add and remove.
-const type = module.exports = {
+
+import {QueryOps} from './type'
+import * as assert from 'assert'
+
+// type Doc = any
+export type Op<Doc> = {add?: Doc[], remove?: Doc[]}
+
+
+const type: QueryOps<Set<any>, Op<any>> = {
   name: 'set',
   create(data) {
     return new Set(data) // Handles another set, array or empty just fine.
@@ -25,7 +33,7 @@ const type = module.exports = {
   // Split an op into two parts - the part that intersects with the snapshot
   // and the part that doesn't.
   split(op, snapshot) {
-    const inner = {}, outer = {}
+    const inner: Op<any> = {}, outer: Op<any> = {}
 
     if (op.remove) for (let i = 0; i < op.remove.length; i++) {
       const r = op.remove[i]
@@ -51,18 +59,10 @@ const type = module.exports = {
     return [inner, outer]
   },
 
-  checkOp(op) {
-    assert(typeof op === 'object' && !Array.isArray(op))
-    for (const k in op) {
-      assert(k === 'add' || k === 'remove')
-      assert(Array.isArray(op[k]))
-    }
-  },
-
-  asAddOp(snapshot) {
+  asAddOp(snapshot: Set<any>): Op<any> {
     return snapshot.size ? {add: Array.from(snapshot)} : {}
   },
-  asRemoveOp(snapshot) {
+  asRemoveOp(snapshot: Set<any>): Op<any> {
     return snapshot.size ? {remove: Array.from(snapshot)} : {}
   },
 
@@ -79,5 +79,6 @@ const type = module.exports = {
   isNoop(op) {
     return (!op.remove || op.remove.length === 0) && (!op.add || op.add.length === 0)
   },
-
 }
+
+export {type}

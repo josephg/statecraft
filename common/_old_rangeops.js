@@ -36,7 +36,7 @@
 // Another way we could do this is to specify the merge type (naming another OT
 // type). That'd be pretty neat, but I can't think of any good uses for it.
 
-const assert = require('assert')
+import * as assert from 'assert'
 
 // a < b
 const lt = (a, b) => {
@@ -130,7 +130,7 @@ const append = (range, from, val, to) => {
 const plus = (a, b) => a + b
 const minus = (a, b) => a - b
 
-const type = module.exports = {
+const type = {
   name: 'range',
   create(data) {
     return data ? Array.from(data) : []
@@ -273,6 +273,8 @@ const type = module.exports = {
   isEmpty(snapshot) { return snapshot.length === 0 },
   isNoop(op) { return op.length === 0 },
 }
+
+export default type
 
 // TODO: make me into a test. Should return 
 // [ [ '<b', 1, '.' ], [ '<a', 1, '<b', 0, '.', 1, '>m' ] ]
