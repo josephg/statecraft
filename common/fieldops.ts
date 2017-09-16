@@ -1,40 +1,6 @@
-// This is the master operation type documents.
-//
-// This is used for interpretting transactions sent to the server through
-// mutate() and transactions sent to client subscriptions.
-//
-// It implements set and remove, and forwards the actual changes to
-// child op types, which can be registered using the register function below.
-import {SingleOp, Op} from '../common/interfaces'
-import {OTType, AnyOTType, OTWithCompose} from '../common/type'
-
-const typeRegistry: {[name: string]: AnyOTType} = {}
-const supportedTypes = new Set(['rm', 'set'])
-
-function register(type: AnyOTType) {
-  typeRegistry[type.name] = type
-  supportedTypes.add(type.name)
-}
-
-// register(require('../common/rangeops'))
-// register(require('../common/setops'))
-
-
-
-// The 'inc' type is a tiny dummy type.
-register({
-  name: 'inc',
-  create(data) { return data|0 },
-  apply(snapshot, op) { // Op is a number
-    return snapshot + op
-  },
-})
-
-function typeOrThrow(typeName: string): AnyOTType {
-  const type = typeRegistry[typeName]
-  if (!type) throw Error('Unsupported type ' + typeName)
-  return type
-}
+import {SingleOp, Op} from './interfaces'
+import {ResultOps} from './type'
+import {typeOrThrow, supportedTypes, typeRegistry} from './registry'
 
 function appendMut(a: Op, b: SingleOp) {
   const {type} = b
@@ -64,8 +30,9 @@ function appendMut(a: Op, b: SingleOp) {
   } else return [a, b]
 }
 
-const fieldType: OTWithCompose<any, Op> = {
-  name: 'sc',
+const type: ResultOps<any, Op> = {
+  name: 'doc',
+
   create(data) {
     // Remember, this is creating a document.
     return data
@@ -76,7 +43,7 @@ const fieldType: OTWithCompose<any, Op> = {
       // Multi operation.
       for (let i = 0; i < op.length; i++) {
         // Recurse.
-        snapshot = this.apply(snapshot, op[i])
+        snapshot = type.apply(snapshot, op[i])
       }
       return snapshot
     }
@@ -106,13 +73,16 @@ const fieldType: OTWithCompose<any, Op> = {
       return appendMut(op1, op2)
     }
   },
+
+  asOp(snap: any) {
+    return (snap == null) ? {type:'rm'} : {type:'set', data:snap}
+  },
+
+  from(type, data) {
+    switch(type) {
+      case 'doc': return data
+      case 'resultmap': return data.get('content')
+    }
+  },
 }
-
-
-// TODO: + Register string, JSON, etc.
-
-
-// I'm just going to export the utilities with the type. Its .. not ideal, but
-// there's no clear line between what should be part of the result set type and
-// what is just utility methods. This'll be fine for now.
-export {fieldType, register, supportedTypes}
+export default type

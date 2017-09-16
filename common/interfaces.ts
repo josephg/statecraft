@@ -1,5 +1,9 @@
-
-export type QueryType = 'all' | 'kv' | 'sortedkv'
+// content: Return one value (the content of the store). Query ignored
+// kv: Query with a set of keys, return corresponding values.
+// sortedkv: Query set of ranges. return kv map with contained values
+// all: Query ignored, return kv map with values.
+export type QueryType = 'content' | 'allkv' | 'kv' | 'sortedkv'
+export type ResultType = 'resultmap' | 'doc'
 
 export type Version = number
 export type Source = string
@@ -68,7 +72,10 @@ export type GetOpsResult = {
   versions: FullVersionRange,
 }
 
-export type Txn = Map<Key, Op>
+export type SingleTxn = Op
+export type KVTxn = Map<Key, Op>
+export type Txn = SingleTxn | KVTxn
+
 export type Listener = (type: 'txn' | 'modify' | 'cursor', txn: Txn | null, v: FullVersionRange, s: Subscription) => void
 
 export interface MutateOptions {
@@ -136,7 +143,7 @@ export interface SCSource {
   //
   // So for example, given db at version 10, mutate(v:10) => transaction at
   // v:11, and afterwards db is at v:11.
-  mutate(txn: Txn, versions: FullVersion, opts: MutateOptions, callback: (err?: Error, result?: FullVersion) => void): void
+  mutate(type: QueryType, txn: Txn, versions: FullVersion, opts: MutateOptions, callback: (err?: Error, result?: FullVersion) => void): void
 
   close?(): void
 }

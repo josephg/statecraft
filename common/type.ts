@@ -1,22 +1,26 @@
+import {ResultType} from './interfaces'
+
 export interface Type<Snap, Op> {
   name: string,
   create(data?: any): Snap
   apply(snapshot: Snap, op: Op): Snap
   checkOp?(op: Op): void
-}
-
-export interface OTType<Snap, Op> extends Type<Snap, Op> {
+  
   // For core OT types:
   // Not sure if transform should be optional. TODO.
   transform?(op1: Op, op2: Op, side: 'left' | 'right'): Op,
   // And transform cursor and stuff.
   compose?(op1: Op, op2: Op): Op,
+
+  [p: string]: any
 }
 
-export interface OTWithCompose<Snap, Op> extends OTType<Snap, Op> {
-  compose(op1: Op, op2: Op): Op,
+export interface ResultOps<Snap, Op> extends Type<Snap, Op> {
+  compose(op1: Op, op2: Op): Op
+  composeMut?(op1: Op, op2: Op): void
+  asOp(snap: Snap): Op
+  from(type: ResultType, snap: any): Snap
 }
-
 
 export interface QueryOps<Snap, Op> extends Type<Snap, Op> {
   // Split an op into two parts - the part that intersects with the snapshot
@@ -25,7 +29,9 @@ export interface QueryOps<Snap, Op> extends Type<Snap, Op> {
   intersectDocs(a: Snap, b: Snap): Snap
   isEmpty(snapshot: Snap): boolean
   isNoop(op: Op): boolean
-  [p: string]: any
+
+  add(a: Snap, b: Snap): Snap
+  subtract(a: Snap, b: Snap): Snap,
 }
 
-export type AnyOTType = OTType<any, any>
+export type AnyOTType = Type<any, any>

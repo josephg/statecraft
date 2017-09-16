@@ -2,5 +2,6 @@ node_modules
 .*.swp
 db
 .DS_Store
-statecraft/target
-statecraft/Cargo.lock
+rust/target
+rust/Cargo.lock
+dist

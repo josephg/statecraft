@@ -1,10 +1,10 @@
 import * as fs from 'fs'
 import chokidar = require('chokidar')
-import {FullVersion, SCSource, Subscription} from '../common/interfaces'
-import {fieldType} from './docop'
+import * as I from '../common/interfaces'
+import fieldType from '../common/fieldops'
 import SubGroup from './subgroup'
 
-const fileStore = (filename: string, sourceIn?: string): SCSource => {
+const fileStore = (filename: string, sourceIn?: string): I.SCSource => {
   const source: string = sourceIn || filename
   
   // Try and load the file.
@@ -13,15 +13,15 @@ const fileStore = (filename: string, sourceIn?: string): SCSource => {
   let state: 'ok' | 'error'
   let version: number
 
-  let subscriptions: SubGroup | any
+  let subscriptions: SubGroup | null = null
 
-  const mutateCallbacks: ((err?: Error, result?: FullVersion) => void)[] = []
+  const mutateCallbacks: ((err?: Error, result?: I.FullVersion) => void)[] = []
 
   const onchange = () => {
     console.log('file changed to', data)
     mutateCallbacks.forEach(cb => cb(undefined, {[source]: version}))
     mutateCallbacks.length = 0
-    subscriptions.onOp(source, version, new Map([['content', {type: 'set', data}]]))
+    subscriptions!.onOp(source, version, 'resultmap', new Map([['content', {type: 'set', data}]]))
   }
 
   const tryReadFile = (create: boolean) => {
@@ -78,14 +78,19 @@ const fileStore = (filename: string, sourceIn?: string): SCSource => {
 
   // watcher.on('error', err => console.error('Watcher error', err))
 
-  let api: SCSource = {
+  let api: I.SCSource = {
     capabilities: {},
     fetch(qtype, query, opts, callback) {
       // TODO: support kv as well, and return the data through .content.
-      if (qtype !== 'all' && qtype !== 'kv') return callback(Error('Invalid query type to json store'))
+      let results: any
+      switch (qtype) {
+        case "content": results = data; break
+        case "allkv": results = new Map([['content', data]]); break
+        default: return callback(Error(`Invalid query type ${qtype} to json store`))
+      }
 
       callback(undefined, {
-        results: new Map([['content', data]]),
+        results,
         queryRun: query,
         versions: {[source]: {from:version, to:Date.now()}},
       })
@@ -99,22 +104,23 @@ const fileStore = (filename: string, sourceIn?: string): SCSource => {
       return callback(Error('Requested range too old'))
     },
 
-    subscribe(qtype, query, opts, listener): Subscription {
-      return subscriptions.create(qtype, query, opts, listener)
+    subscribe(qtype, query, opts, listener): I.Subscription {
+      return subscriptions!.create(qtype, query, opts, listener)
     },
 
-    mutate(txn, versions, opts, callback) {
+    mutate(type, txn, versions, opts, callback) {
       // We'll ignore anything the transaction tries to edit outside of .content.
       const expectv = versions[source]
       if (expectv != null && expectv < version) return callback(Error('Requested version too old'))
 
-      const op = txn.get('content')
+      const op = type === 'content' ? <I.Op>txn : (<I.KVTxn>txn).get('content')
       if (op) data = fieldType.apply(data, op)
       console.log('fs.writefilesync')
       mutateCallbacks.push(callback)
       fs.writeFile(filename, JSON.stringify(data), (err) => {
         if (err) {
           callback(err)
+          // Remove the callback from the list
           const index = mutateCallbacks.indexOf(callback)
           if (index != -1) {
             mutateCallbacks[index] = mutateCallbacks[mutateCallbacks.length - 1]
@@ -145,11 +151,13 @@ if (require.main === module) {
   //     console.log(err, v)
   //   })
   // })
-  const sub = store.subscribe('kv', new Set(['content']), {}, (type, txn, v) => {
-    console.log('Got txn', type, v, txn)
+  // const sub = store.subscribe('allkv', new Set(['content']), {}, (type, txn, v) => {
+  const sub = store.subscribe('allkv', true, {}, (type, txn, v) => {
+  // const sub = store.subscribe('content', true, {}, (type, txn, v) => {
+    console.log('listener', type, v, txn)
   })
   sub.cursorNext({}, (err, results) => {
-    console.log('cn', err, results)
+    console.log('cursor next', err, results)
   })
 }
 

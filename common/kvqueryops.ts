@@ -5,6 +5,7 @@
 
 import {QueryOps} from './type'
 import * as assert from 'assert'
+import resultMapOps from './resultmap'
 
 // type Doc = any
 export type Op<Doc> = {add?: Doc[], remove?: Doc[]}
@@ -29,6 +30,9 @@ const type: QueryOps<Set<any>, Op<any>> = {
     return result
   },
 
+  getResultType() {
+    return resultMapOps
+  },
 
   // Split an op into two parts - the part that intersects with the snapshot
   // and the part that doesn't.
@@ -59,12 +63,24 @@ const type: QueryOps<Set<any>, Op<any>> = {
     return [inner, outer]
   },
 
-  asAddOp(snapshot: Set<any>): Op<any> {
-    return snapshot.size ? {add: Array.from(snapshot)} : {}
+  add(a, b) {
+    const result = new Set<any>(a)
+    for (const v of b) result.add(v)
+    return result
   },
-  asRemoveOp(snapshot: Set<any>): Op<any> {
-    return snapshot.size ? {remove: Array.from(snapshot)} : {}
+
+  subtract(a, b) {
+    const result = new Set<any>(a)
+    for (const v of b) result.delete(v)
+    return result
   },
+
+  // asAddOp(snapshot: Set<any>): Op<any> {
+  //   return snapshot.size ? {add: Array.from(snapshot)} : {}
+  // },
+  // asRemoveOp(snapshot: Set<any>): Op<any> {
+  //   return snapshot.size ? {remove: Array.from(snapshot)} : {}
+  // },
 
   intersectDocs(a, b) {
     // Take the intersection of two documents
@@ -81,4 +97,4 @@ const type: QueryOps<Set<any>, Op<any>> = {
   },
 }
 
-export {type}
+export default type

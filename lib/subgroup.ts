@@ -1,70 +1,13 @@
-
-// import {
-//   Subscription,
-//   QueryType,
-//   Listener,
-//   Source,
-//   Version,
-//   Txn,
-//   Op,
-//   KVQuery,
-//   Key
-// } from '../common/interfaces'
 import * as I from '../common/interfaces'
 
-import {registry as queryops} from '../common/queryops'
+import queryops from '../common/queryops'
 import assert = require('assert')
-import {fieldType} from './docop'
+import fieldOps from '../common/fieldops'
 import {QueryOps} from '../common/type'
 
 interface Sub extends I.Subscription {
-  _onOp(source: I.Source, version: I.Version, txn: I.Txn): void
+  _onOp(source: I.Source, version: I.Version, type: I.ResultType, txn: I.Txn): void
   [prop: string]: any
-}
-
-type SetOrMap<T> = Map<T, any> | Set<T>
-function eachIntersect<T>(c1: SetOrMap<T>, c2: SetOrMap<T>, fn: (v:T) => void) {
-  // This works on maps and sets.
-  if (c1.size > c2.size) {
-    for (let k of c2.keys()) if (c1.has(k)) fn(k)
-  } else {
-    for (let k of c1.keys()) if (c2.has(k)) fn(k)
-  }
-}
-
-interface QueryTools extends QueryOps<Set<any>, any> {
-  filterTxn(txn: I.Txn, query: I.KVQuery): I.Txn | null,
-}
-
-const eachTxnMatching = (txn: I.Txn, query: I.KVQuery, fn: (k: I.Key, op: I.Op) => void) => {
-  eachIntersect<I.Key>(txn, query, k => fn(k, <I.Op>txn.get(k)))
-}
-
-const queryTools: {[name: string]: QueryTools} = {
-  kv: {
-    filterTxn(txn: I.Txn, query: I.KVQuery): I.Txn | null {
-      let result: I.Txn | null = null
-      eachIntersect<I.Key>(txn, query, k => {
-        if (result == null) result = new Map<I.Key, I.Op>()
-        result.set(k, <I.Op>txn.get(k))
-      })
-      return result
-    },
-
-    ...queryops.kv
-  }
-}
-
-// Merge op into txn.
-function mergeTxnInline(txn: I.Txn, other: I.Txn): boolean {
-  for (const [k, op] of other) {
-    const orig = txn.get(k)
-    if (orig == null) txn.set(k, op)
-    else {
-      txn.set(k, fieldType.compose(orig, op))
-    }
-  }
-  return other.size > 0
 }
 
 function catchupFnForStore(store: I.SCSource): I.CatchupFn {
@@ -74,10 +17,7 @@ function catchupFnForStore(store: I.SCSource): I.CatchupFn {
       if (err) return callback(err)
       const {queryRun, results, versions} = <I.FetchResults>r
 
-      const txn = new Map<I.Key, I.Op>()
-      for (const [k, snapshot] of results) {
-        txn.set(k, (snapshot === null) ? {type: 'rm'} : {type: 'set', data: snapshot})
-      }
+      const txn = queryops[qtype].r.asOp(results)
       callback(null, {txn, queryRun, versions})
     })
   }
@@ -91,34 +31,35 @@ export default class SubGroup {
     this.catchup = catchupFnForStore(store)
   }
 
-  onOp(source: I.Source, version: I.Version, txn: I.Txn) {
-    for (const sub of this.allSubs) sub._onOp(source, version, txn)
+  onOp(source: I.Source, version: I.Version, type: I.ResultType, txn: I.Txn) {
+    for (const sub of this.allSubs) sub._onOp(source, version, type, txn)
   }
 
   create(qtype: I.QueryType, query: any, opts: any, listener: I.Listener): I.Subscription {
     const self = this
 
-    const qops = queryTools[qtype]
+    const qops = queryops[qtype]
     assert(qops)
 
     // The state of the subscription is
     // - the set of keys which the client knows about and
     // - the set of keys it *wants* to know about.
-    let activeQuery = qops.create()
+    let activeQuery = qops.q.create()
     // We'll store the range for which the active query result set is valid.
     // TODO: This is a lot of bookkeeping for individually keyed documents.
     const activeVersions: I.FullVersionRange = {}
 
-    let pendingQuery = qops.create(query)
+    let pendingQuery = qops.q.create(query)
     type BufferItem = {
       source: I.Source, version: I.Version, txn: I.Txn
     }
     let opsBuffer: BufferItem[] | null = null
 
     // This is the subset of pendingQuery that we already know about.
+    // Its a query because thats how we express a subset of documents.
     let knownDocs = opts.knownDocs
-      ? qops.intersectDocs(opts.knownDocs, pendingQuery)
-      : qops.create()
+      ? qops.q.intersectDocs(opts.knownDocs, pendingQuery)
+      : qops.q.create()
 
     let knownAtV: I.FullVersion = opts.knownAtVersions || {}
 
@@ -126,8 +67,10 @@ export default class SubGroup {
 
     const sub: Sub = {
       // cancelled: false,
-      _onOp(source, version, txn) {
-        console.log('2')
+      _onOp(source, version, type, intxn) {
+        if (type !== 'resultmap') throw Error(`Type ${type} not implemented in subgroup`)
+        const txn = qops.r.name === type ? intxn : qops.r.from(type, intxn)
+
         if (opsBuffer) {
           const pendingTxn = qops.filterTxn(txn, pendingQuery)
           if (pendingTxn) opsBuffer.push({source, version, txn: pendingTxn})
@@ -148,14 +91,15 @@ export default class SubGroup {
       },
 
       cursorNext(opts, callback) {
-        if (qops.isEmpty(pendingQuery)) return callback()
+        console.log('pqe', pendingQuery, qops.q.isEmpty(pendingQuery))
+        if (qops.q.isEmpty(pendingQuery)) return callback()
 
         if (opsBuffer != null) return callback(Error('Already fetching'))
 
         opsBuffer = []
 
         let query, fromV
-        if (qops.isEmpty(knownDocs)) {
+        if (qops.q.isEmpty(knownDocs)) {
           query = pendingQuery
           fromV = null // We have no knowledge.
         } else {
@@ -163,7 +107,7 @@ export default class SubGroup {
           fromV = knownAtV
         }
 
-        console.log('qq', query, pendingQuery, knownDocs, qops.isNoop(knownDocs))
+        console.log('qq', query, pendingQuery, knownDocs, qops.q.isNoop(knownDocs))
         self.catchup(qtype, query, {
           knownAtVersions: fromV,
           limitDocs: opts.limitDocs,
@@ -186,14 +130,14 @@ export default class SubGroup {
             const resultV = resultVersions[source]
             if (resultV == null || resultV.to >= version) return
 
-            mergeTxnInline(txn, opTxn)
+            qops.r.composeMut!(txn, opTxn)
             resultVersions[source] = {from:version, to:version}
           })
           opsBuffer = null
 
-          pendingQuery = qops.apply(activeQuery, qops.asRemoveOp(queryRun))
-          if (opts.knownDocs) knownDocs = qops.intersectDocs(knownDocs, pendingQuery)
-          activeQuery = qops.apply(activeQuery, qops.asAddOp(queryRun))
+          pendingQuery = qops.q.subtract(activeQuery, queryRun)
+          if (opts.knownDocs) knownDocs = qops.q.intersectDocs(knownDocs, pendingQuery)
+          activeQuery = qops.q.add(activeQuery, queryRun)
 
           // resultVersions should just contain the versions that have changed,
           // so I think this is correct O_o
@@ -211,7 +155,7 @@ export default class SubGroup {
       },
 
       isComplete() {
-        return qops.isEmpty(pendingQuery)
+        return qops.q.isEmpty(pendingQuery)
       },
 
       cancel() {
