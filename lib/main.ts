@@ -1,6 +1,6 @@
 import singleStore from './stores/singlemem'
 import kvStore from './stores/kvmem'
-
+import augment from './augment'
 
 // store.fetch('all', null, {}, (err, results) => {
 //   console.log('fetch results', results)
@@ -8,7 +8,7 @@ import kvStore from './stores/kvmem'
 // const sub = store.subscribe('allkv', new Set(['content']), {}, (type, txn, v) => {
 
 const testSingle = () => {
-  const store = singleStore()
+  const store = augment(singleStore())
   const sub = store.subscribe('single', true, {}, (type, txn, v) => {
   // const sub = store.subscribe('content', true, {}, (type, txn, v) => {
     console.log('listener', type, v, txn)
@@ -28,7 +28,7 @@ const testSingle = () => {
 }
 
 const testMap = () => {
-  const store = kvStore()
+  const store = augment(kvStore())
   const sub = store.subscribe('allkv', true, {}, (type, txn, v) => {
   // const sub = store.subscribe('content', true, {}, (type, txn, v) => {
     console.log('listener', type, v, txn)
@@ -48,4 +48,16 @@ const testMap = () => {
   })
 }
 
-testMap()
+const testMap2 = () => {
+  const store = augment(kvStore())
+  const txn = new Map([['x', {type:'set', data: {x: 10}}]])
+  store.mutate('resultmap', txn, {}, {}, (err, v) => {
+    if (err) throw err
+    store.getOps!('allkv', true, {[store.source!]: {from:0, to:100}}, {}, (err, results) => {
+      console.log(results)
+    })
+  })
+}
+
+// testMap()
+testSingle()

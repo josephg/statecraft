@@ -1,28 +1,26 @@
 // This is a simple single value in-memory store.
 import * as I from '../types/interfaces'
-import SubGroup from '../subgroup'
 import {genSource} from '../util'
 import * as err from '../err'
 import resultMap from '../types/resultmap'
-// import fieldType from '../types/fieldops'
 
 
 const capabilities = {
   queryTypes: new Set<I.QueryType>(['allkv', 'kv']),
   mutationTypes: new Set<I.ResultType>(['resultmap']),
-  ops: <I.OpsSupport>'none',
+  // ops: <I.OpsSupport>'none',
 }
 
 const singleStore = (data: Map<I.Key, I.Val> = new Map(),
     source: I.Source = genSource(),
     initialVersion: I.Version = 0
-) => {
+): I.SimpleStore => {
   const lastModVersion = new Map<I.Key, I.Version>()
   let version: number = initialVersion
-  let subscriptions: SubGroup | null = null
 
-  const store: I.Store = {
+  const store: I.SimpleStore = {
     capabilities,
+    source,
     fetch(qtype, query, opts, callback) {
       if (!capabilities.queryTypes.has(qtype)) return callback(new err.UnsupportedTypeError())
 
@@ -49,10 +47,6 @@ const singleStore = (data: Map<I.Key, I.Val> = new Map(),
       })
     },
 
-    subscribe(qtype, query, opts, listener) {
-      return subscriptions!.create(qtype, query, opts, listener)
-    },
-
     mutate(type, txn: I.KVTxn, versions, opts, callback) {
       if (type !== 'resultmap') return callback(new err.UnsupportedTypeError())
 
@@ -69,17 +63,17 @@ const singleStore = (data: Map<I.Key, I.Val> = new Map(),
       }
 
       // 2. Actually apply.
+      const fromv = version
       const opv = ++version
 
       for (const [k, op] of txn) lastModVersion.set(k, opv)
       resultMap.applyMut!(data, txn)
-      
-      subscriptions!.onOp(source, opv, type, txn)
+
+      if (store.onTxn != null) store.onTxn(source, fromv, opv, type, txn)
+
       callback(null, {[source]: opv})
     }
   }
-  subscriptions = new SubGroup(store)
-
   return store
 }
 

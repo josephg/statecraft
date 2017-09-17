@@ -2,15 +2,17 @@ import * as I from './types/interfaces'
 import queryops from './types/queryops'
 import fieldOps from './types/fieldops'
 import {QueryOps} from './types/type'
+import {supportedTypes as localTypes} from './types/registry'
 
 import assert = require('assert')
+
 
 interface Sub extends I.Subscription {
   _onOp(source: I.Source, version: I.Version, type: I.ResultType, txn: I.Txn): void
   [prop: string]: any
 }
 
-function catchupFnForStore(store: I.Store): I.CatchupFn {
+function catchupFnForStore(store: I.SimpleStore, getOps: I.GetOpsFn): I.CatchupFn {
   if (store.catchup) return store.catchup
   return (qtype, query, opts, callback) => {
     store.fetch(qtype, query, opts, (err, r) => {
@@ -27,19 +29,24 @@ export default class SubGroup {
   private readonly allSubs = new Set<Sub>()
   private readonly catchup: I.CatchupFn
 
-  constructor(store: I.Store) {
-    this.catchup = catchupFnForStore(store)
+  constructor(store: I.SimpleStore, getOps: I.GetOpsFn = store.getOps!) {
+    this.catchup = catchupFnForStore(store, getOps)
   }
 
-  onOp(source: I.Source, version: I.Version, type: I.ResultType, txn: I.Txn) {
-    for (const sub of this.allSubs) sub._onOp(source, version, type, txn)
+  onOp(source: I.Source, fromV: I.Version, toV: I.Version, type: I.ResultType, txn: I.Txn) {
+    for (const sub of this.allSubs) sub._onOp(source, toV, type, txn)
   }
 
-  create(qtype: I.QueryType, query: any, opts: any, listener: I.Listener): I.Subscription {
+  create(qtype: I.QueryType, query: any, opts: I.SubscribeOpts, listener: I.SubListener): I.Subscription {
     const self = this
 
     const qops = queryops[qtype]
     assert(qops)
+
+    // TODO: Unused for now.
+    const supportedTypes = opts.supportedTypes || localTypes
+    const noFetch = opts.noFetch || false
+    const raw = noFetch || opts.raw || false
 
     // The state of the subscription is
     // - the set of keys which the client knows about and

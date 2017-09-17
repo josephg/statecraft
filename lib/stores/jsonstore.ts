@@ -1,6 +1,5 @@
 import * as I from '../types/interfaces'
 import fieldType from '../types/fieldops'
-import SubGroup from '../subgroup'
 import * as err from '../err'
 
 import * as fs from 'fs'
@@ -13,24 +12,24 @@ const capabilities = {
   ops: <I.OpsSupport>'none',
 }
 
-const fileStore = (filename: string, sourceIn?: string): I.Store => {
+const fileStore = (filename: string, sourceIn?: string): I.SimpleStore => {
   const source: I.Source = sourceIn || filename
-  
+
   // Try and load the file.
   let strcontent: string
   let data: object
   let state: 'ok' | 'error'
   let version: I.Version
 
-  let subscriptions: SubGroup | null = null
-
   const mutateCallbacks: I.Callback<I.FullVersion>[] = []
 
-  const onchange = () => {
-    console.log('file changed to', data)
+  function onchange(v: I.Version) {
+    console.log('file changed to', data, v)
+    const oldVersion = version
+    version = v
     mutateCallbacks.forEach(cb => cb(null, {[source]: version}))
     mutateCallbacks.length = 0
-    subscriptions!.onOp(source, version, 'single', {type: 'set', data})
+    store.onTxn && store.onTxn(source, oldVersion, version, 'single', {type: 'set', data})
   }
 
   const tryReadFile = (create: boolean) => {
@@ -42,7 +41,7 @@ const fileStore = (filename: string, sourceIn?: string): I.Store => {
     // - File does not exist (esp on first call)
     if (fs.existsSync(filename)) {
       const newcontent = fs.readFileSync(filename, 'utf8')
-      const newversion = fs.statSync(filename).mtime.getTime()
+      let newversion = fs.statSync(filename).mtime.getTime()
       try {
         // console.log('xxxx newcontent', newcontent)
         if (newcontent === strcontent && newversion === version) return false
@@ -55,11 +54,9 @@ const fileStore = (filename: string, sourceIn?: string): I.Store => {
         // mtimeMs is also available on node 8.
         if (newversion <= version) {
           console.warn('WARNING: mtime not increased. Forcing version bump.')
-          version = version + 1
-        } else {
-          version = newversion
+          newversion = version + 1
         }
-        onchange()
+        onchange(newversion)
         // TODO: Consider re-checking file content at this point, to avoid a
         // race condition.
       } catch (e) {
@@ -71,8 +68,7 @@ const fileStore = (filename: string, sourceIn?: string): I.Store => {
       data = {}
       fs.writeFileSync(filename, JSON.stringify(data))
       state = 'ok'
-      version = Date.now()
-      onchange()
+      onchange(Date.now())
     } else {
       // The file was moved away or deleted.
       state = 'error'
@@ -87,7 +83,7 @@ const fileStore = (filename: string, sourceIn?: string): I.Store => {
 
   // watcher.on('error', err => console.error('Watcher error', err))
 
-  const store: I.Store = {
+  const store: I.SimpleStore = {
     capabilities,
     fetch(qtype, query, opts, callback) {
       if (qtype !== 'single') return callback(new err.UnsupportedTypeError(`Unsupported query type ${qtype} to json store`))
@@ -97,10 +93,6 @@ const fileStore = (filename: string, sourceIn?: string): I.Store => {
         queryRun: query,
         versions: {[source]: {from:version, to:Date.now()}},
       })
-    },
-
-    subscribe(qtype, query, opts, listener) {
-      return subscriptions!.create(qtype, query, opts, listener)
     },
 
     mutate(type, op: I.Op, versions, opts, callback) {
@@ -129,7 +121,6 @@ const fileStore = (filename: string, sourceIn?: string): I.Store => {
       watcher.close()
     }
   }
-  subscriptions = new SubGroup(store)
   tryReadFile(true)
 
   return store

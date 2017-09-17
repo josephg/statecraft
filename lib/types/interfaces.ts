@@ -28,7 +28,6 @@ export type FetchResults = {
 export type Callback<T> = (err?: Error | null, results?: T) => void
 
 export type FetchCallback = Callback<FetchResults>
-export type FetchFn = (qtype: QueryType, query: any, opts: object, callback: FetchCallback) => void
 
 
 export type CatchupResults = {
@@ -36,16 +35,30 @@ export type CatchupResults = {
   queryRun: any,
   versions: FullVersionRange, // Resultant version post catchup.
 }
-export type CatchupFn = (qtype: QueryType, query: any, opts: object, callback: Callback<CatchupResults>) => void
-
-export interface RangeOp {}
 
 export interface SubscribeOpts {
-  supportedTypes?: any,
-  noFetch?: boolean,
-  alwaysNotify?: boolean,
+  // Supported client-side operation types. Also forwarded to getOps.
+  readonly supportedTypes?: Set<string>,
+  // Ignore supportedTypes, just send full received ops. (default false)
+  readonly raw?: boolean,
+  // Don't fetch anything - just send ops. Implies raw. (default false)
+  readonly noFetch?: boolean,
+  // Notify re version bump regardless of query? (default false)
+  readonly alwaysNotify?: boolean,
 
-  knownAtVersions?: FullVersion,
+  // bestEffort: if we can't get all the requested operations, don't abort
+  // but return what we can. Passed through to getOps.
+  readonly bestEffort?: boolean,
+
+  readonly knownDocs?: any, // Query object of the appropriate type.
+  readonly knownAtVersions?: FullVersion,
+
+  // NYI:
+  // - What to do if there's no ops available from requested version (NYI)
+  // - Follow symlinks? (NYI)
+  // - When we poll, how much data should we fetch? (opts.limitDocs, opts.limitBytes)
+  // - Stop the query after a certain number of operations (opts.limitOps) (NYI)
+  // - Should we send updates for the cursor object itself? (opts.trackCursor)
 }
 
 export interface Subscription {
@@ -59,8 +72,8 @@ export interface Subscription {
 }
 
 export interface SingleOp {
-  type: string,
-  data?: any
+  readonly type: string,
+  readonly data?: any
   // source: Source,
   // v: Version,
   // meta: any,
@@ -68,8 +81,33 @@ export interface SingleOp {
 
 export type Op = SingleOp | SingleOp[]
 
+export interface GetOpsOptions {
+  // Supported client-side operation types. Also forwarded to getOps.
+  // readonly supportedTypes?: Set<string>,
+  // Ignore supportedTypes, just send full received ops. (default false)
+  // readonly raw?: boolean,
+
+  // bestEffort: if we can't get all the requested operations, don't abort
+  //   but return what we can.
+  readonly bestEffort?: boolean,
+
+
+  // Options NYI:
+  // - limitBytes: Limit on the amount of data to read & return. Advisory
+  //   only. Will always try to make progress (that is, return at least one
+  //   operation). There is no limitDocs equivalent because you can just
+  //   shrink the requested range if thats what you're after. NYI
+  // - limitOps: Limit the number of operations returned. NYI
+
+  // Limit the number of ops returned.
+  readonly limitOps?: number,
+}
+
 export type GetOpsResult = {
   ops: {source: Source, v: Version, txn: Txn}[],
+
+  // This should return the range (from, to] of the returned set for each source.
+  // ... which will be the same as the input if all ops are available, and there are no limits.
   versions: FullVersionRange,
 }
 
@@ -77,25 +115,57 @@ export type SingleTxn = Op
 export type KVTxn = Map<Key, Op>
 export type Txn = SingleTxn | KVTxn
 
-export type Listener = (type: 'txn' | 'modify' | 'cursor', txn: Txn | null, v: FullVersionRange, s: Subscription) => void
-
 export interface MutateOptions {
   conflictKeys?: Key[]
 }
 
 export type OpsSupport = 'none' | 'partial' | 'all'
 export interface Capabilities {
-  queryTypes: Set<QueryType>,
-  mutationTypes: Set<ResultType>,
-  ops:OpsSupport,
+  readonly queryTypes: Set<QueryType>,
+  readonly mutationTypes: Set<ResultType>,
+  // readonly ops:OpsSupport,
+}
+
+export type FetchFn = (qtype: QueryType, query: any, opts: object, callback: FetchCallback) => void
+export type GetOpsFn = (qtype: QueryType, query: any, versions: {[s: string]: VersionRange}, opts: GetOpsOptions, callback: Callback<GetOpsResult>) => void
+export type CatchupFn = (qtype: QueryType, query: any, opts: object, callback: Callback<CatchupResults>) => void
+export type SubListener = (type: 'txn' | 'modify' | 'cursor', txn: Txn | null, v: FullVersionRange, s: Subscription) => void
+export type SubscribeFn = (qtype: QueryType, query: any, opts: SubscribeOpts, listener: SubListener) => Subscription
+export type MutateFn = (type: ResultType, txn: Txn, versions: FullVersion, opts: MutateOptions, callback: Callback<FullVersion>) => void
+
+export type TxnListener = (source: Source, fromV: Version, toV: Version, type: ResultType, txn: Txn) => void
+
+export interface SimpleStore {
+  // If there's one, and its available.
+  readonly source?: Source,
+
+  readonly capabilities: Capabilities,
+  readonly fetch: FetchFn,
+  readonly mutate: MutateFn,
+
+  // If needed.
+  close?(): void
+
+  // These are added automatically when store is augmented, but they can be supplied directly.
+  readonly catchup?: CatchupFn,
+  readonly getOps?: GetOpsFn,
+  readonly subscribe?: SubscribeFn,
+
+  // This is set by the store's wrapper.
+  onTxn?: TxnListener,
 }
 
 export interface Store {
-  capabilities: Capabilities,
+  readonly capabilities: Capabilities,
+
+  // Only if there's one, and its available.
+  readonly source?: Source,
 
   // fetch(qtype: QueryType, query: any, opts: object, callback: FetchCallback): void
   fetch: FetchFn,
-  catchup?: CatchupFn, // Can be generated from fetch.
+
+  // catchup?: CatchupFn, // Can be generated from fetch. I think I can keep this private.
+
   // fetch(qtype: 'all', query: null, opts: object, callback: FetchCallback): void
   // fetch(qtype: 'kv', query: Key[] | Set<Key>, opts: object, callback: FetchCallback): void
   // fetch(qtype: 'sortedkv', query: RangeOp, opts: object, callback: FetchCallback): void
@@ -105,37 +175,15 @@ export interface Store {
   // moving from document version from to document version to.
   //
   // to:-1 will get all available operations.
-  //
-  // Options:
-  // - bestEffort: if we can't get all the requested operations, don't abort
-  //   but return what we can.
-  // - limitBytes: Limit on the amount of data to read & return. Advisory
-  //   only. Will always try to make progress (that is, return at least one
-  //   operation). There is no limitDocs equivalent because you can just
-  //   shrink the requested range if thats what you're after. NYI
-  // - limitOps: Limit the number of operations returned. NYI
-  getOps?(qtype: QueryType, query: any, versions: {[s: string]: [Version, Version]}, callback: Callback<GetOpsResult>): void
+  getOps: GetOpsFn
 
   // TODO: Should specifying a version be done through the options like it is for fetch?
   //
-  // Options are:
-  // - Supported operation types (opts.supportedTypes)
-  // - No fetch (opts.noFetch) (implies opts.raw) (NYI)
-  // - Notify re version bump regardless of query? (opts.alwaysNotify,
-  //   default false) TODO: consider removing this?
-  // - What to do if there's no ops available from requested version (NYI)
-  // - Follow symlinks? (NYI)
-  // - When we poll, how much data should we fetch? (opts.limitDocs, opts.limitBytes)
-  // - Stop the query after a certain number of operations (opts.limitOps) (NYI)
-  // - Should we send updates for the cursor object itself? (opts.trackCursor)
-  //
-  // For reconnecting, you can specify:
-  // - Which documents the client has a copy of (opts.knownDocs)
-  // - Which versions the specified documents are known at (opts.knownAtVersions)
+  // For reconnecting, you can specify knownDocs, knownAtVersions
   // - ... And something to specify the catchup mode (fast vs full)
   // - opts.getFullHistortForDocs - or something like it.
-  // These options should appear together.
-  subscribe(qtype: QueryType, query: any, opts: SubscribeOpts, listener: Listener): Subscription
+  // These options should usually appear together.
+  subscribe: SubscribeFn
 
   // Modify the db. txn is a map from key => {type, data}. versions is just source => v.
   // TODO: Consider adding a txnType argument here as well.
@@ -151,7 +199,7 @@ export interface Store {
   //
   // So for example, given db at version 10, mutate(v:10) => transaction at
   // v:11, and afterwards db is at v:11.
-  mutate(type: ResultType, txn: Txn, versions: FullVersion, opts: MutateOptions, callback: Callback<FullVersion>): void
+  mutate: MutateFn,
 
   close?(): void
 }
