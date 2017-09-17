@@ -4,6 +4,7 @@ export interface Type<Snap, Op> {
   name: string,
   create(data?: any): Snap
   apply(snapshot: Snap, op: Op): Snap
+  applyMut?(snapshot: Snap, op: Op): void
   checkOp?(op: Op): void
   
   // For core OT types:

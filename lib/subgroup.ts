@@ -90,7 +90,7 @@ export default class SubGroup {
       },
 
       cursorNext(opts, callback) {
-        console.log('pqe', pendingQuery, qops.q.isEmpty(pendingQuery))
+        // console.log('pqe', pendingQuery, qops.q.isEmpty(pendingQuery))
         if (qops.q.isEmpty(pendingQuery)) return callback()
 
         if (opsBuffer != null) return callback(Error('Already fetching'))
@@ -106,7 +106,7 @@ export default class SubGroup {
           fromV = knownAtV
         }
 
-        console.log('qq', query, pendingQuery, knownDocs, qops.q.isNoop(knownDocs))
+        // console.log('qq', query, pendingQuery, knownDocs, qops.q.isNoop(knownDocs))
         self.catchup(qtype, query, {
           knownAtVersions: fromV,
           limitDocs: opts.limitDocs,

@@ -9,7 +9,7 @@ const type: ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
     return data instanceof Map ? data : new Map(data)
   },
 
-  apply(snap, op) {
+  applyMut(snap, op) {
     for (var [k, docop] of op) {
       const oldval = snap.get(k)
       const newval = fieldOps.apply(oldval, docop)
@@ -18,12 +18,17 @@ const type: ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
       // between 'no-change' and 'removed'. Its a bit of a hack though.
       snap.set(k, newval == null ? null : newval)
     }
-    return snap
+  },
+
+  apply(snap, op) {
+    const newdata = new Map<I.Key, I.Val>(snap)
+    type.applyMut!(newdata, op)
+    return newdata
   },
 
   asOp(snap) {
     const op = new Map<I.Key, I.Op>()
-    for (var [k, val] of snap) {
+    for (const [k, val] of snap) {
       op.set(k, (val == null) ? {type:'rm'} : {type:'set', data:val})
     }
     return op
@@ -45,11 +50,20 @@ const type: ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
     return result
   },
 
+  filter<K, V>(snap: Map<K, V>, query: Set<K>): Map<K, V> {
+    const result = new Map<K, V>()
+    for (const k of query) {
+      const v = snap.get(k)
+      if (v !== undefined) result.set(k, v)
+    }
+    return result
+  },
+
   from(type, data) {
     switch(type) {
       case 'single': return new Map<I.Key, I.Val>([['content', data]])
       case 'resultmap': return data
     }
-  }
+  },
 }
 export default type
