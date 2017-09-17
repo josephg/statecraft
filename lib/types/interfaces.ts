@@ -2,8 +2,9 @@
 // kv: Query with a set of keys, return corresponding values.
 // sortedkv: Query set of ranges. return kv map with contained values
 // all: Query ignored, return kv map with values.
-export type QueryType = 'content' | 'allkv' | 'kv' | 'sortedkv'
-export type ResultType = 'resultmap' | 'doc'
+export type QueryType = 'single' | 'allkv' | 'kv' | 'kvranges'
+// TODO: consider renaming resultmap to kv.
+export type ResultType = 'single' | 'resultmap'
 
 export type Version = number
 export type Source = string
@@ -82,8 +83,15 @@ export interface MutateOptions {
   conflictKeys?: Key[]
 }
 
-export interface SCSource {
-  capabilities: any, // NYI
+export type OpsSupport = 'none' | 'partial' | 'all'
+export interface Capabilities {
+  queryTypes: Set<QueryType>,
+  mutationTypes: Set<ResultType>,
+  ops:OpsSupport,
+}
+
+export interface Store {
+  capabilities: Capabilities,
 
   // fetch(qtype: QueryType, query: any, opts: object, callback: FetchCallback): void
   fetch: FetchFn,
@@ -106,7 +114,7 @@ export interface SCSource {
   //   operation). There is no limitDocs equivalent because you can just
   //   shrink the requested range if thats what you're after. NYI
   // - limitOps: Limit the number of operations returned. NYI
-  getOps(qtype: QueryType, query: any, versions: {[s: string]: [Version, Version]}, callback: (err?: Error, result?: GetOpsResult) => void): void
+  getOps?(qtype: QueryType, query: any, versions: {[s: string]: [Version, Version]}, callback: Callback<GetOpsResult>): void
 
   // TODO: Should specifying a version be done through the options like it is for fetch?
   //
@@ -143,7 +151,7 @@ export interface SCSource {
   //
   // So for example, given db at version 10, mutate(v:10) => transaction at
   // v:11, and afterwards db is at v:11.
-  mutate(type: QueryType, txn: Txn, versions: FullVersion, opts: MutateOptions, callback: (err?: Error, result?: FullVersion) => void): void
+  mutate(type: ResultType, txn: Txn, versions: FullVersion, opts: MutateOptions, callback: Callback<FullVersion>): void
 
   close?(): void
 }

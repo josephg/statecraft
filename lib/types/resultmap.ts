@@ -47,7 +47,7 @@ const type: ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
 
   from(type, data) {
     switch(type) {
-      case 'doc': return new Map<I.Key, I.Val>([['content', data]])
+      case 'single': return new Map<I.Key, I.Val>([['content', data]])
       case 'resultmap': return data
     }
   }

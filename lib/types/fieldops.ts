@@ -80,7 +80,7 @@ const type: ResultOps<any, Op> = {
 
   from(type, data) {
     switch(type) {
-      case 'doc': return data
+      case 'single': return data
       case 'resultmap': return data.get('content')
     }
   },

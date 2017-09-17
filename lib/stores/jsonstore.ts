@@ -1,27 +1,36 @@
+import * as I from '../types/interfaces'
+import fieldType from '../types/fieldops'
+import SubGroup from '../subgroup'
+import * as err from '../err'
+
 import * as fs from 'fs'
 import chokidar = require('chokidar')
-import * as I from '../common/interfaces'
-import fieldType from '../common/fieldops'
-import SubGroup from './subgroup'
 
-const fileStore = (filename: string, sourceIn?: string): I.SCSource => {
-  const source: string = sourceIn || filename
+
+const capabilities = {
+  queryTypes: new Set<I.QueryType>(['single']),
+  mutationTypes: new Set<I.ResultType>(['single']),
+  ops: <I.OpsSupport>'none',
+}
+
+const fileStore = (filename: string, sourceIn?: string): I.Store => {
+  const source: I.Source = sourceIn || filename
   
   // Try and load the file.
   let strcontent: string
   let data: object
   let state: 'ok' | 'error'
-  let version: number
+  let version: I.Version
 
   let subscriptions: SubGroup | null = null
 
-  const mutateCallbacks: ((err?: Error, result?: I.FullVersion) => void)[] = []
+  const mutateCallbacks: I.Callback<I.FullVersion>[] = []
 
   const onchange = () => {
     console.log('file changed to', data)
-    mutateCallbacks.forEach(cb => cb(undefined, {[source]: version}))
+    mutateCallbacks.forEach(cb => cb(null, {[source]: version}))
     mutateCallbacks.length = 0
-    subscriptions!.onOp(source, version, 'resultmap', new Map([['content', {type: 'set', data}]]))
+    subscriptions!.onOp(source, version, 'single', {type: 'set', data})
   }
 
   const tryReadFile = (create: boolean) => {
@@ -78,44 +87,30 @@ const fileStore = (filename: string, sourceIn?: string): I.SCSource => {
 
   // watcher.on('error', err => console.error('Watcher error', err))
 
-  let api: I.SCSource = {
-    capabilities: {},
+  const store: I.Store = {
+    capabilities,
     fetch(qtype, query, opts, callback) {
-      // TODO: support kv as well, and return the data through .content.
-      let results: any
-      switch (qtype) {
-        case "content": results = data; break
-        case "allkv": results = new Map([['content', data]]); break
-        default: return callback(Error(`Invalid query type ${qtype} to json store`))
-      }
+      if (qtype !== 'single') return callback(new err.UnsupportedTypeError(`Unsupported query type ${qtype} to json store`))
 
       callback(undefined, {
-        results,
+        results: data,
         queryRun: query,
         versions: {[source]: {from:version, to:Date.now()}},
       })
     },
 
-    getOps(qtype, query, versions, callback) {
-      // const vs = versions[source]
-      // if (vs == null || vs[0] === vs[1]) return callback(null, {ops: [], versions: {}})
-
-      // There aren't actually any operations available.
-      return callback(Error('Requested range too old'))
-    },
-
-    subscribe(qtype, query, opts, listener): I.Subscription {
+    subscribe(qtype, query, opts, listener) {
       return subscriptions!.create(qtype, query, opts, listener)
     },
 
-    mutate(type, txn, versions, opts, callback) {
-      // We'll ignore anything the transaction tries to edit outside of .content.
-      const expectv = versions[source]
-      if (expectv != null && expectv < version) return callback(Error('Requested version too old'))
+    mutate(type, op: I.Op, versions, opts, callback) {
+      if (type !== 'single') return callback(new err.UnsupportedTypeError())
 
-      const op = type === 'content' ? <I.Op>txn : (<I.KVTxn>txn).get('content')
+      const expectv = versions[source]
+      if (expectv != null && expectv < version) return callback(new err.VersionTooOldError())
+
       if (op) data = fieldType.apply(data, op)
-      console.log('fs.writefilesync')
+      // console.log('fs.writefilesync')
       mutateCallbacks.push(callback)
       fs.writeFile(filename, JSON.stringify(data), (err) => {
         if (err) {
@@ -134,31 +129,10 @@ const fileStore = (filename: string, sourceIn?: string): I.SCSource => {
       watcher.close()
     }
   }
-  subscriptions = new SubGroup({}, api)
+  subscriptions = new SubGroup(store)
   tryReadFile(true)
 
-  return api
+  return store
 }
 
 export default fileStore
-
-if (require.main === module) {
-  const store = fileStore("testconfig.json")
-  // store.fetch('all', null, {}, (err, results) => {
-  //   console.log('fetch results', results)
-  //   store.mutate(new Map([['content', {type:'set', data: {x: 10}}]]), {}, {}, (err, v) => {
-  //     console.log('mutate callback')
-  //     console.log(err, v)
-  //   })
-  // })
-  // const sub = store.subscribe('allkv', new Set(['content']), {}, (type, txn, v) => {
-  const sub = store.subscribe('allkv', true, {}, (type, txn, v) => {
-  // const sub = store.subscribe('content', true, {}, (type, txn, v) => {
-    console.log('listener', type, v, txn)
-  })
-  sub.cursorNext({}, (err, results) => {
-    console.log('cursor next', err, results)
-  })
-}
-
-

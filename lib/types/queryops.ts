@@ -21,7 +21,7 @@ const registry: {[name: string]: {
   r: ResultOps<any, I.Txn>,
   filterTxn(txn: I.Txn, query: any): any | null,
 }} = {
-  content: {
+  single: {
     q: contentQueryOps,
     r: singleDocResult,
     filterTxn(txn, query) { return query ? txn : null },

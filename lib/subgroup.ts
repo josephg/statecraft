@@ -1,21 +1,21 @@
-import * as I from '../common/interfaces'
+import * as I from './types/interfaces'
+import queryops from './types/queryops'
+import fieldOps from './types/fieldops'
+import {QueryOps} from './types/type'
 
-import queryops from '../common/queryops'
 import assert = require('assert')
-import fieldOps from '../common/fieldops'
-import {QueryOps} from '../common/type'
 
 interface Sub extends I.Subscription {
   _onOp(source: I.Source, version: I.Version, type: I.ResultType, txn: I.Txn): void
   [prop: string]: any
 }
 
-function catchupFnForStore(store: I.SCSource): I.CatchupFn {
+function catchupFnForStore(store: I.Store): I.CatchupFn {
   if (store.catchup) return store.catchup
   return (qtype, query, opts, callback) => {
     store.fetch(qtype, query, opts, (err, r) => {
       if (err) return callback(err)
-      const {queryRun, results, versions} = <I.FetchResults>r
+      const {queryRun, results, versions} = r!
 
       const txn = queryops[qtype].r.asOp(results)
       callback(null, {txn, queryRun, versions})
@@ -27,7 +27,7 @@ export default class SubGroup {
   private readonly allSubs = new Set<Sub>()
   private readonly catchup: I.CatchupFn
 
-  constructor(capabilities: any, store: I.SCSource) {
+  constructor(store: I.Store) {
     this.catchup = catchupFnForStore(store)
   }
 
@@ -68,7 +68,6 @@ export default class SubGroup {
     const sub: Sub = {
       // cancelled: false,
       _onOp(source, version, type, intxn) {
-        if (type !== 'resultmap') throw Error(`Type ${type} not implemented in subgroup`)
         const txn = qops.r.name === type ? intxn : qops.r.from(type, intxn)
 
         if (opsBuffer) {
