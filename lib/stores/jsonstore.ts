@@ -85,6 +85,7 @@ const fileStore = (filename: string, sourceIn?: string): I.SimpleStore => {
 
   const store: I.SimpleStore = {
     capabilities,
+    sources: [source],
     fetch(qtype, query, opts, callback) {
       if (qtype !== 'single') return callback(new err.UnsupportedTypeError(`Unsupported query type ${qtype} to json store`))
 

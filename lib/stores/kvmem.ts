@@ -20,7 +20,7 @@ const singleStore = (data: Map<I.Key, I.Val> = new Map(),
 
   const store: I.SimpleStore = {
     capabilities,
-    source,
+    sources: [source],
     fetch(qtype, query, opts, callback) {
       if (!capabilities.queryTypes.has(qtype)) return callback(new err.UnsupportedTypeError())
 

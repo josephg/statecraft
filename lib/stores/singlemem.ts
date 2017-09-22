@@ -16,7 +16,7 @@ const singleStore = (initialValue: any = null, source: I.Source = genSource(), i
 
   const store: I.SimpleStore = {
     capabilities,
-    source,
+    sources: [source],
     fetch(qtype, query, opts, callback) {
       if (qtype !== 'single') return callback(new err.UnsupportedTypeError())
 

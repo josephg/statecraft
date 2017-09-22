@@ -13,7 +13,7 @@ const testSingle = () => {
   // const sub = store.subscribe('content', true, {}, (type, txn, v) => {
     console.log('listener', type, v, txn)
   })
-  sub.cursorNext({}, (err, results) => {
+  sub.cursorAll({}, (err, results) => {
     console.log('cursor next', err, results)
 
     store.mutate('single', {type:'set', data: {x: 10}}, {}, {}, (err, v) => {
@@ -33,7 +33,7 @@ const testMap = () => {
   // const sub = store.subscribe('content', true, {}, (type, txn, v) => {
     console.log('listener', type, v, txn)
   })
-  sub.cursorNext({}, (err, results) => {
+  sub.cursorAll({}, (err, results) => {
     console.log('cursor next', err, results)
 
     const txn = new Map([['x', {type:'set', data: {x: 10}}]])
@@ -53,7 +53,7 @@ const testMap2 = () => {
   const txn = new Map([['x', {type:'set', data: {x: 10}}]])
   store.mutate('resultmap', txn, {}, {}, (err, v) => {
     if (err) throw err
-    store.getOps!('allkv', true, {[store.source!]: {from:0, to:100}}, {}, (err, results) => {
+    store.getOps!('allkv', true, {[store.sources[0]!]: {from:0, to:100}}, {}, (err, results) => {
       console.log(results)
     })
   })

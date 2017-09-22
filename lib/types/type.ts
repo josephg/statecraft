@@ -6,7 +6,7 @@ export interface Type<Snap, Op> {
   apply(snapshot: Snap, op: Op): Snap
   applyMut?(snapshot: Snap, op: Op): void
   checkOp?(op: Op): void
-  
+
   // For core OT types:
   // Not sure if transform should be optional. TODO.
   transform?(op1: Op, op2: Op, side: 'left' | 'right'): Op,
@@ -28,6 +28,8 @@ export interface QueryOps<Snap, Op> extends Type<Snap, Op> {
   // and the part that doesn't.
   split(op: Op, snapshot: Snap): [Op, Op]
   intersectDocs(a: Snap, b: Snap): Snap
+
+  // This must obey the constraint that isNoop(create()) is true.
   isEmpty(snapshot: Snap): boolean
   isNoop(op: Op): boolean
 

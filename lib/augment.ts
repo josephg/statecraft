@@ -16,7 +16,7 @@ const augment = (innerStore: I.SimpleStore, opts?: any): I.Store => {
   }
   const outerStore: I.Store = {
     capabilities: innerStore.capabilities,
-    source: innerStore.source,
+    sources: innerStore.sources,
     fetch: innerStore.fetch.bind(innerStore),
     // catchup: innerStore.catchup ? innerStore.catchup.bind(innerStore) : undefined,
     mutate: innerStore.mutate.bind(innerStore),

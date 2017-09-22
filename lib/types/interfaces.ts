@@ -18,6 +18,22 @@ export type FullVersion = {[s: string]: Version}
 export type VersionRange = {from: Version, to: Version}
 export type FullVersionRange = {[s: string]: VersionRange}
 
+export interface SingleOp {
+  readonly type: string,
+  readonly data?: any
+  // source: Source,
+  // v: Version,
+  // meta: any,
+}
+
+// Only a list if the op type doesn't support compose. (Both set and rm support compose.)
+export type Op = SingleOp | SingleOp[]
+export type SingleTxn = Op
+export type KVTxn = Map<Key, Op>
+export type Txn = SingleTxn | KVTxn
+export type TxnWithMeta = {versions: FullVersion, txn: Txn}
+
+
 export type FetchResults = {
   // results: Map<Key, Val>,
   results: any, // Dependant on query.
@@ -27,28 +43,40 @@ export type FetchResults = {
 
 export type Callback<T> = (err?: Error | null, results?: T) => void
 
+export type FetchOpts = object
 export type FetchCallback = Callback<FetchResults>
 
 
 export type CatchupResults = {
-  txn: Txn, // Map from key => ops to bring up to date.
+  type: 'txns',
   queryRun: any,
   versions: FullVersionRange, // Resultant version post catchup.
-}
+  txns: TxnWithMeta[],
+} | {
+  type: 'aggregate',
+  queryRun: any,
+  versions: FullVersionRange, // Resultant version post catchup.
+  txn: Txn,
+} | null // Null when no results are returned.
 
 export interface SubscribeOpts {
   // Supported client-side operation types. Also forwarded to getOps.
   readonly supportedTypes?: Set<string>,
   // Ignore supportedTypes, just send full received ops. (default false)
   readonly raw?: boolean,
-  // Don't fetch anything - just send ops. Implies raw. (default false)
-  readonly noFetch?: boolean,
+
+  // Don't aggregate updates. Instead send full operation set.
+  readonly noAggregation?: boolean,
+
+  // bestEffort: if we can't get all the requested operations, don't error
+  // but return what we can. Passed through to getOps.
+  readonly bestEffort?: boolean,
+
   // Notify re version bump regardless of query? (default false)
   readonly alwaysNotify?: boolean,
 
-  // bestEffort: if we can't get all the requested operations, don't abort
-  // but return what we can. Passed through to getOps.
-  readonly bestEffort?: boolean,
+  // The same as known: all from current version.
+  readonly noCatchup?: boolean,
 
   readonly knownDocs?: any, // Query object of the appropriate type.
   readonly knownAtVersions?: FullVersion,
@@ -61,25 +89,30 @@ export interface SubscribeOpts {
   // - Should we send updates for the cursor object itself? (opts.trackCursor)
 }
 
+export interface CatchupOpts {
+  // TODO: Probably more stuff needs to go in here.
+  readonly supportedTypes: Set<string>,
+  readonly raw: boolean,
+  readonly noAggregation?: boolean,
+  readonly bestEffort: boolean,
+  readonly knownAtVersions: FullVersion | null,
+
+  readonly limitDocs?: number,
+  readonly limitBytes?: number,
+}
+
+export type SubCursorCallback = Callback<{
+  activeQuery: any,
+  activeVersions: FullVersionRange,
+}>
 export interface Subscription {
   // modify(qop, newqv)
-  cursorNext(opts: any, callback: Callback<{
-    activeQuery: any,
-    activeVersions: FullVersionRange,
-  }>): void
+  cursorNext(opts: any, callback: SubCursorCallback): void
+  cursorAll(opts: any, callback: SubCursorCallback): void
   isComplete(): boolean
   cancel(): void
 }
 
-export interface SingleOp {
-  readonly type: string,
-  readonly data?: any
-  // source: Source,
-  // v: Version,
-  // meta: any,
-}
-
-export type Op = SingleOp | SingleOp[]
 
 export interface GetOpsOptions {
   // Supported client-side operation types. Also forwarded to getOps.
@@ -104,16 +137,12 @@ export interface GetOpsOptions {
 }
 
 export type GetOpsResult = {
-  ops: {source: Source, v: Version, txn: Txn}[],
+  ops: TxnWithMeta[],
 
   // This should return the range (from, to] of the returned set for each source.
   // ... which will be the same as the input if all ops are available, and there are no limits.
   versions: FullVersionRange,
 }
-
-export type SingleTxn = Op
-export type KVTxn = Map<Key, Op>
-export type Txn = SingleTxn | KVTxn
 
 export interface MutateOptions {
   conflictKeys?: Key[]
@@ -126,10 +155,25 @@ export interface Capabilities {
   // readonly ops:OpsSupport,
 }
 
-export type FetchFn = (qtype: QueryType, query: any, opts: object, callback: FetchCallback) => void
+export type FetchFn = (qtype: QueryType, query: any, opts: FetchOpts, callback: FetchCallback) => void
 export type GetOpsFn = (qtype: QueryType, query: any, versions: {[s: string]: VersionRange}, opts: GetOpsOptions, callback: Callback<GetOpsResult>) => void
-export type CatchupFn = (qtype: QueryType, query: any, opts: object, callback: Callback<CatchupResults>) => void
-export type SubListener = (type: 'txn' | 'modify' | 'cursor', txn: Txn | null, v: FullVersionRange, s: Subscription) => void
+export type CatchupFn = (qtype: QueryType, query: any, opts: CatchupOpts, callback: Callback<CatchupResults>) => void
+// The updates argument here could either work as
+//  {txn, v:fullrange}[]
+// or
+//  {txn, source, v:version}[] like in getOps.
+// Its inconsistent how it is now, but this also makes it much more convenient
+// to aggregate.
+
+export type SubUpdate = {
+  type: 'txns',
+  txns: TxnWithMeta[], // Resulting version can be derived from this.
+} | {
+  type: 'aggregate',
+  txn: Txn,
+  versions: FullVersionRange,
+}
+export type SubListener = (updates: SubUpdate, resultingVersion: FullVersionRange, s: Subscription) => void
 export type SubscribeFn = (qtype: QueryType, query: any, opts: SubscribeOpts, listener: SubListener) => Subscription
 export type MutateFn = (type: ResultType, txn: Txn, versions: FullVersion, opts: MutateOptions, callback: Callback<FullVersion>) => void
 
@@ -137,7 +181,8 @@ export type TxnListener = (source: Source, fromV: Version, toV: Version, type: R
 
 export interface SimpleStore {
   // If there's one, and its available.
-  readonly source?: Source,
+  // readonly source?: Source,
+  readonly sources: Source[],
 
   readonly capabilities: Capabilities,
   readonly fetch: FetchFn,
@@ -159,7 +204,8 @@ export interface Store {
   readonly capabilities: Capabilities,
 
   // Only if there's one, and its available.
-  readonly source?: Source,
+  // readonly source?: Source,
+  readonly sources: Source[],
 
   // fetch(qtype: QueryType, query: any, opts: object, callback: FetchCallback): void
   fetch: FetchFn,

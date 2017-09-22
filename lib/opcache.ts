@@ -44,7 +44,7 @@ const opcache = (opts: OpCacheOpts): {
 
       const vOut: I.FullVersionRange = {}
 
-      const result: {source: I.Source, v: I.Version, txn: I.Txn}[] = []
+      const result: I.TxnWithMeta[] = []
       for (const source in versions) {
         const ops = opsForSource[source]
         if (ops == null) continue
@@ -65,8 +65,8 @@ const opcache = (opts: OpCacheOpts): {
 
         for (let i = fromidx; i < ops.length; i++) {
           const item = ops[i]
-          if (item.toV > to) break
-          result.push({source, v: item.toV, txn: qops.filterTxn(item.txn, query)})
+          if (to != -1 && item.toV > to) break
+          result.push({versions:{[source]: item.toV}, txn: qops.filterTxn(item.txn, query)})
           vTo = item.toV
           if (limitOps > 0 && --limitOps === 0) break
         }
