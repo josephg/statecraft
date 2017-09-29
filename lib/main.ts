@@ -1,5 +1,6 @@
 import singleStore from './stores/singlemem'
 import kvStore from './stores/kvmem'
+import prozessStore from './stores/prozess'
 import augment from './augment'
 
 // store.fetch('all', null, {}, (err, results) => {
@@ -59,5 +60,21 @@ const testMap2 = () => {
   })
 }
 
+const testProzess = () => {
+  prozessStore(9999, 'localhost', (err, _store) => {
+    if (err) throw err
+    const store = _store!
+    store.onTxn = (source, from, to, type, txn) => {
+      console.log('ontxn', source, from, to, type, txn)
+    }
+    const txn = new Map([['x', {type:'set', data: {x: 10}}]])
+    store.mutate('resultmap', txn, {[store.sources[0]]: 0}, {}, (err, v) => {
+      if (err) throw err
+      console.log('mutate cb', v)
+    })
+  })
+}
+
 // testMap()
-testSingle()
+// testSingle()
+testProzess()
