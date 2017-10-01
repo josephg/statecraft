@@ -87,7 +87,7 @@ const testLmdb = () => {
     store.onTxn = (source, from, to, type, txn) => {
       console.log('ontxn', source, from, to, type, txn)
     }
-    const txn = new Map([['x', {type:'set', data: {x: (Math.random() * 100)|0}}]])
+    const txn = new Map([['q', {type:'set', data: {x: (Math.random() * 100)|0}}]])
     console.log('source', store.sources)
     store.mutate('resultmap', txn, {[store.sources![0]!]: -1}, {}, (err, v) => {
       if (err) throw err

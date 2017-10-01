@@ -67,7 +67,7 @@ const lmdbStore = (client: PClient, location: string): I.SimpleStore => {
     } else {
       const {sc_ver, source:dbSource} = msgpack.decode(configBytes)
       assert(sc_ver === 1)
-      // assert(dbSource === source)
+      assert(dbSource === source)
       version = decodeVersion(txn.getBinary(dbi, VERSION_KEY))
     }
     txn.commit()
@@ -92,11 +92,14 @@ const lmdbStore = (client: PClient, location: string): I.SimpleStore => {
       const dbTxn = env.beginTxn({readOnly: true})
 
       // KV txn. Query is a set of keys.
+      let maxVersion = 0
+
       const results = new Map<I.Key, I.Val>()
       for (let k of query) {
         const docBytes = dbTxn.getBinary(dbi, k)
-        const doc = docBytes == null ? null : msgpack.decode(docBytes)
+        const [lastMod, doc] = docBytes == null ? [0, null] : msgpack.decode(docBytes)
         results.set(k, doc)
+        maxVersion = Math.max(maxVersion, lastMod)
       }
 
       dbTxn.commit()
@@ -105,7 +108,7 @@ const lmdbStore = (client: PClient, location: string): I.SimpleStore => {
         results,
         queryRun: query,
         // TODO: Loosen this version bound.
-        versions: {[source]: {from: version, to: version}}
+        versions: {[source]: {from: maxVersion, to: version}}
       })
     },
 
@@ -157,7 +160,7 @@ const lmdbStore = (client: PClient, location: string): I.SimpleStore => {
 
 
   client.onevents = (events, nextVersion) => {
-    debug('Got events', events, nextVersion)
+    // debug('Got events', events, nextVersion)
 
     const dbTxn = env.beginTxn()
 
@@ -171,6 +174,7 @@ const lmdbStore = (client: PClient, location: string): I.SimpleStore => {
 
       // TODO: Batches.
       const txn = decodeTxn(event.data)
+      const nextVersion = event.version + event.batch_size - 1
 
       for (const [k, op] of txn) {
         const oldBytes = dbTxn.getBinary(dbi, k)
@@ -178,10 +182,9 @@ const lmdbStore = (client: PClient, location: string): I.SimpleStore => {
 
         const newData = fieldOps.apply(oldData, op)
         console.log('updated key', k, 'from', oldData, 'to', newData)
-        dbTxn.putBinary(dbi, k, msgpack.encode(newData))
+        dbTxn.putBinary(dbi, k, msgpack.encode([nextVersion, newData]))
       }
 
-      const nextVersion = event.version + event.batch_size - 1
       txnsOut.push({txn, from: version, to: nextVersion})
       newVersion = nextVersion
     })
