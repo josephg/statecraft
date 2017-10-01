@@ -14,7 +14,7 @@ export const decodeEvent = (event: Event, source: I.Source): I.TxnWithMeta => ({
   txn: decodeTxn(event.data),
 })
 
-export function mutate(client: PClient,
+export function sendTxn(client: PClient,
     txn: I.KVTxn,
     version: I.Version,
     opts: object,

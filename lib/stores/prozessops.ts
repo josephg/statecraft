@@ -8,7 +8,7 @@ import assert = require('assert')
 
 import * as I from '../types/interfaces'
 import * as err from '../err'
-import {encodeTxn, decodeTxn, decodeEvent, mutate} from '../prozess'
+import {encodeTxn, decodeTxn, decodeEvent, sendTxn} from '../prozess'
 
 // const codec = msgpack.createCodec({usemap: true})
 
@@ -38,7 +38,7 @@ storeCallback: I.Callback<I.SimpleStore>): void => {
       mutate(type, txn: I.KVTxn, versions, opts, callback) {
         if (type !== 'resultmap') return callback(new err.UnsupportedTypeError())
 
-        mutate(conn, txn, versions[source] || -1, {}, (err, version) => {
+        sendTxn(conn, txn, versions[source] || -1, {}, (err, version) => {
           if (err) callback(err)
           else callback(null, {[source]: version!})
         })
