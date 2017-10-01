@@ -38,7 +38,9 @@ const singleStore = (initialValue: any = null, source: I.Source = genSource(), i
 
       store.onTxn && store.onTxn(source, opv - 1, opv, type, op)
       callback(null, {[source]: opv})
-    }
+    },
+
+    close() {},
   }
 
   return store

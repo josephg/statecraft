@@ -13,10 +13,16 @@ export type Val = any
 
 export type KVQuery = Set<Key>
 
-export type FullVersion = {[s: string]: Version}
+export type FullVersion = {
+  // _other?: Version,
+  [s: string]: Version,
+}
 
 export type VersionRange = {from: Version, to: Version}
-export type FullVersionRange = {[s: string]: VersionRange}
+export type FullVersionRange = {
+  // _other?: VersionRange
+  [s: string]: VersionRange
+}
 
 export interface SingleOp {
   readonly type: string,
@@ -182,14 +188,14 @@ export type TxnListener = (source: Source, fromV: Version, toV: Version, type: R
 export interface SimpleStore {
   // If there's one, and its available.
   // readonly source?: Source,
-  readonly sources: Source[],
+  readonly sources?: Source[],
 
   readonly capabilities: Capabilities,
   readonly fetch: FetchFn,
   readonly mutate: MutateFn,
 
   // If needed.
-  close?(): void
+  close(): void
 
   // These are added automatically when store is augmented, but they can be supplied directly.
   readonly catchup?: CatchupFn,
@@ -205,7 +211,7 @@ export interface Store {
 
   // Only if there's one, and its available.
   // readonly source?: Source,
-  readonly sources: Source[],
+  readonly sources?: Source[],
 
   // fetch(qtype: QueryType, query: any, opts: object, callback: FetchCallback): void
   fetch: FetchFn,
@@ -247,6 +253,6 @@ export interface Store {
   // v:11, and afterwards db is at v:11.
   mutate: MutateFn,
 
-  close?(): void
+  close(): void
 }
 

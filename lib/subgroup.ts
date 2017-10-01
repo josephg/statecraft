@@ -32,12 +32,11 @@ function catchupFnForStore(store: I.SimpleStore, getOps: I.GetOpsFn): I.CatchupF
   }
 
   const runGetOps = (qtype: I.QueryType, query: any, opts: I.CatchupOpts, callback: I.Callback<I.CatchupResults>) => {
-    const versions: I.FullVersionRange = {}
+    const versions: I.FullVersionRange = {_other: {from:0, to: -1}}
     const {knownAtVersions} = opts
-    store.sources.forEach(source => {
-      const from = (knownAtVersions && knownAtVersions[source]) || 0
-      versions[source] = {from: from, to:-1}
-    })
+    if (knownAtVersions) for (const source in knownAtVersions) {
+      versions[source] = {from:knownAtVersions[source], to: -1}
+    }
     getOps(qtype, query, versions, {bestEffort: opts.bestEffort}, (err, r) => {
       if (err) return callback(err)
       const {ops, versions} = r!

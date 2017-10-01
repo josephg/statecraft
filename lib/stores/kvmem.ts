@@ -72,7 +72,9 @@ const singleStore = (data: Map<I.Key, I.Val> = new Map(),
       if (store.onTxn != null) store.onTxn(source, fromv, opv, type, txn)
 
       callback(null, {[source]: opv})
-    }
+    },
+
+    close() {},
   }
   return store
 }

@@ -45,11 +45,15 @@ const opcache = (opts: OpCacheOpts): {
       const vOut: I.FullVersionRange = {}
 
       const result: I.TxnWithMeta[] = []
-      for (const source in versions) {
+      for (const source in opsForSource) {
+        // This is a bit inefficient - if there's lots of sources
+        // we're looking through all of them even if the user only
+        // wants one. But that shouldn't happen much in practice (right?)
         const ops = opsForSource[source]
-        if (ops == null) continue
+        const vs = versions[source] || versions._other
+        if (vs == null) continue
 
-        const {from, to} = versions[source]
+        const {from, to} = vs
         let fromidx: number
         if (from === -1) fromidx = 0 // From version known.
         else {

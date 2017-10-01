@@ -14,7 +14,8 @@
     "debug": "^2.2.0",
     "errno": "^0.1.4",
     "levelup": "^1.3.2",
-    "msgpack-lite": "^0.1.26"
+    "msgpack-lite": "^0.1.26",
+    "node-lmdb": "^0.4.13"
   },
   "devDependencies": {
     "@types/chokidar": "^1.7.2",

@@ -1,6 +1,7 @@
 import singleStore from './stores/singlemem'
 import kvStore from './stores/kvmem'
-import prozessStore from './stores/prozess'
+import prozessStore from './stores/prozessops'
+import lmdbStore from './stores/lmdb'
 import augment from './augment'
 
 // store.fetch('all', null, {}, (err, results) => {
@@ -54,7 +55,7 @@ const testMap2 = () => {
   const txn = new Map([['x', {type:'set', data: {x: 10}}]])
   store.mutate('resultmap', txn, {}, {}, (err, v) => {
     if (err) throw err
-    store.getOps!('allkv', true, {[store.sources[0]!]: {from:0, to:100}}, {}, (err, results) => {
+    store.getOps!('allkv', true, {[store.sources![0]!]: {from:0, to:100}}, {}, (err, results) => {
       console.log(results)
     })
   })
@@ -68,13 +69,24 @@ const testProzess = () => {
       console.log('ontxn', source, from, to, type, txn)
     }
     const txn = new Map([['x', {type:'set', data: {x: 10}}]])
-    store.mutate('resultmap', txn, {[store.sources[0]]: 0}, {}, (err, v) => {
+    store.mutate('resultmap', txn, {[store.sources![0]!]: 0}, {}, (err, v) => {
       if (err) throw err
       console.log('mutate cb', v)
     })
   })
 }
 
+const testLmdb = () => {
+  // prozessStore(9999, 'localhost', (err, opstore) => {
+  //   if (err) throw err
+  //   if (opstore == null) throw Error('inv store')
+  //   const store = lmdbStore('testdb', opstore)
+
+  // })
+
+}
+
 // testMap()
 // testSingle()
-testProzess()
+// testProzess()
+testLmdb()
