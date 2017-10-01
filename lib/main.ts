@@ -3,7 +3,7 @@ import kvStore from './stores/kvmem'
 import prozessStore from './stores/prozessops'
 import lmdbStore from './stores/lmdb'
 import augment from './augment'
-
+import {inspect} from 'util'
 import {reconnecter} from 'prozess-client'
 
 // store.fetch('all', null, {}, (err, results) => {
@@ -82,18 +82,29 @@ const testLmdb = () => {
   const client = reconnecter(9999, 'localhost', err => {
     if (err) throw err
 
-    const store = lmdbStore(client, process.argv[2] || 'testdb')
+    const store = augment(lmdbStore(client, process.argv[2] || 'testdb', err => {
+      if (err) throw err
 
-    store.onTxn = (source, from, to, type, txn) => {
-      console.log('ontxn', source, from, to, type, txn)
-    }
-    const txn = new Map([['q', {type:'set', data: {x: (Math.random() * 100)|0}}]])
+      console.log('!!!!ready')
+    }))
+
+    const sub = store.subscribe('kv', new Set(['x', 'q', 'y']), {}, (data) => {
+      console.log('subscribe data', data.type, inspect(data.type === 'txns' ? data.txns : data.txn, false, 10, true))
+    })
+    sub.cursorAll()
+
+    // store.onTxn = (source, from, to, type, txn) => {
+    //   console.log('ontxn', source, from, to, type, txn)
+    // }
+    const txn = new Map([['x', {type:'inc', data: 10}]])
+    // const txn = new Map([['x', {type:'set', data: {ddd: (Math.random() * 100)|0}}]])
+    // const txn = new Map([['q', {type:'set', data: (Math.random() * 100)|0}]])
     console.log('source', store.sources)
     store.mutate('resultmap', txn, {[store.sources![0]!]: -1}, {}, (err, v) => {
       if (err) throw err
       console.log('mutate cb', v)
 
-      store.fetch('kv', new Set(['x', 'y']), {}, (err, results) => {
+      store.fetch('kv', new Set(['x', 'q', 'y']), {}, (err, results) => {
         if (err) throw err
         console.log('fetch results', results)
         // store.close()

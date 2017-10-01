@@ -5,7 +5,7 @@ export interface Type<Snap, Op> {
   create(data?: any): Snap
   apply(snapshot: Snap, op: Op): Snap
   applyMut?(snapshot: Snap, op: Op): void
-  checkOp?(op: Op): void
+  checkOp?(op: Op, snapshot: Snap): void // Check the op is valid and can apply to the given snapshot
 
   // For core OT types:
   // Not sure if transform should be optional. TODO.

@@ -37,7 +37,7 @@ const type: ResultOps<any, Op> = {
     // Remember, this is creating a document.
     return data
   },
-  
+
   apply(snapshot: any, op: Op) {
     if (Array.isArray(op)) {
       // Multi operation.
@@ -58,6 +58,8 @@ const type: ResultOps<any, Op> = {
       }
     }
   },
+
+  // TODO: Add applyMut.
 
   compose(op1, op2) {
     if (Array.isArray(op2)) {
@@ -84,5 +86,9 @@ const type: ResultOps<any, Op> = {
       case 'resultmap': return data.get('content')
     }
   },
+
+  checkOp(op, snap) {
+    type.apply(snap, op) // this will throw if invalid. TODO: use check on subtype if available.
+  }
 }
 export default type

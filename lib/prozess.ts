@@ -24,7 +24,7 @@ export function sendTxn(client: PClient,
   // TODO: This probably doesn't handle a missing version properly.
   // TODO: Add read conflict keys through opts.
   client.send(data, {
-    targetVersion: version,
+    targetVersion: version >= 0 ? version + 1 : version,
     conflictKeys: Array.from(txn.keys())
   }, callback)
 }

@@ -26,6 +26,8 @@ register({
   name: 'inc',
   create(data) { return data|0 },
   apply(snapshot, op) { // Op is a number
+    console.log(snapshot, op)
+    if (typeof snapshot === 'object' || typeof op === 'object') throw Error('Invalid data')
     return snapshot + op
   },
 })

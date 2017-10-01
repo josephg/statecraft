@@ -31,7 +31,7 @@ const encodeVersion = (v: I.Version) => {
 const decodeVersion = (buf: NodeBuffer) => buf.readUInt32LE(4)
 
 // We take ownership of the PClient, so don't use it elsewhere after passing it to lmdbstore.
-const lmdbStore = (client: PClient, location: string): I.SimpleStore => {
+const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.Version>): I.SimpleStore => {
   const env = new lmdb.Env()
 
   assert(client.source, 'Cannot attach lmdb store until source is known')
@@ -53,6 +53,11 @@ const lmdbStore = (client: PClient, location: string): I.SimpleStore => {
   const setVersion = (txn: lmdb.Txn, v: I.Version) => {
     version = v
     txn.putBinary(dbi, VERSION_KEY, encodeVersion(version))
+  }
+
+  const rawGet = (txn: lmdb.Txn, k: I.Key): [I.Version, any] => {
+    const bytes = txn.getBinary(dbi, k)
+    return bytes == null ? [0, null] : msgpack.decode(bytes)
   }
 
   // Ok, first do catchup.
@@ -80,6 +85,25 @@ const lmdbStore = (client: PClient, location: string): I.SimpleStore => {
     mutationTypes: new Set<I.ResultType>(['resultmap']),
   }
 
+  const ready = new Promise((resolve, reject) => {
+    client.subscribe(version + 1, {}, (err, results) => {
+      if (err) {
+        // Again, not sure what to do here. Eat it and continue.
+        console.error('Error subscribing', err)
+        return reject(err)
+      }
+
+      // The events will all be emitted via the onevent callback. We'll do catchup there.
+      console.log(`Catchup complete - ate ${results!.v_end - results!.v_start} events`)
+      resolve()
+    })
+  })
+
+  if (onCatchup) {
+    ready.then(() => onCatchup(null, version))
+    ready.catch(err => onCatchup(err))
+  }
+
   const store: I.SimpleStore = {
     sources: [source],
     capabilities: capabilities,
@@ -89,41 +113,68 @@ const lmdbStore = (client: PClient, location: string): I.SimpleStore => {
       if (/*qtype !== 'allkv' &&*/ qtype !== 'kv') return callback(new err.UnsupportedTypeError())
       const qops = queryops[qtype]
 
-      const dbTxn = env.beginTxn({readOnly: true})
+      ready.then(() => {
+        const dbTxn = env.beginTxn({readOnly: true})
 
-      // KV txn. Query is a set of keys.
-      let maxVersion = 0
+        // KV txn. Query is a set of keys.
+        let maxVersion = 0
 
-      const results = new Map<I.Key, I.Val>()
-      for (let k of query) {
-        const docBytes = dbTxn.getBinary(dbi, k)
-        const [lastMod, doc] = docBytes == null ? [0, null] : msgpack.decode(docBytes)
-        results.set(k, doc)
-        maxVersion = Math.max(maxVersion, lastMod)
-      }
+        const results = new Map<I.Key, I.Val>()
+        for (let k of query) {
+          const [lastMod, doc] = rawGet(dbTxn, k)
+          results.set(k, doc)
+          maxVersion = Math.max(maxVersion, lastMod)
+        }
 
-      dbTxn.commit()
+        dbTxn.commit()
 
-      callback(null, {
-        results,
-        queryRun: query,
-        // TODO: Loosen this version bound.
-        versions: {[source]: {from: maxVersion, to: version}}
-      })
+        callback(null, {
+          results,
+          queryRun: query,
+          // TODO: Loosen this version bound.
+          versions: {[source]: {from: maxVersion, to: version}}
+        })
+      }).catch(e => process.emit('uncaughtException', e))
     },
 
     mutate(type, txn: I.KVTxn, versions, opts, callback) {
       if (type !== 'resultmap') return callback(new err.UnsupportedTypeError())
 
-      debug('mutate', txn)
-      sendTxn(client, txn, versions[source] || 0, {}, (err, version) => {
-        if (err) callback(err)
-        else callback(null, {[source]: version!})
-        debug('mutate cb', err, version)
-      })
+      ready.then(() => {
+        debug('mutate', txn)
+
+        // What does -1 mean? What does 0 mean? Urgh.
+        const conflictVersion = versions[source] !== 0 ? versions[source] : version
+
+        // First check that the transaction applies cleanly.
+        const dbTxn = env.beginTxn({readOnly: true})
+        for (const [k, op] of txn) {
+          const [v, data] = rawGet(dbTxn, k)
+          if (conflictVersion >= 0 && v > conflictVersion) {
+            dbTxn.abort()
+            return callback(new err.WriteConflictError('Write conflict in key ' + k))
+          }
+
+          try {
+            fieldOps.checkOp!(op, data)
+          } catch (e) {
+            dbTxn.abort()
+            return callback(e)
+          }
+        }
+        dbTxn.commit()
+
+        sendTxn(client, txn, conflictVersion, {}, (err, version) => {
+          if (err) callback(err)
+          else callback(null, {[source]: version!})
+          debug('mutate cb', err, version)
+        })
+      }).catch(e => process.emit('uncaughtException', e))
     },
 
     getOps(qtype, query, versions, opts, callback) {
+      // We don't need to wait for ready here because the query is passed straight back.
+
       // TODO: Allow range queries too.
       if (qtype !== 'allkv' && qtype !== 'kv') return callback(new err.UnsupportedTypeError())
       const qops = queryops[qtype]
@@ -177,11 +228,15 @@ const lmdbStore = (client: PClient, location: string): I.SimpleStore => {
       const nextVersion = event.version + event.batch_size - 1
 
       for (const [k, op] of txn) {
-        const oldBytes = dbTxn.getBinary(dbi, k)
-        const oldData = oldBytes == null ? null : msgpack.decode(oldBytes)
+        const oldData = rawGet(dbTxn, k)[0]
 
         const newData = fieldOps.apply(oldData, op)
         console.log('updated key', k, 'from', oldData, 'to', newData)
+
+        // I'm leaving an empty entry in the lmdb database even if newData is
+        // null so fetch will correctly report last modified versions.
+        // This can be stripped with a periodically updating baseVersion if
+        // thats useful.
         dbTxn.putBinary(dbi, k, msgpack.encode([nextVersion, newData]))
       }
 
@@ -197,17 +252,6 @@ const lmdbStore = (client: PClient, location: string): I.SimpleStore => {
       store.onTxn!(source, from, to, 'resultmap', txn)
     )
   }
-
-  client.subscribe(version + 1, {}, (err, results) => {
-    if (err) {
-      // Again, not sure what to do here. Eat it and continue.
-      return console.error('Error subscribing', err)
-    }
-
-    // The events will all be emitted via the onevent callback. We'll do catchup there.
-    console.log(`Catchup complete - ate ${results!.v_end - results!.v_start} events`)
-  })
-
 
   return store
 }

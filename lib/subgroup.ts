@@ -118,6 +118,7 @@ export default class SubGroup {
           if (pendingTxn) opsBuffer.push({source, version, txn: pendingTxn})
         }
 
+        // TODO: Apply supportedTypes.
         const activeTxn = qops.filterTxn(txn, activeQuery)
         // console.log(activeQuery, activeTxn)
         if (activeTxn != null) {
