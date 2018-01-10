@@ -137,8 +137,9 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
       }).catch(e => process.emit('uncaughtException', e))
     },
 
-    mutate(type, txn: I.KVTxn, versions, opts, callback) {
+    mutate(type, _txn, versions, opts, callback) {
       if (type !== 'resultmap') return callback(new err.UnsupportedTypeError())
+      const txn = _txn as I.KVTxn
 
       ready.then(() => {
         debug('mutate', txn)

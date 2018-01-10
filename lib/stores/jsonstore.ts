@@ -89,15 +89,16 @@ const fileStore = (filename: string, sourceIn?: string): I.SimpleStore => {
     fetch(qtype, query, opts, callback) {
       if (qtype !== 'single') return callback(new err.UnsupportedTypeError(`Unsupported query type ${qtype} to json store`))
 
-      callback(undefined, {
+      callback(null, {
         results: data,
         queryRun: query,
         versions: {[source]: {from:version, to:Date.now()}},
       })
     },
 
-    mutate(type, op: I.Op, versions, opts, callback) {
+    mutate(type, txn, versions, opts, callback) {
       if (type !== 'single') return callback(new err.UnsupportedTypeError())
+      const op = txn as I.Op
 
       const expectv = versions[source]
       if (expectv != null && expectv < version) return callback(new err.VersionTooOldError())

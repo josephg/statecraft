@@ -26,6 +26,13 @@ const augment = (innerStore: I.SimpleStore, opts?: any): I.Store => {
     subscribe: innerStore.subscribe || subscriptions!.create.bind(subscriptions)
   }
 
+  if (innerStore.capabilities.mutationTypes.has('resultmap')) {
+    outerStore.set = (key: I.Key, val: I.Val, callback: I.Callback<I.FullVersion>) => {
+      const txn = new Map([[key, {type:'set', data: val}]])
+      innerStore.mutate('resultmap', txn, {}, {}, callback)
+    }
+  }
+
   return outerStore
 }
 

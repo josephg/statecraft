@@ -26,7 +26,9 @@ export function sendTxn(client: PClient,
   client.send(data, {
     targetVersion: version >= 0 ? version + 1 : version,
     conflictKeys: Array.from(txn.keys())
-  }, callback)
+  }, (err, version) => {
+    callback(err || null, version)
+  })
 }
 
 // Returns ops in SC style - range (from, to].

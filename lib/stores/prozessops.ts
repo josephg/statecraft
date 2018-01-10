@@ -35,8 +35,9 @@ storeCallback: I.Callback<I.SimpleStore>): void => {
         return callback(Error('Unsupported query type'))
       },
 
-      mutate(type, txn: I.KVTxn, versions, opts, callback) {
+      mutate(type, _txn, versions, opts, callback) {
         if (type !== 'resultmap') return callback(new err.UnsupportedTypeError())
+        const txn = _txn as I.KVTxn
 
         sendTxn(conn, txn, versions[source] || -1, {}, (err, version) => {
           if (err) callback(err)
@@ -53,7 +54,7 @@ storeCallback: I.Callback<I.SimpleStore>): void => {
 
         const {from, to} = vs
 
-        conn.getEvents(from + 1, to, {}, (err, data: SubCbData) => {
+        conn.getEvents(from + 1, to, {}, (err, data: SubCbData | undefined) => {
           if (err) return callback(err)
 
           const ops = data!.events.map(event => decodeEvent(event, source))

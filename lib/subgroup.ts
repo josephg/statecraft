@@ -140,7 +140,7 @@ export default class SubGroup {
 
       cursorNext(opts, callback) {
         // console.log('pqe', pendingQuery, qops.q.isEmpty(pendingQuery))
-        if (qops.q.isEmpty(pendingQuery)) return callback()
+        if (qops.q.isEmpty(pendingQuery)) return callback(null)
 
         if (opsBuffer != null) return callback(Error('Already fetching'))
 

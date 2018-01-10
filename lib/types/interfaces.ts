@@ -47,7 +47,7 @@ export type FetchResults = {
   versions: FullVersionRange, // Range across which version is valid.
 }
 
-export type Callback<T> = (err?: Error | null, results?: T) => void
+export type Callback<T> = (err: Error | null, results?: T) => void
 
 export type FetchOpts = object
 export type FetchCallback = Callback<FetchResults>
@@ -191,51 +191,14 @@ export interface SimpleStore {
   readonly sources?: Source[],
 
   readonly capabilities: Capabilities,
-  readonly fetch: FetchFn,
-  readonly mutate: MutateFn,
 
-  // If needed.
-  close(): void
-
-  // These are added automatically when store is augmented, but they can be supplied directly.
-  readonly catchup?: CatchupFn,
-  readonly getOps?: GetOpsFn,
-  readonly subscribe?: SubscribeFn,
-
-  // This is set by the store's wrapper.
-  onTxn?: TxnListener,
-}
-
-export interface Store {
-  readonly capabilities: Capabilities,
-
-  // Only if there's one, and its available.
-  // readonly source?: Source,
-  readonly sources?: Source[],
-
-  // fetch(qtype: QueryType, query: any, opts: object, callback: FetchCallback): void
-  fetch: FetchFn,
-
-  // catchup?: CatchupFn, // Can be generated from fetch. I think I can keep this private.
 
   // fetch(qtype: 'all', query: null, opts: object, callback: FetchCallback): void
   // fetch(qtype: 'kv', query: Key[] | Set<Key>, opts: object, callback: FetchCallback): void
   // fetch(qtype: 'sortedkv', query: RangeOp, opts: object, callback: FetchCallback): void
 
-  // Versions are {[source]: [from, to]} pairs where the data returned is in
-  // the range of (from, to]. You can think of the results as the operations
-  // moving from document version from to document version to.
-  //
-  // to:-1 will get all available operations.
-  getOps: GetOpsFn
-
-  // TODO: Should specifying a version be done through the options like it is for fetch?
-  //
-  // For reconnecting, you can specify knownDocs, knownAtVersions
-  // - ... And something to specify the catchup mode (fast vs full)
-  // - opts.getFullHistortForDocs - or something like it.
-  // These options should usually appear together.
-  subscribe: SubscribeFn
+  // fetch(qtype: QueryType, query: any, opts: object, callback: FetchCallback): void
+  readonly fetch: FetchFn,
 
   // Modify the db. txn is a map from key => {type, data}. versions is just source => v.
   // TODO: Consider adding a txnType argument here as well.
@@ -251,8 +214,44 @@ export interface Store {
   //
   // So for example, given db at version 10, mutate(v:10) => transaction at
   // v:11, and afterwards db is at v:11.
-  mutate: MutateFn,
+  readonly mutate: MutateFn,
 
+  // If needed.
   close(): void
+
+  // These are added automatically when store is augmented, but they can be supplied directly.
+  readonly catchup?: CatchupFn,
+  readonly getOps?: GetOpsFn,
+  readonly subscribe?: SubscribeFn,
+
+  // This is set by the store's wrapper.
+  onTxn?: TxnListener,
+}
+
+export interface Store extends SimpleStore {
+  // Only if there's one, and its available.
+  // readonly source?: Source,
+
+
+  // catchup?: CatchupFn, // Can be generated from fetch. I think I can keep this private.
+
+
+  // Versions are {[source]: [from, to]} pairs where the data returned is in
+  // the range of (from, to]. You can think of the results as the operations
+  // moving from document version from to document version to.
+  //
+  // to:-1 will get all available operations.
+  readonly getOps: GetOpsFn
+
+  // TODO: Should specifying a version be done through the options like it is for fetch?
+  //
+  // For reconnecting, you can specify knownDocs, knownAtVersions
+  // - ... And something to specify the catchup mode (fast vs full)
+  // - opts.getFullHistortForDocs - or something like it.
+  // These options should usually appear together.
+  readonly subscribe: SubscribeFn
+
+  // And potentially other helper methods and stuff.
+  [k: string]: any
 }
 

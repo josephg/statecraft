@@ -40,15 +40,16 @@ const singleStore = (data: Map<I.Key, I.Val> = new Map(),
       }
       // const results = qtype === 'allkv' ? new Map(data) : resultMap.filter(data, query)
 
-      callback(undefined, {
+      callback(null, {
         results,
         queryRun: query,
         versions: {[source]: {from:lowerRange, to:version}},
       })
     },
 
-    mutate(type, txn: I.KVTxn, versions, opts, callback) {
+    mutate(type, _txn, versions, opts, callback) {
       if (type !== 'resultmap') return callback(new err.UnsupportedTypeError())
+      const txn = _txn as I.KVTxn
 
       const expectv = versions[source] || version
       if (expectv < initialVersion) return callback(new err.VersionTooOldError())

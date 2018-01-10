@@ -20,15 +20,16 @@ const singleStore = (initialValue: any = null, source: I.Source = genSource(), i
     fetch(qtype, query, opts, callback) {
       if (qtype !== 'single') return callback(new err.UnsupportedTypeError())
 
-      callback(undefined, {
+      callback(null, {
         results: data,
         queryRun: query,
         versions: {[source]: {from:version, to:version}},
       })
     },
 
-    mutate(type, op: I.Op, versions, opts, callback) {
+    mutate(type, txn, versions, opts, callback) {
       if (type !== 'single') return callback(new err.UnsupportedTypeError())
+      const op = txn as I.Op
 
       const expectv = versions[source]
       if (expectv != null && expectv < version) return callback(new err.VersionTooOldError())

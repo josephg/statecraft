@@ -1,10 +1,14 @@
+import * as I from './types/interfaces'
+
 import singleStore from './stores/singlemem'
 import kvStore from './stores/kvmem'
 import prozessStore from './stores/prozessops'
 import lmdbStore from './stores/lmdb'
+import remoteStore from './stores/remote'
 import augment from './augment'
 import {inspect} from 'util'
 import {reconnecter} from 'prozess-client'
+import server from './tcpserver'
 
 // store.fetch('all', null, {}, (err, results) => {
 //   console.log('fetch results', results)
@@ -121,7 +125,23 @@ const testLmdb = () => {
 
 }
 
+const testNet = () => {
+  const store = augment(kvStore())
+  server(store).listen(3334)
+  console.log('listening on 3334')
+
+  remoteStore(3334, 'localhost', (err, store?: I.Store) => {
+    if (err) throw err
+    console.log('cb')
+    store!.fetch('kv', new Set(['x']), {}, (err, results) => {
+      console.log(err, results)
+    })
+
+  })
+}
+
 // testMap()
 // testSingle()
 // testProzess()
-testLmdb()
+// testLmdb()
+testNet()
