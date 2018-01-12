@@ -1,5 +1,5 @@
 import * as I from './types/interfaces'
-import queryops from './types/queryops'
+import {queryTypes} from './types/queryops'
 import fieldOps from './types/fieldops'
 import {QueryOps} from './types/type'
 import {supportedTypes as localTypes} from './types/registry'
@@ -26,7 +26,7 @@ function catchupFnForStore(store: I.SimpleStore, getOps: I.GetOpsFn): I.CatchupF
       if (err) return callback(err)
       const {queryRun, results, versions} = r!
 
-      const txn = queryops[qtype].r.asOp(results)
+      const txn = queryTypes[qtype].r.asOp(results)
       callback(null, {type:'aggregate', queryRun, versions, txn})
     })
   }
@@ -70,7 +70,7 @@ export default class SubGroup {
   create(qtype: I.QueryType, query: any, opts: I.SubscribeOpts, listener: I.SubListener): I.Subscription {
     const self = this
 
-    const qops = queryops[qtype]
+    const qops = queryTypes[qtype]
     assert(qops)
 
     // TODO: Unused for now.
@@ -224,7 +224,7 @@ export default class SubGroup {
         return qops.q.isEmpty(pendingQuery)
       },
 
-      cursorAll() {},
+      cursorAll: null as any,
 
       cancel() {
         // this.cancelled = true

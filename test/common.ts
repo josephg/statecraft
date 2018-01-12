@@ -1,7 +1,7 @@
 import * as I from '../lib/types/interfaces'
 import 'mocha'
 import assert = require('assert')
-import registry from '../lib/types/queryops'
+import {queryTypes} from '../lib/types/queryops'
 
 const assertThrows = async (block: () => Promise<void>, errType?: string) => {
   try {
@@ -14,20 +14,28 @@ const assertThrows = async (block: () => Promise<void>, errType?: string) => {
 }
 
 const fetchP = (store: I.Store, qtype: I.QueryType, query: any, opts: I.FetchOpts): Promise<I.FetchResults> =>
-new Promise((resolve, reject) => {
-  store.fetch(qtype, query, opts, (err, results) => {
-    if (err) reject(err)
-    else resolve(results)
+  new Promise((resolve, reject) => {
+    store.fetch(qtype, query, opts, (err, results) => {
+      if (err) reject(err)
+      else resolve(results)
+    })
   })
-})
 
 const mutateP = (store: I.Store, type: I.ResultType, txn: I.Txn, versions: I.FullVersion, opts: I.MutateOptions): Promise<I.FullVersion> =>
-new Promise((resolve, reject) => {
-  store.mutate(type, txn, versions, opts, (err, versions) => {
-    if (err) return reject(err)
-    else resolve(versions)
+  new Promise((resolve, reject) => {
+    store.mutate(type, txn, versions, opts, (err, versions) => {
+      if (err) return reject(err)
+      else resolve(versions)
+    })
   })
-})
+
+const getOpsP = (store: I.Store, qtype: I.QueryType, query: any, versions: I.FullVersionRange, opts: I.GetOpsOptions): Promise<I.GetOpsResult> =>
+  new Promise((resolve, reject) => {
+    store.getOps(qtype, query, versions, opts, (err, results) => {
+      if (err) return reject(err)
+      else resolve(results!)
+    })
+  })
 
 type SimpleResult = {
   results: any,
@@ -67,7 +75,7 @@ const eachFetchMethod = async (store: I.Store, qtype: I.QueryType, query: any): 
   const results: SimpleResult[] = await Promise.all([
     fetchP(store, qtype, query, {}).then(({results, versions}) => ({results, versions})),
     new Promise<SimpleResult>((resolve, reject) => {
-      const rtype = registry[qtype].r
+      const rtype = queryTypes[qtype].r
       let r: any = rtype.create()
 
       const sub = store.subscribe(qtype, query, {supportedTypes: new Set()}, (updates, resultingVersion, _s) => {
@@ -112,7 +120,7 @@ async function runBothKVQueries<T>(
   const promises = (['kv'] as I.QueryType[])
   .filter(qtype => store.capabilities.queryTypes.has(qtype))
   .map((qtype) => {
-    const query = registry[qtype].q.fromKVQuery!(keys)
+    const query = queryTypes[qtype].q.fromKVQuery!(keys)
     return fn(qtype, query)
   }).filter(x => x != null)
 
@@ -136,6 +144,15 @@ async function assertKVResults(
     assertEqualResults
   )
   if (expectedVers != null) assert(fullVersionSatisfies(expectedVers, result.versions))
+}
+
+const getOpsBoth = (store: I.Store, keys: I.Key[], versions: I.FullVersionRange, opts: I.GetOpsOptions = {}) => {
+  return runBothKVQueries(
+    store,
+    new Set(keys),
+    (qtype, q) => getOpsP(store, qtype, q, versions, opts),
+    assert.deepStrictEqual
+  )
 }
 
 type SingleVersion = {source: I.Source, version: I.Version}
@@ -166,11 +183,12 @@ const delSingle = async (store: I.Store, key: I.Key): Promise<SingleVersion> => 
 }
 
 type SingleValue = {source: I.Source, version: I.VersionRange, value: I.Val}
-const get = async (store: I.Store, key: I.Key) => {
-  const r = await fetchP(store, 'kv', new Set([key]), {})
+const getSingle = async (store: I.Store, key: I.Key, opts?: I.FetchOpts) => {
+  const r = await fetchP(store, 'kv', new Set([key]), opts || {})
   const results = r.results as Map<I.Key, I.Val>
   assert(results.size <= 1)
 
+  // console.log('r', results.entries().next().value[1])
   const vs = splitSingleVersions(r.versions)
   const entry = results.entries().next().value
   assert.strictEqual(entry[0], key)
@@ -180,7 +198,7 @@ const get = async (store: I.Store, key: I.Key) => {
 
 const getVersionForKeys = async (store: I.Store, _keys: I.Key[] | I.Key): Promise<SingleVersionRange> => {
   const keys = Array.isArray(_keys) ? new Set(_keys) : new Set([_keys])
-  const {versions} = await fetchP(store, 'kv', keys, {noData:true})
+  const {versions} = await fetchP(store, 'kv', keys, {noDocs:true})
   return splitSingleVersions(versions)
 }
 
@@ -225,14 +243,14 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
       const v2 = (await delSingle(this.store, 'a')).version
       assert(v2 > v1)
 
-      const r = await get(this.store, 'a')
+      const r = await getSingle(this.store, 'a')
       const expected: SingleValue = {source: r.source, version: {from: v2, to: v2}, value: null}
       assert.deepStrictEqual(r, expected)
     })
 
     it('allows you to delete a nonexistant key', async function() {
       const {version} = await delSingle(this.store, 'a')
-      const r = await get(this.store, 'a')
+      const r = await getSingle(this.store, 'a')
       assert.equal(r.value, null)
       assert.strictEqual(version, r.version.from)
       assert.strictEqual(version, r.version.to)
@@ -272,5 +290,99 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
       await setSingle(this.store, 'a', 1, {[source]:v})
       await setSingle(this.store, 'b', 1, {[source]:v})
     })
+
+    it('supports opts.noDocs in fetch', async function() {
+      const v1 = (await setSingle(this.store, 'a', {some:'big object'})).version
+      const {value, version: v2} = await getSingle(this.store, 'a', {noDocs:true})
+
+      assert(value === true || value === 1, 'Store fetched document')
+      assert.strictEqual(v1, v2.to)
+    })
+
+
+    it('supports conflicting read keys') // but NYI.
+
+    describe('skv', () => {
+      it('supports subscribing to a range')
+      it('includes deleted documents in version information')
+      it('supports skip and limit') // ??? TODO
+    })
+
+    describe('getOps', () => {
+      beforeEach(async function() {
+        // Setting these in a series of operations so we have something to query over.
+        const {source, version: v1} = await setSingle(this.store, 'a', 1)
+        this.source = source
+        this.v1 = v1
+        this.v2 = (await setSingle(this.store, 'b', 2)).version
+        this.v3 = (await setSingle(this.store, 'a', 3)).version
+        this.v4 = (await setSingle(this.store, 'b', 4)).version
+
+        this.expectedOps = [
+          {source, v:this.v1, meta:{ts:0}, txn:new Map([['a', {type:'set', data:1}]])},
+          {source, v:this.v2, meta:{ts:0}, txn:new Map([['b', {type:'set', data:2}]])},
+          {source, v:this.v3, meta:{ts:0}, txn:new Map([['a', {type:'set', data:3}]])},
+          {source, v:this.v4, meta:{ts:0}, txn:new Map([['b', {type:'set', data:4}]])},
+        ]
+      })
+
+      const emptyOpsResult: I.GetOpsResult = {ops: [], versions: {}}
+
+      it('returns an empty list when no versions are requested', async function() {
+        const ops = await getOpsBoth(this.store, ['a', 'b', 'c', 'd'], {})
+        assert.deepStrictEqual(ops, emptyOpsResult)
+      })
+
+      it('returns an empty list for closed ranges', async function() {
+        const ops = await getOpsBoth(this.store, ['a', 'b', 'c', 'd'], {[this.source]: {from:this.v1, to:this.v1}})
+        assert.deepStrictEqual(ops, emptyOpsResult)
+      })
+
+    })
   })
 }
+
+
+/*
+
+
+    describe('limits', () => {
+      // limits are advisory only. We'll check for conformance and if it fails
+      // we'll mark the test as skipped.
+      beforeEach(function(done) {
+        const txn = new Map([
+          ['a', {type:'set', data:'a data'}],
+          ['b', {type:'set', data:'b data'}],
+          ['c', {type:'set', data:'c data'}],
+          ['d', {type:'set', data:'d data'}],
+        ])
+        this.store.mutate(txn, {}, {}, (err, vs) => done(err))
+      })
+
+      it('supports doc limits in fetch', function(done) {
+        eachAsync([1,2,3,4], (limit, _, done) => {
+          this.store.fetch('kv', ['a', 'b', 'c', 'd'], {limitDocs:limit}, (err, results) => {
+            if (err) throw err
+
+            // TODO: Check results.queryRun as well.
+            if (results.results.size !== limit) done(Error('Limit not respected'))
+            else done()
+          })
+        }, err => {
+          if (err && err.message === 'Limit not respected') return this.skip()
+          else done()
+        })
+      })
+
+      it('supports byte limits in fetch', function(done) {
+        this.store.fetch('kv', ['a', 'b', 'c', 'd'], {limitBytes: 1}, (err, results) => {
+          if (err) throw err
+
+          // TODO: also check results.queryRun
+
+          if (results.results.size !== 1) return this.skip()
+          done()
+        })
+      })
+    })
+ */

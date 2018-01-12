@@ -96,7 +96,11 @@ const type: QueryOps<Set<any>, Op<any>> = {
     return (!op.remove || op.remove.length === 0) && (!op.add || op.add.length === 0)
   },
 
-  fromKVQuery(snapshot) { return snapshot }
+  fromKVQuery(snapshot) { return snapshot },
+
+  snapToJSON(snap) {
+    return Array.from(snap)
+  }
 }
 
 export default type

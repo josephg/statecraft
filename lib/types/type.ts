@@ -13,6 +13,11 @@ export interface Type<Snap, Op> {
   // And transform cursor and stuff.
   compose?(op1: Op, op2: Op): Op,
 
+  snapToJSON?(data: Snap): any,
+  snapFromJSON?(data: any): Snap,
+  opToJSON?(data: Op): any,
+  opFromJSON?(data: any): Op,
+
   [p: string]: any
 }
 

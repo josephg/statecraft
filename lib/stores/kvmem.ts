@@ -4,6 +4,13 @@ import {genSource} from '../util'
 import * as err from '../err'
 import resultMap from '../types/resultmap'
 
+// const mapValueMap = <K,X,Y>(map: Map<K, X>, f: (X, K) => Y): Map<K, Y> => {
+//   const result = new Map
+// }
+const mapValueMapMut = <K>(map: Map<K, any>, f: (v: any, k: K) => any): Map<K, any> => {
+  for (const [k, v] of map) map.set(k, f(v, k))
+  return map
+}
 
 const capabilities = {
   queryTypes: new Set<I.QueryType>(['allkv', 'kv']),
@@ -41,7 +48,7 @@ const singleStore = (data: Map<I.Key, I.Val> = new Map(),
       // const results = qtype === 'allkv' ? new Map(data) : resultMap.filter(data, query)
 
       callback(null, {
-        results,
+        results: opts.noDocs ? mapValueMapMut(results, () => true) : results,
         queryRun: query,
         versions: {[source]: {from:lowerRange, to:version}},
       })

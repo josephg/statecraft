@@ -1,6 +1,6 @@
 // Common API for interacting with queries
 import kvQuery from './kvqueryops'
-import {QueryOps, ResultOps} from './type'
+import {Type, QueryOps, ResultOps} from './type'
 import {allkvQueryOps, contentQueryOps, singleDocResult} from './simplequery'
 import resultMap from './resultmap'
 import * as I from './interfaces'
@@ -15,8 +15,17 @@ function eachIntersect<T>(c1: SetOrMap<T>, c2: SetOrMap<T>, fn: (v:T) => void) {
   }
 }
 
+export const snapToJSON = <S, O>(type: Type<S, O>, data: S): any =>
+  type.snapToJSON ? type.snapToJSON(data) : data
+export const snapFromJSON = <S, O>(type: Type<S, O>, data: any): S =>
+  type.snapFromJSON ? type.snapFromJSON(data) : type.create(data)
+export const opToJSON = <S, O>(type: Type<S, O>, data: O): any =>
+  type.opToJSON ? type.opToJSON(data) : data
+export const opFromJSON = <S, O>(type: Type<S, O>, data: any): O =>
+  type.opFromJSON ? type.opFromJSON(data) : data
 
-const registry: {[name: string]: {
+
+export const queryTypes: {[name: string]: {
   q: QueryOps<any, any>,
   r: ResultOps<any, I.Txn>,
   filterTxn(txn: I.Txn, query: any): any | null,
@@ -44,4 +53,10 @@ const registry: {[name: string]: {
     },
   }
 }
-export default registry
+
+export const resultTypes: {
+  [name: string]: ResultOps<any, I.Txn>
+} = {
+  single: singleDocResult,
+  resultmap: resultMap,
+}

@@ -4,7 +4,7 @@ import fieldOps from './fieldops'
 
 const type: ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
   name: 'resultmap',
-  
+
   create(data) {
     return data instanceof Map ? data : new Map(data)
   },
@@ -65,5 +65,9 @@ const type: ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
       case 'resultmap': return data
     }
   },
+
+  snapToJSON(snap) { return Array.from(snap) },
+  opToJSON(op) { return Array.from(op) },
+  opFromJSON(data) { return new Map(data) },
 }
 export default type

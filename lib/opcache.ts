@@ -1,6 +1,6 @@
 import * as I from './types/interfaces'
 import * as err from './err'
-import queryops from './types/queryops'
+import {queryTypes} from './types/queryops'
 
 import binsearch = require('binary-search')
 import assert = require('assert')
@@ -37,7 +37,7 @@ const opcache = (opts: OpCacheOpts): {
       while (maxNum !== 0 && ops.length > maxNum) ops.shift()
     },
     getOps(qtype, query, versions, options, callback) {
-      const qops = queryops[qtype]
+      const qops = queryTypes[qtype]
       assert(qops, 'Missing qops for type ' + qtype)
 
       let limitOps = options.limitOps || -1

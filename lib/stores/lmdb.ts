@@ -14,7 +14,7 @@ import {PClient} from 'prozess-client'
 import {encodeTxn, decodeTxn, decodeEvent, sendTxn} from '../prozess'
 
 import fieldOps from '../types/fieldops'
-import queryops from '../types/queryops'
+import {queryTypes} from '../types/queryops'
 
 import * as I from '../types/interfaces'
 import * as err from '../err'
@@ -111,7 +111,7 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
     fetch(qtype, query, opts, callback) {
       // TODO: Allow range queries too.
       if (/*qtype !== 'allkv' &&*/ qtype !== 'kv') return callback(new err.UnsupportedTypeError())
-      const qops = queryops[qtype]
+      const qops = queryTypes[qtype]
 
       ready.then(() => {
         const dbTxn = env.beginTxn({readOnly: true})
@@ -178,7 +178,7 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
 
       // TODO: Allow range queries too.
       if (qtype !== 'allkv' && qtype !== 'kv') return callback(new err.UnsupportedTypeError())
-      const qops = queryops[qtype]
+      const qops = queryTypes[qtype]
 
       // We need to fetch ops in the range of (from, to].
       const vs = versions[source] || versions._other

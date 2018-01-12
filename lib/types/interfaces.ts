@@ -50,7 +50,7 @@ export type FetchResults = {
 export type Callback<T> = (err: Error | null, results?: T) => void
 
 export type FetchOpts = {
-  noData?: boolean // Don't actually return any data. Useful for figuring out the version. Default: false
+  noDocs?: boolean // Don't actually return any data. Useful for figuring out the version. Default: false
 }
 export type FetchCallback = Callback<FetchResults>
 
@@ -167,7 +167,7 @@ export interface Capabilities {
 }
 
 export type FetchFn = (qtype: QueryType, query: any, opts: FetchOpts, callback: FetchCallback) => void
-export type GetOpsFn = (qtype: QueryType, query: any, versions: {[s: string]: VersionRange}, opts: GetOpsOptions, callback: Callback<GetOpsResult>) => void
+export type GetOpsFn = (qtype: QueryType, query: any, versions: FullVersionRange, opts: GetOpsOptions, callback: Callback<GetOpsResult>) => void
 export type CatchupFn = (qtype: QueryType, query: any, opts: CatchupOpts, callback: Callback<CatchupResults>) => void
 // The updates argument here could either work as
 //  {txn, v:fullrange}[]
