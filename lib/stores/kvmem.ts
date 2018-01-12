@@ -51,13 +51,13 @@ const singleStore = (data: Map<I.Key, I.Val> = new Map(),
       if (type !== 'resultmap') return callback(new err.UnsupportedTypeError())
       const txn = _txn as I.KVTxn
 
-      const expectv = versions[source] || version
+      const expectv = versions[source] == null ? version : versions[source]
       if (expectv < initialVersion) return callback(new err.VersionTooOldError())
 
       // 1. Preflight. Check versions and (ideally) that the operations are valid.
       for (const [k, op] of txn) {
         const v = lastModVersion.get(k)
-        if (v !== undefined && expectv < v) return callback(new err.VersionTooOldError())
+        if (v !== undefined && expectv < v) return callback(new err.WriteConflictError())
 
         // TODO: Also check that the operation is valid for the given document,
         // if the OT type supports it.

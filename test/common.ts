@@ -3,6 +3,16 @@ import 'mocha'
 import assert = require('assert')
 import registry from '../lib/types/queryops'
 
+const assertThrows = async (block: () => Promise<void>, errType?: string) => {
+  try {
+    await block()
+  } catch (e) {
+    if (errType) assert.strictEqual(e.type, errType)
+    return
+  }
+  throw Error('Block did not throw')
+}
+
 const fetchP = (store: I.Store, qtype: I.QueryType, query: any, opts: I.FetchOpts): Promise<I.FetchResults> =>
 new Promise((resolve, reject) => {
   store.fetch(qtype, query, opts, (err, results) => {
@@ -141,10 +151,10 @@ function splitSingleVersions(versions: I.FullVersion | I.FullVersionRange): Sing
   return {source, version: versions[source] as any}
 }
 
-const setSingle = async (store: I.Store, key: I.Key, value: I.Val): Promise<SingleVersion> => {
+const setSingle = async (store: I.Store, key: I.Key, value: I.Val, versions: I.FullVersion = {}): Promise<SingleVersion> => {
   // if (typeof versions === 'function') [versions, callback] = [{}, versions]
   const txn = new Map([[key, {type:'set', data:value}]])
-  const vs = await mutateP(store, 'resultmap', txn, {}, {})
+  const vs = await mutateP(store, 'resultmap', txn, versions, {})
   return splitSingleVersions(vs)
 }
 
@@ -165,6 +175,13 @@ const get = async (store: I.Store, key: I.Key) => {
   const entry = results.entries().next().value
   assert.strictEqual(entry[0], key)
   return {source: vs.source, version: vs.version, value: entry[1]}
+}
+
+
+const getVersionForKeys = async (store: I.Store, _keys: I.Key[] | I.Key): Promise<SingleVersionRange> => {
+  const keys = Array.isArray(_keys) ? new Set(_keys) : new Set([_keys])
+  const {versions} = await fetchP(store, 'kv', keys, {noData:true})
+  return splitSingleVersions(versions)
 }
 
 
@@ -214,11 +231,11 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
     })
 
     it('allows you to delete a nonexistant key', async function() {
-      const v1 = (await delSingle(this.store, 'a')).version
+      const {version} = await delSingle(this.store, 'a')
       const r = await get(this.store, 'a')
       assert.equal(r.value, null)
-      assert.strictEqual(v1, r.version.from)
-      assert.strictEqual(v1, r.version.to)
+      assert.strictEqual(version, r.version.from)
+      assert.strictEqual(version, r.version.to)
     })
 
     // This test relies on the full version semantics of statecraft's native stores.
@@ -230,6 +247,30 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
 
       assert(v1 < v2 && v2 < v3)
       await assertKVResults(this.store, ['a'], [['a', 1]], {[source]: {from:v1, to:v3}})
+    })
+
+
+    it('makes conflicting edits to the same key collide', async function() {
+      // TODO: Make a parallel version of this function.
+      const {source, version} = await getVersionForKeys(this.store, 'a')
+      const v = version.to
+      assert(v >= 0) // The version should be defined - normally 0.
+
+      // Now set it. This should succeed...
+      await setSingle(this.store, 'a', 1, {[source]:v})
+
+      await assertThrows(async () => {
+        await setSingle(this.store, 'a', 2, {[source]:v})
+      }, 'WriteConflictError')
+    })
+
+
+    it('allows concurrent edits to different keys', async function() {
+      const {source, version} = await getVersionForKeys(this.store, ['a', 'b'])
+      const v = version.to
+      // TODO: Make a parallel variant of this function
+      await setSingle(this.store, 'a', 1, {[source]:v})
+      await setSingle(this.store, 'b', 1, {[source]:v})
     })
   })
 }

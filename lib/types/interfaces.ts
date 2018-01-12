@@ -49,7 +49,9 @@ export type FetchResults = {
 
 export type Callback<T> = (err: Error | null, results?: T) => void
 
-export type FetchOpts = object
+export type FetchOpts = {
+  noData?: boolean // Don't actually return any data. Useful for figuring out the version. Default: false
+}
 export type FetchCallback = Callback<FetchResults>
 
 
