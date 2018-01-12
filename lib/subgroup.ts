@@ -85,6 +85,9 @@ export default class SubGroup {
     let activeQuery = qops.q.create()
     // We'll store the range for which the active query result set is valid.
     // TODO: This is a lot of bookkeeping for individually keyed documents.
+    //
+    // Note that the range starts completely open - the results for an empty
+    // query are valid everywhere.
     const activeVersions: I.FullVersionRange = {}
 
     let pendingQuery = qops.q.create(query)
@@ -140,7 +143,7 @@ export default class SubGroup {
 
       cursorNext(opts, callback) {
         // console.log('pqe', pendingQuery, qops.q.isEmpty(pendingQuery))
-        if (qops.q.isEmpty(pendingQuery)) return callback(null)
+        if (qops.q.isEmpty(pendingQuery)) return callback(null, {activeQuery, activeVersions})
 
         if (opsBuffer != null) return callback(Error('Already fetching'))
 

@@ -1,7 +1,7 @@
-// content: Return one value (the content of the store). Query ignored
+// single: Return one value (the content of the store). Query ignored
+// allkv: Query all key-values in a kv database. Similar to single, but enforces kv.
 // kv: Query with a set of keys, return corresponding values.
 // sortedkv: Query set of ranges. return kv map with contained values
-// all: Query ignored, return kv map with values.
 export type QueryType = 'single' | 'allkv' | 'kv' | 'kvranges'
 // TODO: consider renaming resultmap to kv.
 export type ResultType = 'single' | 'resultmap'

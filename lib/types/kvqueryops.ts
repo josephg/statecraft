@@ -95,6 +95,8 @@ const type: QueryOps<Set<any>, Op<any>> = {
   isNoop(op) {
     return (!op.remove || op.remove.length === 0) && (!op.add || op.add.length === 0)
   },
+
+  fromKVQuery(snapshot) { return snapshot }
 }
 
 export default type

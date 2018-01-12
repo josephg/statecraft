@@ -12,6 +12,7 @@ export function genCursorAll(sub: I.Subscription) {
     activeQuery: any,
     activeVersions: I.FullVersionRange,
   }> = doNothing) => {
+    if (opts == null) opts = {}
     // if (this.isComplete()) return callback()
     sub.cursorNext(opts, (err, result) => {
       if (err) return callback(err)

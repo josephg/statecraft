@@ -35,6 +35,8 @@ export interface QueryOps<Snap, Op> extends Type<Snap, Op> {
 
   add(a: Snap, b: Snap): Snap
   subtract(a: Snap, b: Snap): Snap,
+
+  fromKVQuery?(snapshot: Set<any>): Snap,
 }
 
 export type AnyOTType = Type<any, any>
