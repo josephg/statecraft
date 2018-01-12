@@ -3,10 +3,19 @@ import 'mocha'
 import assert = require('assert')
 import registry from '../lib/types/queryops'
 
-const fetchPromise = (store: I.Store, qtype: I.QueryType, query: any, opts: I.FetchOpts): Promise<I.FetchResults> => new Promise((resolve, reject) => {
+const fetchP = (store: I.Store, qtype: I.QueryType, query: any, opts: I.FetchOpts): Promise<I.FetchResults> =>
+new Promise((resolve, reject) => {
   store.fetch(qtype, query, opts, (err, results) => {
     if (err) reject(err)
     else resolve(results)
+  })
+})
+
+const mutateP = (store: I.Store, type: I.ResultType, txn: I.Txn, versions: I.FullVersion, opts: I.MutateOptions): Promise<I.FullVersion> =>
+new Promise((resolve, reject) => {
+  store.mutate(type, txn, versions, opts, (err, versions) => {
+    if (err) return reject(err)
+    else resolve(versions)
   })
 })
 
@@ -46,7 +55,7 @@ const eachFetchMethod = async (store: I.Store, qtype: I.QueryType, query: any): 
     `${qtype} queries not supported by store`)
 
   const results: SimpleResult[] = await Promise.all([
-    fetchPromise(store, qtype, query, {}).then(({results, versions}) => ({results, versions})),
+    fetchP(store, qtype, query, {}).then(({results, versions}) => ({results, versions})),
     new Promise<SimpleResult>((resolve, reject) => {
       const rtype = registry[qtype].r
       let r: any = rtype.create()
@@ -119,7 +128,47 @@ async function assertKVResults(
   if (expectedVers != null) assert(fullVersionSatisfies(expectedVers, result.versions))
 }
 
-export default function test(createStore: () => Promise<I.Store>, teardownStore?: (store: I.Store) => void) {
+type SingleVersion = {source: I.Source, version: I.Version}
+type SingleVersionRange = {source: I.Source, version: I.VersionRange}
+
+// Convert from a version object with exactly 1 entry to a [source, version] pair
+function splitSingleVersions(versions: I.FullVersion): SingleVersion;
+function splitSingleVersions(versions: I.FullVersionRange): SingleVersionRange;
+function splitSingleVersions(versions: I.FullVersion | I.FullVersionRange): SingleVersion | SingleVersionRange {
+  const sources = Object.keys(versions)
+  assert.strictEqual(sources.length, 1)
+  const source = sources[0]
+  return {source, version: versions[source] as any}
+}
+
+const setSingle = async (store: I.Store, key: I.Key, value: I.Val): Promise<SingleVersion> => {
+  // if (typeof versions === 'function') [versions, callback] = [{}, versions]
+  const txn = new Map([[key, {type:'set', data:value}]])
+  const vs = await mutateP(store, 'resultmap', txn, {}, {})
+  return splitSingleVersions(vs)
+}
+
+const delSingle = async (store: I.Store, key: I.Key): Promise<SingleVersion> => {
+  // if (typeof versions === 'function') [versions, callback] = [{}, versions]
+  const txn = new Map([[key, {type:'rm'}]])
+  const vs = await mutateP(store, 'resultmap', txn, {}, {})
+  return splitSingleVersions(vs)
+}
+
+type SingleValue = {source: I.Source, version: I.VersionRange, value: I.Val}
+const get = async (store: I.Store, key: I.Key) => {
+  const r = await fetchP(store, 'kv', new Set([key]), {})
+  const results = r.results as Map<I.Key, I.Val>
+  assert(results.size <= 1)
+
+  const vs = splitSingleVersions(r.versions)
+  const entry = results.entries().next().value
+  assert.strictEqual(entry[0], key)
+  return {source: vs.source, version: vs.version, value: entry[1]}
+}
+
+
+export default function runTests(createStore: () => Promise<I.Store>, teardownStore?: (store: I.Store) => void) {
   describe('common tests', () => {
     beforeEach(async function() {
       const store = await createStore()
@@ -142,18 +191,45 @@ export default function test(createStore: () => Promise<I.Store>, teardownStore?
       await assertKVResults(this.store, ['doesnotexist'], [])
     })
 
-    it('can store things and return them', function(done) {
+    it('can store things and return them', async function() {
       const txn = new Map([['a', {type:'set', data:'hi there'}]])
-      this.store.mutate('resultmap', txn, {}, {}, (err: Error | null, vs?: I.FullVersion) => {
-        if (err) throw err
+      const vs = await mutateP(this.store, 'resultmap', txn, {}, {})
 
-        // The version we get back here should contain exactly 1 source with a
-        // single integer version.
-        assert.strictEqual(Object.keys(vs!).length, 1)
-        assert.strictEqual(typeof Object.values(vs!)[0], 'number')
+      // The version we get back here should contain exactly 1 source with a
+      // single integer version.
+      assert.strictEqual(Object.keys(vs!).length, 1)
+      assert.strictEqual(typeof Object.values(vs!)[0], 'number')
 
-        assertKVResults(this.store, ['a'], [['a', 'hi there']], vs!).then(done)
-      })
+      await assertKVResults(this.store, ['a'], [['a', 'hi there']], vs!)
+    })
+
+    it('allows you to delete a key', async function() {
+      const v1 = (await setSingle(this.store, 'a', 1)).version
+      const v2 = (await delSingle(this.store, 'a')).version
+      assert(v2 > v1)
+
+      const r = await get(this.store, 'a')
+      const expected: SingleValue = {source: r.source, version: {from: v2, to: v2}, value: null}
+      assert.deepStrictEqual(r, expected)
+    })
+
+    it('allows you to delete a nonexistant key', async function() {
+      const v1 = (await delSingle(this.store, 'a')).version
+      const r = await get(this.store, 'a')
+      assert.equal(r.value, null)
+      assert.strictEqual(v1, r.version.from)
+      assert.strictEqual(v1, r.version.to)
+    })
+
+    // This test relies on the full version semantics of statecraft's native stores.
+    it('returns acceptable version ranges for queries', async function() {
+      // Set in 3 different transactions so we get a document version range.
+      const {version: v1, source} = await setSingle(this.store, 'a', 1)
+      const v2 = (await setSingle(this.store, 'b', 2)).version
+      const v3 = (await setSingle(this.store, 'c', 3)).version
+
+      assert(v1 < v2 && v2 < v3)
+      await assertKVResults(this.store, ['a'], [['a', 1]], {[source]: {from:v1, to:v3}})
     })
   })
 }

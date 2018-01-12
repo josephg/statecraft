@@ -114,7 +114,10 @@ export type SubCursorCallback = Callback<{
 export interface Subscription {
   // modify(qop, newqv)
   cursorNext(opts: any, callback: SubCursorCallback): void
-  cursorAll(opts?: any, callback?: SubCursorCallback): void
+
+  cursorAll(callback?: SubCursorCallback): void
+  cursorAll(opts: any, callback?: SubCursorCallback): void
+
   isComplete(): boolean
   cancel(): void
 }

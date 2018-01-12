@@ -72,7 +72,7 @@ const storeFromSocket = (socket: net.Socket, callback: I.Callback<I.Store>) => {
       subscribe(qtype, query, opts, listener) {
         return {
           cursorNext(opts, callback) {},
-          cursorAll(opts, callback) {},
+          cursorAll(opts?: any, callback?: any) {},
           isComplete() { return true },
           cancel() {}
         }
