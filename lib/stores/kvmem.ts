@@ -18,14 +18,34 @@ const capabilities = {
   // ops: <I.OpsSupport>'none',
 }
 
-const singleStore = (data: Map<I.Key, I.Val> = new Map(),
-    source: I.Source = genSource(),
-    initialVersion: I.Version = 0
-): I.SimpleStore => {
+export interface KVMemOptions {
+  initialVersion?: I.Version,
+  source?: I.Source,
+  readonly?: boolean,
+}
+
+export interface MemStore extends I.SimpleStore {
+  // internalDidChange(type: I.ResultType, txn: I.Txn, versions: I.FullVersion, opts: I.MutateOptions): void
+
+  // Apply and notify that a change happened in the database.
+  internalDidChange(txn: I.KVTxn, preApplied?: boolean): I.Version
+}
+
+export default function singleStore(
+    _data?: Map<I.Key, I.Val>,
+    storeOpts: KVMemOptions = {}
+    // source: I.Source = genSource(),
+    // initialVersion: I.Version = 0
+): MemStore {
+  const data: Map<I.Key, I.Val> = _data == null ? new Map() : _data
   const lastModVersion = new Map<I.Key, I.Version>()
+
+  const source = storeOpts.source || genSource()
+  const initialVersion = storeOpts.initialVersion || 0
+
   let version: number = initialVersion
 
-  const store: I.SimpleStore = {
+  const store: MemStore = {
     capabilities,
     sources: [source],
     fetch(qtype, query, opts, callback) {
@@ -54,8 +74,21 @@ const singleStore = (data: Map<I.Key, I.Val> = new Map(),
       })
     },
 
+    internalDidChange(txn, preapplied = false) {
+      const fromv = version
+      const opv = ++version
+
+      for (const [k, op] of txn) lastModVersion.set(k, opv)
+      if (!preapplied) resultMap.applyMut!(data, txn)
+
+      if (this.onTxn != null) this.onTxn(source, fromv, opv, 'resultmap', txn)
+      return opv
+    },
+
     mutate(type, _txn, versions, opts, callback) {
       if (type !== 'resultmap') return callback(new err.UnsupportedTypeError())
+      if (storeOpts.readonly) return callback(new err.AccessDeniedError())
+
       const txn = _txn as I.KVTxn
 
       const expectv = versions[source] == null ? version : versions[source]
@@ -71,14 +104,7 @@ const singleStore = (data: Map<I.Key, I.Val> = new Map(),
       }
 
       // 2. Actually apply.
-      const fromv = version
-      const opv = ++version
-
-      for (const [k, op] of txn) lastModVersion.set(k, opv)
-      resultMap.applyMut!(data, txn)
-
-      if (store.onTxn != null) store.onTxn(source, fromv, opv, type, txn)
-
+      const opv = this.internalDidChange(txn, false)
       callback(null, {[source]: opv})
     },
 
@@ -86,5 +112,3 @@ const singleStore = (data: Map<I.Key, I.Val> = new Map(),
   }
   return store
 }
-
-export default singleStore

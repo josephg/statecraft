@@ -1,11 +1,15 @@
 import * as I from './types/interfaces'
-import kvStore from './stores/kvmem'
+import kvStore, {KVMemOptions} from './stores/kvmem'
 import augment from './augment'
 
 const createKVStore = (
   data: Map<I.Key, I.Val>,
-  source: I.Source,
-  initialVersion: I.Version)
-: I.Store => augment(kvStore())
+  opts: KVMemOptions)
+: I.Store => {
+  const innerStore = kvStore(data, opts)
+  const outerStore = augment(innerStore)
+  outerStore.internalDidChange = innerStore.internalDidChange.bind(innerStore)
+  return outerStore
+}
 
 export {createKVStore}
