@@ -135,7 +135,6 @@ export interface GetOpsOptions {
   //   but return what we can.
   readonly bestEffort?: boolean,
 
-
   // Options NYI:
   // - limitBytes: Limit on the amount of data to read & return. Advisory
   //   only. Will always try to make progress (that is, return at least one
@@ -196,7 +195,6 @@ export interface SimpleStore {
   readonly sources?: Source[],
 
   readonly capabilities: Capabilities,
-
 
   // fetch(qtype: 'all', query: null, opts: object, callback: FetchCallback): void
   // fetch(qtype: 'kv', query: Key[] | Set<Key>, opts: object, callback: FetchCallback): void

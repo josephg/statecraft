@@ -1,4 +1,5 @@
 import * as I from './interfaces'
+import {ErrJson} from '../err'
 
 export type Ref = string | number
 
@@ -73,7 +74,7 @@ export interface MutateResponse {
 export interface ResponseErr { // Used for fetch and mutate
   a: 'err',
   ref: Ref,
-  error: string,
+  err: ErrJson,
 }
 
 export interface SubUpdateAggregate {
@@ -110,7 +111,7 @@ export interface SubNextCallback {
 export interface SubNextErr {
   a: 'sub next err',
   ref: Ref,
-  error: string,
+  err: ErrJson,
 }
 
 

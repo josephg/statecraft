@@ -1,6 +1,6 @@
 import * as I from '../types/interfaces'
 import fieldType from '../types/fieldops'
-import * as err from '../err'
+import err from '../err'
 
 import * as fs from 'fs'
 import chokidar = require('chokidar')

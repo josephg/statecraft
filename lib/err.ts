@@ -2,8 +2,25 @@ import errno = require('errno')
 
 const create = errno.custom.createError
 
-export const SCError = create('StatecraftError')
-export const VersionTooOldError = create('VersionTooOldError', SCError)
-export const WriteConflictError = create('WriteConflictError', SCError)
-export const UnsupportedTypeError = create('UnsupportedTypeError', SCError)
-export const AccessDeniedError = create('AccessDeniedError', SCError)
+const SCError = create('StatecraftError')
+const constructors = {
+  VersionTooOldError: create('VersionTooOldError', SCError),
+  WriteConflictError: create('WriteConflictError', SCError),
+  UnsupportedTypeError: create('UnsupportedTypeError', SCError),
+  AccessDeniedError: create('AccessDeniedError', SCError),
+  InvalidDataError: create('InvalidDataError', SCError),
+}
+export default constructors
+
+export interface ErrJson {msg: string, name: string}
+
+export const errToJSON = (err: Error): ErrJson => ({msg: err.message, name: err.name})
+export const errFromJSON = (obj: ErrJson) => {
+  const Con = (constructors as {[k: string]: ErrorConstructor})[obj.name]
+  if (Con) return new Con(obj.msg)
+  else {
+    const err = new Error(obj.msg)
+    err.name = obj.name
+    return err
+  }
+}

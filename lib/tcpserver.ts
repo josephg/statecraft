@@ -5,6 +5,7 @@ import {
   snapToJSON, snapFromJSON,
   opToJSON, opFromJSON,
 } from './types/queryops'
+import errs, {errToJSON, errFromJSON} from './err'
 
 import net = require('net')
 import msgpack = require('msgpack-lite')
@@ -74,12 +75,12 @@ const serve = (reader: Readable, writer: Writable, store: I.Store) => {
         assert(store.capabilities.queryTypes.has(qtype)) // TODO: better error handling
 
         const type = queryTypes[qtype]
-        if (!type) return write({a: 'err', ref, error: 'UnknownQueryType'})
+        if (!type) return write({a: 'err', ref, err: errToJSON(new errs.InvalidDataError('Invalid query type'))})
 
         store.fetch(qtype, query, opts, (err, data) => {
           if (err) {
             console.warn('Error in fetch', err)
-            write({a: 'err', ref, error: err.message})
+            write({a: 'err', ref, err: errToJSON(err)})
           } else {
             write({
               a: 'fetch',
@@ -101,7 +102,7 @@ const serve = (reader: Readable, writer: Writable, store: I.Store) => {
 
         store.mutate(mtype, opFromJSON(type, txn), v, opts, (err, v) => {
           // console.log('mutate fired! got results')
-          if (err) return write({a:'err', ref, error: err.message})
+          if (err) return write({a:'err', ref, err: errToJSON(err)})
           else write({a: 'mutate', ref, v:v!})
         })
         break
@@ -123,7 +124,7 @@ const serve = (reader: Readable, writer: Writable, store: I.Store) => {
         assert(sub) // TODO
         const type = queryTypes[sub._qtype]
         sub.cursorNext(opts, (err, data) => {
-          if (err) return write({a: 'sub next err', ref, error: err.message})
+          if (err) return write({a: 'sub next err', ref, err: errToJSON(err)})
           // const type = registry[sub.
           else write({
             a: 'sub next',

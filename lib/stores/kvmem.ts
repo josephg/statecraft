@@ -1,7 +1,7 @@
 // This is a simple single value in-memory store.
 import * as I from '../types/interfaces'
 import {genSource} from '../util'
-import * as err from '../err'
+import err from '../err'
 import resultMap from '../types/resultmap'
 
 // const mapValueMap = <K,X,Y>(map: Map<K, X>, f: (X, K) => Y): Map<K, Y> => {

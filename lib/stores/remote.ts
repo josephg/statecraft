@@ -1,16 +1,19 @@
-
 import * as I from '../types/interfaces'
 import * as N from '../types/netmessages'
-import net = require('net')
-import msgpack = require('msgpack-lite')
-import {Readable, Writable, Duplex} from 'stream'
-import assert = require('assert')
 import {genCursorAll} from '../util'
+import {errToJSON, errFromJSON} from '../err'
+
 import {
   queryTypes, resultTypes,
   snapToJSON, snapFromJSON,
   opToJSON, opFromJSON,
 } from '../types/queryops'
+
+import net = require('net')
+import msgpack = require('msgpack-lite')
+import {Readable, Writable, Duplex} from 'stream'
+import assert = require('assert')
+
 
 const awaitHello = (reader: Readable, callback: I.Callback<N.HelloMsg>) => {
   reader.once('data', (msg: N.HelloMsg) => {
@@ -82,9 +85,9 @@ const storeFromSocket = (socket: net.Socket, callback: I.Callback<I.Store>) => {
         }
 
         case 'err': {
-          const {ref, error} = msg
+          const {ref, err} = msg
           const {callback} = takeCallback(ref)
-          callback(Error(error))
+          callback(errFromJSON(err))
           break
         }
 
@@ -131,7 +134,7 @@ const storeFromSocket = (socket: net.Socket, callback: I.Callback<I.Store>) => {
           break
         }
         case 'sub next err': {
-          const {ref, error} = msg
+          const {ref, err} = msg
 
           // Yuck.
           const sub = subByRef.get(ref)!
@@ -140,7 +143,7 @@ const storeFromSocket = (socket: net.Socket, callback: I.Callback<I.Store>) => {
           assert(cb)
           sub._nextCallback = null
 
-          cb!(Error(error))
+          cb!(errFromJSON(err))
           break
         }
         case 'sub update': {

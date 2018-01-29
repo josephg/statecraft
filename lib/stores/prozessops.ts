@@ -7,7 +7,7 @@ import {reconnecter, Event, SubCbData} from 'prozess-client'
 import assert = require('assert')
 
 import * as I from '../types/interfaces'
-import * as err from '../err'
+import err from '../err'
 import {encodeTxn, decodeTxn, decodeEvent, sendTxn} from '../prozess'
 
 // const codec = msgpack.createCodec({usemap: true})

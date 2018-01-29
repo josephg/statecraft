@@ -17,7 +17,7 @@ import fieldOps from '../types/fieldops'
 import {queryTypes} from '../types/queryops'
 
 import * as I from '../types/interfaces'
-import * as err from '../err'
+import err from '../err'
 
 const debug = debugLib('statecraft')
 const CONFIG_KEY = Buffer.from('\x01config')

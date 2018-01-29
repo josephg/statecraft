@@ -2,7 +2,7 @@
 import * as I from '../types/interfaces'
 import fieldType from '../types/fieldops'
 import {genSource} from '../util'
-import * as err from '../err'
+import err from '../err'
 
 const capabilities = {
   queryTypes: new Set<I.QueryType>(['single']),
