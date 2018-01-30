@@ -29,7 +29,7 @@ interface RemoteSub extends I.Subscription {
   _qtype: I.QueryType,
   _listener: I.SubListener,
 
-  [k: string]: any
+  // [k: string]: any
 }
 
 const storeFromSocket = (socket: net.Socket, callback: I.Callback<I.Store>) => {
@@ -66,10 +66,10 @@ const storeFromSocket = (socket: net.Socket, callback: I.Callback<I.Store>) => {
 
       switch (msg.a) {
         case 'fetch': {
-          const {ref, results, queryRun, versions} = msg
+          const {ref, results, queryRun, versions} = <N.FetchResponse>msg
           const {callback, type: qtype} = takeCallback(ref)
           const type = queryTypes[qtype]!
-          callback(null, {
+          callback(null, <I.FetchResults>{
             results: snapFromJSON(type.r, results),
             queryRun: snapFromJSON(type.q, queryRun),
             versions
@@ -77,15 +77,29 @@ const storeFromSocket = (socket: net.Socket, callback: I.Callback<I.Store>) => {
           break
         }
 
+        case 'getops': {
+          const {ref, ops, v} = <N.GetOpsResponse>msg
+          const {callback, type: qtype} = takeCallback(ref)
+          const type = queryTypes[qtype]!
+          callback(null, <I.GetOpsResult>{
+            ops: ops.map(([op, v]) => (<I.TxnWithMeta>{
+              txn: opFromJSON(type.r, op),
+              versions: v,
+            })),
+            versions: v,
+          })
+          break
+        }
+
         case 'mutate': {
-          const {ref, v} = msg
+          const {ref, v} = <N.MutateResponse>msg
           const {callback} = takeCallback(ref)
           callback(null, v)
           break
         }
 
         case 'err': {
-          const {ref, err} = msg
+          const {ref, err} = <N.ResponseErr>msg
           const {callback} = takeCallback(ref)
           callback(errFromJSON(err))
           break
@@ -170,21 +184,39 @@ const storeFromSocket = (socket: net.Socket, callback: I.Callback<I.Store>) => {
         const type = queryTypes[qtype]
         assert(type) // TODO.
 
-        const msg: N.FetchRequest = {
+        write({
           a: 'fetch', ref, qtype,
           query: snapToJSON(type.q, query),
           opts,
-        }
-        write(msg)
+        })
       },
 
       mutate(mtype, txn, versions, opts, callback) {
-        const type = resultTypes[mtype]
         const ref = nextRef++
-        assert(type)
+
+        const type = resultTypes[mtype]
+        assert(type) // TODO: proper checking.
+
         detailsByRef.set(ref, {callback, type: mtype})
 
-        write({a: 'mutate', ref, mtype, txn: opToJSON(type, txn), v: versions, opts})
+        write({a: 'mutate', ref, mtype,
+          txn: opToJSON(type, txn),
+          v: versions, opts
+        })
+      },
+
+      getOps(qtype, query, versions, opts, callback) {
+        const ref = nextRef++
+        detailsByRef.set(ref, {callback, type:qtype})
+
+        const type = queryTypes[qtype]
+        assert(type) // TODO.
+
+        write({
+          a: 'getops', ref, qtype,
+          query: snapToJSON(type.q, query),
+          v: versions, opts
+        })
       },
 
       subscribe(qtype, query, opts, listener) {
@@ -222,8 +254,6 @@ const storeFromSocket = (socket: net.Socket, callback: I.Callback<I.Store>) => {
 
         return sub
       },
-
-      getOps(qtype, query, versions, opts, callback) {},
 
       close() {
         // TODO: And terminate all pending callbacks and stuff.

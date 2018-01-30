@@ -76,8 +76,8 @@ const serve = (reader: Readable, writer: Writable, store: I.Store) => {
 
         const type = queryTypes[qtype]
         if (!type) return write({a: 'err', ref, err: errToJSON(new errs.InvalidDataError('Invalid query type'))})
-
-        store.fetch(qtype, query, opts, (err, data) => {
+        const q = snapFromJSON(type.q, query)
+        store.fetch(qtype, q, opts, (err, data) => {
           if (err) {
             console.warn('Error in fetch', err)
             write({a: 'err', ref, err: errToJSON(err)})
@@ -94,8 +94,28 @@ const serve = (reader: Readable, writer: Writable, store: I.Store) => {
         break
       }
 
+      case 'getops': {
+        const {ref, qtype, query, v, opts} = <N.GetOpsRequest>msg
+        assert(store.capabilities.queryTypes.has(qtype))
+
+        const type = queryTypes[qtype]
+        if (!type) return write({a: 'err', ref, err: errToJSON(new errs.InvalidDataError('Invalid query type'))})
+        const q = snapFromJSON(type.q, query)
+        store.getOps(qtype, q, v, opts, (err, data) => {
+          if (err) return write({a: 'err', ref, err: errToJSON(err)})
+
+          const jsonTxns = data!.ops.map(txn => (<N.NetTxnWithMeta>[
+            opToJSON(type.r, txn.txn),
+            txn.versions,
+          ]))
+          write({a: 'getops', ref, ops: jsonTxns, v: data!.versions})
+        })
+
+        break
+      }
+
       case 'mutate': {
-        const {ref, mtype, txn, v, opts} = msg
+        const {ref, mtype, txn, v, opts} = <N.MutateRequest>msg
         assert(store.capabilities.mutationTypes.has(mtype))
         const type = resultTypes[mtype]
         assert(type)
