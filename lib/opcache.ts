@@ -36,6 +36,7 @@ const opcache = (opts: OpCacheOpts): {
       ops.push({fromV, toV, txn})
       while (maxNum !== 0 && ops.length > maxNum) ops.shift()
     },
+
     getOps(qtype, query, versions, options, callback) {
       const qops = queryTypes[qtype]
       assert(qops, 'Missing qops for type ' + qtype)
@@ -70,7 +71,12 @@ const opcache = (opts: OpCacheOpts): {
         for (let i = fromidx; i < ops.length; i++) {
           const item = ops[i]
           if (to != -1 && item.toV > to) break
-          result.push({versions:{[source]: item.toV}, txn: qops.filterTxn(item.txn, query)})
+
+          // The transaction will be null if the operation doesn't match
+          // the supplied query.
+          const txn = qops.filterTxn(item.txn, query)
+          if (txn != null) result.push({versions:{[source]: item.toV}, txn: txn})
+
           vTo = item.toV
           if (limitOps > 0 && --limitOps === 0) break
         }

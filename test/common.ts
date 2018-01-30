@@ -319,25 +319,51 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
         this.v4 = (await setSingle(this.store, 'b', 4)).version
 
         this.expectedOps = [
-          {source, v:this.v1, meta:{ts:0}, txn:new Map([['a', {type:'set', data:1}]])},
-          {source, v:this.v2, meta:{ts:0}, txn:new Map([['b', {type:'set', data:2}]])},
-          {source, v:this.v3, meta:{ts:0}, txn:new Map([['a', {type:'set', data:3}]])},
-          {source, v:this.v4, meta:{ts:0}, txn:new Map([['b', {type:'set', data:4}]])},
+          {versions:{[source]: this.v1}, txn:new Map([['a', {type:'set', data:1}]])},
+          {versions:{[source]: this.v2}, txn:new Map([['b', {type:'set', data:2}]])},
+          {versions:{[source]: this.v3}, txn:new Map([['a', {type:'set', data:3}]])},
+          {versions:{[source]: this.v4}, txn:new Map([['b', {type:'set', data:4}]])},
         ]
+
+        this.allVersions = <I.FullVersionRange>{
+          [this.source]: {from: this.v1-1, to: this.v4}
+        }
       })
 
       const emptyOpsResult: I.GetOpsResult = {ops: [], versions: {}}
 
       it('returns an empty list when no versions are requested', async function() {
-        const ops = await getOpsBoth(this.store, ['a', 'b', 'c', 'd'], {})
-        assert.deepStrictEqual(ops, emptyOpsResult)
+        const result = await getOpsBoth(this.store, ['a', 'b', 'c', 'd'], {})
+        assert.deepStrictEqual(result, emptyOpsResult)
       })
 
       it('returns an empty list for closed ranges', async function() {
-        const ops = await getOpsBoth(this.store, ['a', 'b', 'c', 'd'], {[this.source]: {from:this.v1, to:this.v1}})
-        assert.deepStrictEqual(ops, emptyOpsResult)
+        const result = await getOpsBoth(this.store, ['a', 'b', 'c', 'd'], {[this.source]: {from:this.v1, to:this.v1}})
+        assert.deepStrictEqual(result, emptyOpsResult)
       })
 
+      it('gets all ops when the top range is infinite', async function() {
+        const result = await getOpsBoth(this.store, ['a', 'b'], {[this.source]: {from:this.v1-1, to:Infinity}})
+        assert.deepStrictEqual(result.versions, this.allVersions)
+        assert.deepStrictEqual(result.ops, this.expectedOps)
+      })
+
+      it('filters the operations based on the query', async function() {
+        const result = await getOpsBoth(this.store, ['a'], {[this.source]: {from:this.v1-1, to:this.v4}})
+        assert.deepStrictEqual(result.versions, this.allVersions)
+        assert.deepStrictEqual(result.ops, [this.expectedOps[0], this.expectedOps[2]])
+      })
+
+      it('filters operations based on the supplied versions', async function() {
+        const result = await getOpsBoth(this.store, ['a', 'b'], {[this.source]: {from:this.v1, to:this.v3}})
+        assert.deepStrictEqual(result.versions, <I.FullVersionRange>{
+          [this.source]: {from: this.v1, to: this.v3}
+        })
+        assert.deepStrictEqual(result.ops, [this.expectedOps[1], this.expectedOps[2]])
+      })
+
+
+      // TODO: How does the op store respond to operations which edit multiple keys?
     })
   })
 }
