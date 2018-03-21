@@ -1,31 +1,13 @@
-import createMock from './prozess-mock'
-import * as I from '../lib/types/interfaces'
-
-/*
-process.on('unhandledRejection', err => { throw err })
-
-;(async () => {
-  const client = createMock()
-  const base = await client.getVersion()
-  console.log('v', base)
-
-  console.log('op1', await client.send("hi", {
-    conflictKeys: ['a']
-  }))
-  console.log('op2', await client.send("hi", {
-    conflictKeys: ['a'],
-    targetVersion: 1 + base, // should conflict with a 1, pass with a 2.
-  }))
-  console.log('op3', await client.send("hi"))
-
-  console.log('v', await client.getVersion())
-})()*/
-
 import 'mocha'
+import fs = require('fs')
+import assert = require('assert')
+
+import * as I from '../lib/types/interfaces'
+import createMock from './prozess-mock'
+import {PClient} from 'prozess-client'
 import lmdb from '../lib/stores/lmdb'
 import augment from '../lib/augment'
 import runTests from './common'
-import fs = require('fs')
 
 const rmdir = (path: string) => {
   //console.log('rmdir path', path)
@@ -58,6 +40,33 @@ const teardown = (store: I.Store) => { // teardown. Nuke it.
   rmdir(path)
   pathOfDb.delete(store)
 }
+
+describe('prozess mock', () => {
+  beforeEach(function() {
+    this.client = createMock()
+  })
+
+  it('conflicts at the right time', async function() {
+    const client = this.client as PClient
+    const base = await client.getVersion()
+    await client.send("hi", {conflictKeys: ['a']})
+
+    try {
+      await client.send("hi", {
+        conflictKeys: ['a'],
+        targetVersion: 1 + base, // should conflict with a 1, pass with a 2.
+      })
+    } catch (e) {
+      assert(e)
+    }
+
+    // Ok like this.
+    await client.send("hi", {
+      conflictKeys: ['a'],
+      targetVersion: 2 + base, // should conflict with a 1, pass with a 2.
+    })
+  })
+})
 
 describe('lmdb on prozess', () => {
   runTests(
