@@ -143,6 +143,11 @@ async function assertKVResults(
     (qtype, q) => eachFetchMethod(store, qtype, q),
     assertEqualResults
   )
+
+  expectedVals.forEach(([k, v]) => {
+    assert.deepStrictEqual(result.results.get(k), v)
+  })
+
   if (expectedVers != null) assert(fullVersionSatisfies(expectedVers, result.versions))
 }
 
@@ -295,7 +300,7 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
       const v1 = (await setSingle(this.store, 'a', {some:'big object'})).version
       const {value, version: v2} = await getSingle(this.store, 'a', {noDocs:true})
 
-      assert(value === true || value === 1, 'Store fetched document')
+      assert(value === true || value === 1, 'Store should not fetch document')
       assert.strictEqual(v1, v2.to)
     })
 

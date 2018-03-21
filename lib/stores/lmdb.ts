@@ -66,9 +66,8 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
     const configBytes = txn.getBinary(dbi, CONFIG_KEY)
     if (configBytes == null) {
       console.log('Database was created - no config!')
-      version = 0
       txn.putBinary(dbi, CONFIG_KEY, msgpack.encode({sc_ver: 1, source}))
-      setVersion(txn, version)
+      setVersion(txn, 0)
     } else {
       const {sc_ver, source:dbSource} = msgpack.decode(configBytes)
       assert(sc_ver === 1)
@@ -87,6 +86,7 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
 
   const ready = new Promise((resolve, reject) => {
     client.subscribe(version + 1, {}, (err, results) => {
+      // console.log('catchup', results)
       if (err) {
         // Again, not sure what to do here. Eat it and continue.
         console.error('Error subscribing', err)
@@ -122,7 +122,7 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
         const results = new Map<I.Key, I.Val>()
         for (let k of query) {
           const [lastMod, doc] = rawGet(dbTxn, k)
-          results.set(k, doc)
+          results.set(k, opts.noDocs ? 1 : doc)
           maxVersion = Math.max(maxVersion, lastMod)
         }
 
@@ -131,7 +131,6 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
         callback(null, {
           results,
           queryRun: query,
-          // TODO: Loosen this version bound.
           versions: {[source]: {from: maxVersion, to: version}}
         })
       }).catch(e => process.emit('uncaughtException', e))
@@ -144,14 +143,13 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
       ready.then(() => {
         debug('mutate', txn)
 
-        // What does -1 mean? What does 0 mean? Urgh.
-        const conflictVersion = versions[source] !== 0 ? versions[source] : version
+        const expectedVersion = versions[source] == null ? version : versions[source]
 
         // First check that the transaction applies cleanly.
         const dbTxn = env.beginTxn({readOnly: true})
         for (const [k, op] of txn) {
           const [v, data] = rawGet(dbTxn, k)
-          if (conflictVersion >= 0 && v > conflictVersion) {
+          if (expectedVersion !== -1 && v > expectedVersion) {
             dbTxn.abort()
             return callback(new err.WriteConflictError('Write conflict in key ' + k))
           }
@@ -165,7 +163,8 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
         }
         dbTxn.commit()
 
-        sendTxn(client, txn, conflictVersion, {}, (err, version) => {
+        // console.log('sendTxn', txn, expectedVersion)
+        sendTxn(client, txn, version, {}, (err, version) => {
           if (err) callback(err)
           else callback(null, {[source]: version!})
           debug('mutate cb', err, version)
@@ -182,16 +181,24 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
 
       // We need to fetch ops in the range of (from, to].
       const vs = versions[source] || versions._other
-      if (!vs) return callback(null, {ops: [], versions: {}})
+      if (!vs || vs.from === vs.to) return callback(null, {ops: [], versions: {}})
 
       const {from, to} = vs
 
       client.getEvents(from + 1, to, {}, (err, data) => {
+        // console.log('client.getEvents', from+1, to, data)
         if (err) return callback(err)
 
         // Filter events by query.
-        const ops = data!.events.map(event => decodeEvent(event, source))
-        ops.forEach((data) => data.txn = qops.filterTxn(data.txn, query))
+        let ops = data!.events.map(event => decodeEvent(event, source))
+        .filter((data) => {
+          const txn = qops.filterTxn(data.txn, query)
+          if (txn == null) return false
+          else {
+            data.txn = txn
+            return true
+          }
+        })
 
         callback(null, {
           ops,
@@ -222,7 +229,9 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
 
     events.forEach(event => {
       // This is kind of a big assertion.
-      assert(newVersion === event.version - 1, 'Error: Version consistency violation. This needs debugging')
+      assert(newVersion === event.version - 1,
+        'Error: Version consistency violation. This needs debugging'
+      )
 
       // TODO: Batches.
       const txn = decodeTxn(event.data)
@@ -232,7 +241,7 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
         const oldData = rawGet(dbTxn, k)[0]
 
         const newData = fieldOps.apply(oldData, op)
-        console.log('updated key', k, 'from', oldData, 'to', newData)
+        // console.log('updated key', k, 'from', oldData, 'to', newData)
 
         // I'm leaving an empty entry in the lmdb database even if newData is
         // null so fetch will correctly report last modified versions.
@@ -245,7 +254,7 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
       newVersion = nextVersion
     })
 
-    console.log('new version', newVersion)
+    // console.log('new version', newVersion)
     setVersion(dbTxn, newVersion)
     dbTxn.commit()
 
