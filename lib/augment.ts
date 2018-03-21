@@ -18,7 +18,7 @@ const augment = (innerStore: I.SimpleStore, opts?: any): I.Store => {
     capabilities: innerStore.capabilities,
     sources: innerStore.sources,
     fetch: innerStore.fetch.bind(innerStore),
-    // catchup: innerStore.catchup ? innerStore.catchup.bind(innerStore) : undefined,
+    catchup: innerStore.catchup ? innerStore.catchup.bind(innerStore) : undefined,
     mutate: innerStore.mutate.bind(innerStore),
     close: innerStore.close ? innerStore.close.bind(innerStore) : undefined,
 
