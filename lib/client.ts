@@ -15,13 +15,24 @@ import {
 import {Readable, Writable, Duplex} from 'stream'
 import assert = require('assert')
 
+// Not using proper streams because they add about 150k of crap to the browser
+// bundle
 
-const awaitHello = (reader: Readable, callback: I.Callback<N.HelloMsg>) => {
-  reader.once('data', (msg: N.HelloMsg) => {
+export interface TinyReader {
+  onmessage?: (msg: N.SCMsg) => void
+}
+
+export interface TinyWriter {
+  write(data: N.CSMsg): void,
+  close(): void,
+}
+
+const awaitHello = (reader: TinyReader, callback: I.Callback<N.HelloMsg>) => {
+  reader.onmessage = (msg: N.SCMsg) => {
     if (msg.a !== 'hello' || msg.p !== 'statecraft') return callback(Error('Invalid hello message'))
     if (msg.pv !== 0) return callback(Error('Incompatible protocol versions'))
     callback(null, msg)
-  })
+  }
 }
 
 interface RemoteSub extends I.Subscription {
@@ -33,16 +44,17 @@ interface RemoteSub extends I.Subscription {
   // [k: string]: any
 }
 
-export default function storeFromStreams(reader: Readable, writer: Writable, callback: I.Callback<I.Store>) {
-  const write = (data: N.CSMsg) => {
-    if (writer.writable) {
-      writer.write(data)
+export default function storeFromStreams(reader: TinyReader, writer: TinyWriter, callback: I.Callback<I.Store>) {
+  // const write = (data: N.CSMsg) => {
 
-      // This is a huge hack to work around a bug in msgpack
-      // https://github.com/kawanet/msgpack-lite/issues/80
-      if ((writer as any).encoder) (writer as any).encoder.flush()
-    }
-  }
+  //   if (writer.writable) {
+  //     writer.write(data)
+
+  //     // This is a huge hack to work around a bug in msgpack
+  //     // https://github.com/kawanet/msgpack-lite/issues/80
+  //     if ((writer as any).encoder) (writer as any).encoder.flush()
+  //   }
+  // }
 
   awaitHello(reader, (err, _msg?: N.HelloMsg) => {
     if (err) return callback(err)
@@ -59,7 +71,7 @@ export default function storeFromStreams(reader: Readable, writer: Writable, cal
     }
     const subByRef = new Map<N.Ref, RemoteSub>()
 
-    reader.on('data', (msg: N.SCMsg) => {
+    reader.onmessage = msg => {
       // console.log('got SC data', msg)
 
       switch (msg.a) {
@@ -164,7 +176,7 @@ export default function storeFromStreams(reader: Readable, writer: Writable, cal
 
         default: console.error('Invalid or unknown server->client message', msg)
       }
-    })
+    }
 
     const store: I.Store = {
       capabilities: {
@@ -182,7 +194,7 @@ export default function storeFromStreams(reader: Readable, writer: Writable, cal
         const type = queryTypes[qtype]
         assert(type) // TODO.
 
-        write({
+        writer.write({
           a: 'fetch', ref, qtype,
           query: snapToJSON(type.q, query),
           opts,
@@ -197,7 +209,7 @@ export default function storeFromStreams(reader: Readable, writer: Writable, cal
 
         detailsByRef.set(ref, {callback, type: mtype})
 
-        write({a: 'mutate', ref, mtype,
+        writer.write({a: 'mutate', ref, mtype,
           txn: opToJSON(type, txn),
           v: versions, opts
         })
@@ -210,7 +222,7 @@ export default function storeFromStreams(reader: Readable, writer: Writable, cal
         const type = queryTypes[qtype]
         assert(type) // TODO.
 
-        write({
+        writer.write({
           a: 'getops', ref, qtype,
           query: snapToJSON(type.q, query),
           v: versions, opts
@@ -231,14 +243,14 @@ export default function storeFromStreams(reader: Readable, writer: Writable, cal
             assert.strictEqual(this._nextCallback, null)
             this._nextCallback = callback
 
-            write({a: 'sub next', opts, ref})
+            writer.write({a: 'sub next', opts, ref})
           },
 
           cursorAll: null as any,
 
           isComplete() { return this._isComplete },
           cancel() {
-            write({a:'sub cancel', ref})
+            writer.write({a:'sub cancel', ref})
           }
         }
         sub.cursorAll = genCursorAll(sub)
@@ -248,14 +260,14 @@ export default function storeFromStreams(reader: Readable, writer: Writable, cal
         const type = queryTypes[qtype]
         assert(type) // TODO.
 
-        write({a: 'sub create', ref, qtype, query: snapToJSON(type.q, query), opts})
+        writer.write({a: 'sub create', ref, qtype, query: snapToJSON(type.q, query), opts})
 
         return sub
       },
 
       close() {
         // TODO: And terminate all pending callbacks and stuff.
-        writer.end()
+        writer.close()
       }
     }
 
