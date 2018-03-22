@@ -1,16 +1,17 @@
-import * as I from '../types/interfaces'
-import * as N from '../types/netmessages'
-import {genCursorAll} from '../util'
-import {errToJSON, errFromJSON} from '../err'
+// This is designed to be used from both TCP clients over msgpack (+ framing)
+// and via a browser through JSON-over-websockets
+
+import * as I from './types/interfaces'
+import * as N from './types/netmessages'
+import {genCursorAll} from './util'
+import {errToJSON, errFromJSON} from './err'
 
 import {
   queryTypes, resultTypes,
   snapToJSON, snapFromJSON,
   opToJSON, opFromJSON,
-} from '../types/queryops'
+} from './types/queryops'
 
-import net = require('net')
-import msgpack = require('msgpack-lite')
 import {Readable, Writable, Duplex} from 'stream'
 import assert = require('assert')
 
@@ -32,17 +33,14 @@ interface RemoteSub extends I.Subscription {
   // [k: string]: any
 }
 
-const storeFromSocket = (socket: net.Socket, callback: I.Callback<I.Store>) => {
-  const writer = msgpack.createEncodeStream()
-  writer.pipe(socket)
-
-  const reader = msgpack.createDecodeStream()
-  socket.pipe(reader)
-
+export default function storeFromStreams(reader: Readable, writer: Writable, callback: I.Callback<I.Store>) {
   const write = (data: N.CSMsg) => {
     if (writer.writable) {
       writer.write(data)
-      ;(writer as any).encoder.flush()
+
+      // This is a huge hack to work around a bug in msgpack
+      // https://github.com/kawanet/msgpack-lite/issues/80
+      if ((writer as any).encoder) (writer as any).encoder.flush()
     }
   }
 
@@ -257,19 +255,10 @@ const storeFromSocket = (socket: net.Socket, callback: I.Callback<I.Store>) => {
 
       close() {
         // TODO: And terminate all pending callbacks and stuff.
-        socket.end()
+        writer.end()
       }
     }
 
     callback(null, store)
   })
-
-
-
-  // return store
-}
-
-export default function(port: number, host: string, callback: I.Callback<I.Store>) {
-  const socket = net.createConnection(port, host)
-  storeFromSocket(socket, callback)
 }

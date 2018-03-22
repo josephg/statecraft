@@ -2,7 +2,7 @@ import 'mocha'
 import kvStore from '../lib/stores/kvmem'
 import augment from '../lib/augment'
 import createServer from '../lib/tcpserver'
-import connectStore from '../lib/stores/remote'
+import connectStore from '../lib/stores/tcpclient'
 import runTests from './common'
 import * as I from '../lib/types/interfaces'
 
