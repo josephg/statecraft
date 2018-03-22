@@ -31,11 +31,14 @@ export default function serve(reader: Readable, writer: Writable, store: I.Store
     console.error('Invalid client', err)
   }
 
-  // Work around this bug:
-  // https://github.com/kawanet/msgpack-lite/issues/80
   const write = (data: N.SCMsg) => {
     writer.write(data)
-    ;(writer as any).encoder.flush()
+
+    // Work around this bug:
+    // https://github.com/kawanet/msgpack-lite/issues/80
+    if ((writer as any).encoder) {
+      (writer as any).encoder.flush()
+    }
   }
 
   // First we send the capabilities
@@ -69,6 +72,7 @@ export default function serve(reader: Readable, writer: Writable, store: I.Store
     // console.log('Got CS data', msg)
     switch (msg.a) {
       case 'fetch': {
+        debugger
         const {ref, qtype, query, opts} = (msg as N.FetchRequest)
         assert(store.capabilities.queryTypes.has(qtype)) // TODO: better error handling
 

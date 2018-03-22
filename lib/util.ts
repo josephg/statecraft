@@ -1,10 +1,4 @@
 import * as I from './types/interfaces'
-import {randomBytes} from 'crypto'
-
-export function genSource() {
-  const sourceBytes = randomBytes(12)
-  return sourceBytes.toString('base64')
-}
 
 function doNothing() {}
 export function genCursorAll(sub: I.Subscription) {

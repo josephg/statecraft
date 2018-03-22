@@ -1,6 +1,6 @@
 // This is a simple single value in-memory store.
 import * as I from '../types/interfaces'
-import {genSource} from '../util'
+import genSource from '../gensource'
 import err from '../err'
 import resultMap from '../types/resultmap'
 

@@ -3,8 +3,7 @@ import {
   VersionConflictError,
   Event,
 } from 'prozess-client'
-import {genSource} from '../lib/util'
-
+import genSource from '../lib/gensource'
 
 const clamp = <T>(x: T, a: T, b: T) => x < a ? a : (x > b ? b : x)
 

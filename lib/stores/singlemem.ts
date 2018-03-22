@@ -1,7 +1,7 @@
 // This is a simple single value in-memory store.
 import * as I from '../types/interfaces'
 import fieldType from '../types/fieldops'
-import {genSource} from '../util'
+import genSource from '../gensource'
 import err from '../err'
 
 const capabilities = {
