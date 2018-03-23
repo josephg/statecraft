@@ -17,11 +17,17 @@ export default function(path: string, callback: I.Callback<I.Store>) {
     reader.onmessage!(data)
   }
 
+  ws.onclose = () => {
+    console.warn('---- WEBSOCKET CLOSED ----')
+  }
+
   const writer: TinyWriter = {
     write(data) {
       if (ws.readyState === ws.OPEN) {
         console.log('sending', data)
         ws.send(JSON.stringify(data))
+      } else {
+        console.log('websocket message discarded because ws closed')
       }
     },
     close() {

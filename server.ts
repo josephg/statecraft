@@ -1,6 +1,9 @@
 import singleStore from './lib/stores/singlemem'
 import augment from './lib/augment'
 
+import lmdbStore from './lib/stores/lmdb'
+import {reconnecter} from 'prozess-client'
+
 import createWss from './lib/wsserver'
 
 import express = require('express')
@@ -14,13 +17,23 @@ app.use(express.static(`public`))
 
 const server = http.createServer(app)
 
-const store = augment(singleStore())
+const client = reconnecter(9999, 'localhost', err => {
+  if (err) throw err
 
-const wss = createWss(store, {server})
+  const store = augment(lmdbStore(client, process.argv[2] || 'cath', err => {
+    console.log('using store', store.sources)
+    const wss = createWss(store, {server})
 
-server.listen(4411, () => {
-  console.log('listening on port 4411')
+    server.listen(4411, () => {
+      console.log('listening on port 4411')
+    })
+
+  }))
 })
+
+// const store = augment(singleStore())
+// const store = augment(singleStore())
+
 
 // const sub = store.subscribe('single', true, {}, (type, txn, v) => {
 //   console.log('listener', type, v, txn)

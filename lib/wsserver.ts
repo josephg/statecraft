@@ -13,16 +13,23 @@ export default (store: I.Store, wsOpts: WebSocket.ServerOptions) => {
     })
 
     client.on("message", data => {
-      console.log('got data', data)
+      console.log('C->S', data)
       reader.push(JSON.parse(data as any))
     })
 
     const writer = new Writable({
       objectMode: true,
-      write(chunk, _, callback) {
-        client.send(JSON.stringify(chunk))
+      write(data, _, callback) {
+        console.log('S->C', data)
+        if (client.readyState === client.OPEN) {
+          client.send(JSON.stringify(data))
+        }
         callback()
       },
+    })
+
+    client.on('close', () => {
+      writer.end() // Does this help??
     })
 
     serve(reader, writer, store)
