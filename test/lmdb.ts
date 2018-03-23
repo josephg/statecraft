@@ -69,6 +69,9 @@ describe('prozess mock', () => {
 })
 
 describe('lmdb on prozess', () => {
+  it('supports two stores pointed to the same prozess backend')
+  it('catches up on missing operations from prozess')
+
   runTests(
     () => Promise.resolve(create()),
     teardown
