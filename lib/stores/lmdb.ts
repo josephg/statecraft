@@ -56,7 +56,7 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
   }
 
   const rawGet = (txn: lmdb.Txn, k: I.Key): [I.Version, any] => {
-    const bytes = txn.getBinary(dbi, k)
+    const bytes = txn.getBinaryUnsafe(dbi, k)
     return bytes == null ? [0, null] : msgpack.decode(bytes)
   }
 
@@ -104,27 +104,53 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
     ready.catch(err => onCatchup(err))
   }
 
+  // TODO: Probably cleaner to write this as iterators? This is simpler / more
+  // understandable though.
+  const getKVResults = (dbTxn: lmdb.Txn, query: Iterable<I.Key>, opts: I.FetchOpts, resultsOut: Map<I.Key, I.Val>) => {
+    let maxVersion = 0
+
+    for (let k of query) {
+      const [lastMod, doc] = rawGet(dbTxn, k)
+      resultsOut.set(k, opts.noDocs ? 1 : doc)
+      maxVersion = Math.max(maxVersion, lastMod)
+    }
+
+    return maxVersion
+  }
+
+  const getAllResults = (dbTxn: lmdb.Txn, opts: I.FetchOpts, resultsOut: Map<I.Key, I.Val>) => {
+    let maxVersion = 0
+    const cursor = new lmdb.Cursor(dbTxn, dbi)
+    let k = cursor.goToRange('\x02')
+    while (k != null) {
+      const bytes = cursor.getCurrentBinaryUnsafe()
+      const [lastMod, doc] = msgpack.decode(bytes)
+      resultsOut.set(k as string, opts.noDocs ? 1 : doc)
+      maxVersion = Math.max(maxVersion, lastMod)
+
+      k = cursor.goToNext()
+    }
+
+    return maxVersion
+  }
+
   const store: I.SimpleStore = {
     sources: [source],
     capabilities: capabilities,
 
     fetch(qtype, query, opts, callback) {
       // TODO: Allow range queries too.
-      if (/*qtype !== 'allkv' &&*/ qtype !== 'kv') return callback(new err.UnsupportedTypeError())
+      if (qtype !== 'allkv' && qtype !== 'kv') return callback(new err.UnsupportedTypeError(`${qtype} not supported by lmdb store`))
       const qops = queryTypes[qtype]
 
       ready.then(() => {
         const dbTxn = env.beginTxn({readOnly: true})
 
-        // KV txn. Query is a set of keys.
-        let maxVersion = 0
-
         const results = new Map<I.Key, I.Val>()
-        for (let k of query) {
-          const [lastMod, doc] = rawGet(dbTxn, k)
-          results.set(k, opts.noDocs ? 1 : doc)
-          maxVersion = Math.max(maxVersion, lastMod)
-        }
+        // KV txn. Query is a set of keys.
+        let maxVersion = qtype === 'kv'
+          ? getKVResults(dbTxn, query, opts, results)
+          : getAllResults(dbTxn, opts, results)
 
         dbTxn.commit()
 
