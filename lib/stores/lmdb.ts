@@ -70,8 +70,8 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
       setVersion(txn, 0)
     } else {
       const {sc_ver, source:dbSource} = msgpack.decode(configBytes)
-      assert(sc_ver === 1)
-      assert(dbSource === source)
+      assert(sc_ver === 1, 'LDMB database was set up using invalid or old statecraft version.')
+      assert(dbSource === source, `LDMB database at ${location} is invalid. Delete and restart`)
       version = decodeVersion(txn.getBinary(dbi, VERSION_KEY))
     }
     txn.commit()

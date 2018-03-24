@@ -10,15 +10,15 @@ createWSClient('/', (err, _store) => {
   console.log('got store', store)
   ;(window as any)['store'] = store
 
-  store.fetch('kv', new Set(['a', 'b']), {}, (err, result) => {
+  store.fetch('allkv', true, {}, (err, result) => {
     if (err) throw err
     console.log('store has', result)
   })
 
-  const rtype = queryTypes['kv'].r
+  const rtype = queryTypes.allkv.r
   let r = rtype.create()
 
-  const sub = store.subscribe('kv', new Set(['a', 'b']), {}, (updates, version) => {
+  const sub = store.subscribe('allkv', true, {}, (updates, version) => {
     // console.log('subscribe data', data.type, data.type === 'txns' ? data.txns : data.txn)
 
     if (updates.type === 'txns') {

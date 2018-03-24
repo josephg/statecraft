@@ -41,6 +41,11 @@ export default function serve(reader: Readable, writer: Writable, store: I.Store
     }
   }
 
+  const writeErr = (ref: N.Ref, err: Error) => {
+    console.warn('Error processing client data', err)
+    write({a: 'err', ref, err: errToJSON(err)})
+  }
+
   // First we send the capabilities
   write({
     a: 'hello',
@@ -72,17 +77,17 @@ export default function serve(reader: Readable, writer: Writable, store: I.Store
     // console.log('Got CS data', msg)
     switch (msg.a) {
       case 'fetch': {
-        debugger
         const {ref, qtype, query, opts} = (msg as N.FetchRequest)
-        assert(store.capabilities.queryTypes.has(qtype)) // TODO: better error handling
+        if (!store.capabilities.queryTypes.has(qtype)) {
+          return writeErr(ref, new errs.UnsupportedTypeError(`query type ${qtype} not supported in fetch`))
+        }
 
         const type = queryTypes[qtype]
         if (!type) return write({a: 'err', ref, err: errToJSON(new errs.InvalidDataError('Invalid query type'))})
         const q = snapFromJSON(type.q, query)
         store.fetch(qtype, q, opts, (err, data) => {
           if (err) {
-            console.warn('Error in fetch', err)
-            write({a: 'err', ref, err: errToJSON(err)})
+            writeErr(ref, err)
           } else {
             write({
               a: 'fetch',
@@ -98,13 +103,15 @@ export default function serve(reader: Readable, writer: Writable, store: I.Store
 
       case 'getops': {
         const {ref, qtype, query, v, opts} = <N.GetOpsRequest>msg
-        assert(store.capabilities.queryTypes.has(qtype))
+        if (!store.capabilities.queryTypes.has(qtype)) {
+          return writeErr(ref, new errs.UnsupportedTypeError(`query type ${qtype} not supported in getops`))
+        }
 
         const type = queryTypes[qtype]
-        if (!type) return write({a: 'err', ref, err: errToJSON(new errs.InvalidDataError('Invalid query type'))})
+        if (!type) return writeErr(ref, new errs.InvalidDataError('Invalid query type'))
         const q = snapFromJSON(type.q, query)
         store.getOps(qtype, q, v, opts, (err, data) => {
-          if (err) return write({a: 'err', ref, err: errToJSON(err)})
+          if (err) return writeErr(ref, err)
 
           const jsonTxns = data!.ops.map(txn => (<N.NetTxnWithMeta>[
             opToJSON(type.r, txn.txn),
@@ -118,13 +125,16 @@ export default function serve(reader: Readable, writer: Writable, store: I.Store
 
       case 'mutate': {
         const {ref, mtype, txn, v, opts} = <N.MutateRequest>msg
-        assert(store.capabilities.mutationTypes.has(mtype))
+        if (!store.capabilities.mutationTypes.has(mtype)) {
+          return writeErr(ref, new errs.UnsupportedTypeError(`mutation type ${mtype} not supported`))
+        }
+
         const type = resultTypes[mtype]
         assert(type)
 
         store.mutate(mtype, opFromJSON(type, txn), v, opts, (err, v) => {
           // console.log('mutate fired! got results')
-          if (err) return write({a:'err', ref, err: errToJSON(err)})
+          if (err) return writeErr(ref, err)
           else write({a: 'mutate', ref, v:v!})
         })
         break
@@ -135,7 +145,7 @@ export default function serve(reader: Readable, writer: Writable, store: I.Store
         const sub = store.subscribe(qtype, query, opts, subListener) as SubPlus
         sub._qtype = qtype // Kinda hacky, but eh its fine. I own the sub here anyway.
         sub._ref = ref
-        assert(!subForRef.has(ref))
+        assert(!subForRef.has(ref)) // TODO
         subForRef.set(ref, sub)
         break
       }

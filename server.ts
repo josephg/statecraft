@@ -20,7 +20,7 @@ const server = http.createServer(app)
 const client = reconnecter(9999, 'localhost', err => {
   if (err) throw err
 
-  const store = augment(lmdbStore(client, process.argv[2] || 'cath', err => {
+  const store = augment(lmdbStore(client, process.argv[2] || 'testdb', err => {
     console.log('using store', store.sources)
     const wss = createWss(store, {server})
 

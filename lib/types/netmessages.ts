@@ -44,13 +44,13 @@ export interface SubCreate {
 
 export interface SubNext {
   a: 'sub next',
-  ref: Ref,
+  ref: Ref, // Ref of subscription
   opts: any,
 }
 
 export interface SubCancel {
   a: 'sub cancel',
-  ref: Ref,
+  ref: Ref, // Ref of subscription
 }
 
 export type CSMsg =

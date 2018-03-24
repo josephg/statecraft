@@ -1,5 +1,5 @@
 import * as I from './types/interfaces'
-import serve from './serve'
+import serve from './server'
 
 import net = require('net')
 import msgpack = require('msgpack-lite')
