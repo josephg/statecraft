@@ -181,7 +181,9 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
           }
 
           try {
-            fieldOps.checkOp!(op, data)
+            if (fieldOps.checkOp) {
+              fieldOps.checkOp(op, fieldOps.create(data))
+            }
           } catch (e) {
             dbTxn.abort()
             return callback(e)
@@ -264,7 +266,7 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
       const nextVersion = event.version + event.batch_size - 1
 
       for (const [k, op] of txn) {
-        const oldData = rawGet(dbTxn, k)[0]
+        const oldData = fieldOps.create(rawGet(dbTxn, k)[0], op)
 
         const newData = fieldOps.apply(oldData, op)
         // console.log('updated key', k, 'from', oldData, 'to', newData)
