@@ -1,7 +1,7 @@
 import * as I from '../lib/types/interfaces'
 import 'mocha'
 import assert = require('assert')
-import {queryTypes} from '../lib/types/queryops'
+import {queryTypes, getQueryData} from '../lib/types/queryops'
 
 const assertThrows = async (block: () => Promise<void>, errType?: string) => {
   try {
@@ -12,30 +12,6 @@ const assertThrows = async (block: () => Promise<void>, errType?: string) => {
   }
   throw Error('Block did not throw')
 }
-
-const fetchP = (store: I.Store, qtype: I.QueryType, query: any, opts: I.FetchOpts): Promise<I.FetchResults> =>
-  new Promise((resolve, reject) => {
-    store.fetch(qtype, query, opts, (err, results) => {
-      if (err) reject(err)
-      else resolve(results)
-    })
-  })
-
-const mutateP = (store: I.Store, type: I.ResultType, txn: I.Txn, versions: I.FullVersion, opts: I.MutateOptions): Promise<I.FullVersion> =>
-  new Promise((resolve, reject) => {
-    store.mutate(type, txn, versions, opts, (err, versions) => {
-      if (err) return reject(err)
-      else resolve(versions)
-    })
-  })
-
-const getOpsP = (store: I.Store, qtype: I.QueryType, query: any, versions: I.FullVersionRange, opts: I.GetOpsOptions): Promise<I.GetOpsResult> =>
-  new Promise((resolve, reject) => {
-    store.getOps(qtype, query, versions, opts, (err, results) => {
-      if (err) return reject(err)
-      else resolve(results!)
-    })
-  })
 
 type SimpleResult = {
   results: any,
@@ -68,37 +44,47 @@ const assertEqualResults = (actual: SimpleResult, expected: SimpleResult, strict
 }
 
 // Fetch using fetch() and through subscribe.
-const eachFetchMethod = async (store: I.Store, qtype: I.QueryType, query: any): Promise<SimpleResult> => {
-  assert(store.capabilities.queryTypes.has(qtype),
+const eachFetchMethod = async (store: I.Store, query: I.Query): Promise<SimpleResult> => {
+  const qtype = query.type
+  assert(store.storeInfo.capabilities.queryTypes.has(qtype),
     `${qtype} queries not supported by store`)
 
   const results: SimpleResult[] = await Promise.all([
-    fetchP(store, qtype, query, {}).then(({results, versions}) => ({results, versions})),
-    new Promise<SimpleResult>((resolve, reject) => {
+    store.fetch(query).then(({results, versions}) => ({results, versions})),
+    // new Promise<SimpleResult>((resolve, reject) => {
+    (async () => {
       const rtype = queryTypes[qtype].r
       let r: any = rtype.create()
 
-      const sub = store.subscribe(qtype, query, {supportedTypes: new Set()}, (updates, resultingVersion, _s) => {
+      const sub = store.subscribe(query, {supportedTypes: new Set()}, (update, _s) => {
         assert.strictEqual(sub, _s)
         // console.log('subscribe listener')
-        if (updates.type === 'txns') {
-          updates.txns.forEach(txn => rtype.applyMut!(r, txn.txn))
-        } else {
-          assert.strictEqual(updates.type, 'aggregate')
-          rtype.applyMut!(r, updates.txn)
+
+        if (update.replace) {
+          // Only supporting kv for now.
+          const q = update.queryChange
+          if (q == null) throw Error('Invalid update')
+          else if (q.type === 'allkv' || q.type === 'single') {
+            r = update.replace
+          } else if (q.type === 'kv') {
+            for (const k of q.q) {
+              const val = update.replace.get(k)
+              if (val == null) r.delete(k)
+              else r.set(k, val)
+            }
+
+          } //else throw Error('Not supported query replacement type ' + q.type)
         }
+
+        update.txns.forEach(txn => rtype.applyMut!(r, txn.txn))
 
         // TODO: And update the versions?
       })
 
-      sub.cursorAll(null, (err, status) => {
-        if (err) return reject(err)
-
-        const {activeQuery, activeVersions} = status!
-        assert.deepStrictEqual(activeQuery, query)
-        resolve({results: r, versions: activeVersions})
-      })
-    })
+      const {activeQuery, activeVersions} = await sub.cursorAll()
+      assert.deepStrictEqual(activeQuery, query)
+      return {results: r, versions: activeVersions}
+    })()
   ])
 
   // console.log('r fetch', results[0])
@@ -110,18 +96,18 @@ const eachFetchMethod = async (store: I.Store, qtype: I.QueryType, query: any): 
 async function runBothKVQueries<T>(
     store: I.Store,
     keys: I.KVQuery,
-    fn: (qtype: I.QueryType, q: any) => Promise<T>,
+    fn: (q: I.Query) => Promise<T>,
     checkEq: (a: T, b: T) => void): Promise<T> {
 
-  assert(store.capabilities.queryTypes.has('kv'))
+  assert(store.storeInfo.capabilities.queryTypes.has('kv'))
 
   // TODO: Reintroduce sorted kv ranges. For now we'll just do a KV query.
 
   const promises = (['kv'] as I.QueryType[])
-  .filter(qtype => store.capabilities.queryTypes.has(qtype))
+  .filter(qtype => store.storeInfo.capabilities.queryTypes.has(qtype))
   .map((qtype) => {
     const query = queryTypes[qtype].q.fromKVQuery!(keys)
-    return fn(qtype, query)
+    return fn({type: qtype, q: query} as I.Query)
   }).filter(x => x != null)
 
   const vals = await Promise.all(promises)
@@ -140,9 +126,11 @@ async function assertKVResults(
     expectedVers?: I.FullVersion | I.FullVersionRange) {
 
   const result = await runBothKVQueries(store, new Set(keys),
-    (qtype, q) => eachFetchMethod(store, qtype, q),
+    (query) => eachFetchMethod(store, query),
     assertEqualResults
   )
+
+  // console.log('akv', result)
 
   expectedVals.forEach(([k, v]) => {
     assert.deepStrictEqual(result.results.get(k), v)
@@ -155,7 +143,7 @@ const getOpsBoth = (store: I.Store, keys: I.Key[], versions: I.FullVersionRange,
   return runBothKVQueries(
     store,
     new Set(keys),
-    (qtype, q) => getOpsP(store, qtype, q, versions, opts),
+    (query) => store.getOps(query, versions, opts),
     assert.deepStrictEqual
   )
 }
@@ -176,37 +164,40 @@ function splitSingleVersions(versions: I.FullVersion | I.FullVersionRange): Sing
 const setSingle = async (store: I.Store, key: I.Key, value: I.Val, versions: I.FullVersion = {}): Promise<SingleVersion> => {
   // if (typeof versions === 'function') [versions, callback] = [{}, versions]
   const txn = new Map([[key, {type:'set', data:value}]])
-  const vs = await mutateP(store, 'resultmap', txn, versions, {})
+  const vs = await store.mutate('resultmap', txn, versions, {})
   return splitSingleVersions(vs)
 }
 
 const delSingle = async (store: I.Store, key: I.Key): Promise<SingleVersion> => {
   // if (typeof versions === 'function') [versions, callback] = [{}, versions]
   const txn = new Map([[key, {type:'rm'}]])
-  const vs = await mutateP(store, 'resultmap', txn, {}, {})
+  const vs = await store.mutate('resultmap', txn, {}, {})
   return splitSingleVersions(vs)
 }
 
 type SingleValue = {source: I.Source, version: I.VersionRange, value: I.Val}
 const getSingle = async (store: I.Store, key: I.Key, opts?: I.FetchOpts) => {
-  const r = await fetchP(store, 'kv', new Set([key]), opts || {})
+  const r = await store.fetch({type:'kv', q:new Set([key])}, opts)
   const results = r.results as Map<I.Key, I.Val>
   assert(results.size <= 1)
 
   // console.log('r', results.entries().next().value[1])
   const vs = splitSingleVersions(r.versions)
   const entry = results.entries().next().value
-  assert.strictEqual(entry[0], key)
-  return {source: vs.source, version: vs.version, value: entry[1]}
+  if (entry != null) assert.strictEqual(entry[0], key)
+  return {source: vs.source, version: vs.version, value: entry ? entry[1] : null}
 }
 
 
 const getVersionForKeys = async (store: I.Store, _keys: I.Key[] | I.Key): Promise<SingleVersionRange> => {
   const keys = Array.isArray(_keys) ? new Set(_keys) : new Set([_keys])
-  const {versions} = await fetchP(store, 'kv', keys, {noDocs:true})
+  const {versions} = await store.fetch({type:'kv', q:keys}, {noDocs:true})
   return splitSingleVersions(versions)
 }
 
+interface Context extends Mocha.ITestCallbackContext {
+  store: I.Store
+}
 
 export default function runTests(createStore: () => Promise<I.Store>, teardownStore?: (store: I.Store) => void) {
   describe('common tests', () => {
@@ -233,7 +224,7 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
 
     it('can store things and return them', async function() {
       const txn = new Map([['a', {type:'set', data:'hi there'}]])
-      const vs = await mutateP(this.store, 'resultmap', txn, {}, {})
+      const vs = await this.store.mutate('resultmap', txn, {}, {})
 
       // The version we get back here should contain exactly 1 source with a
       // single integer version.
@@ -306,6 +297,41 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
 
 
     it('supports conflicting read keys') // but NYI.
+
+    describe('object model', () => {
+      it('a document that was never created does not appear in a kv result set', async function() {
+        const store = (this as Context).store
+        if (!store.storeInfo.capabilities.queryTypes.has('kv')) this.skip()
+
+
+        const result = await store.fetch({type:'kv', q:new Set(['x'])})
+        assert(!result.results.has('x'))
+      })
+
+      it('a document with value null does not appear in a kv result set', async function() {
+        const store = (this as Context).store
+        if (!store.storeInfo.capabilities.queryTypes.has('kv')) this.skip()
+
+        await setSingle(store, 'x', 123)
+        await setSingle(store, 'x', null)
+
+        await setSingle(store, 'y', 321)
+        await delSingle(store, 'y')
+
+        const result = await store.fetch({type:'kv', q:new Set(['x', 'y'])})
+        assert.strictEqual(result.results.size, 0)
+      })
+
+      it('a document which was made null by an OT operation does not appear in kv results')
+
+
+      it('allows operations to be submitted against missing documents. Apply gets snapshot: null')
+      it('transforms correctly if two operations have identical create arguments')
+      it('allows two concurrent operations with the same create argument to mutually succeed')
+      it('ignores create arguments if the document exists')
+      it('transforms with different create parameters conflict')
+
+    })
 
     describe('skv', () => {
       it('supports subscribing to a range')

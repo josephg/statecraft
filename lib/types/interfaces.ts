@@ -2,7 +2,7 @@
 // allkv: Query all key-values in a kv database. Similar to single, but enforces kv.
 // kv: Query with a set of keys, return corresponding values.
 // sortedkv: Query set of ranges. return kv map with contained values
-export type QueryType = 'single' | 'allkv' | 'kv' | 'kvranges'
+export type QueryType = 'single' | 'allkv' | 'kv' //| 'kvranges'
 // TODO: consider renaming resultmap to kv.
 export type ResultType = 'single' | 'resultmap'
 
@@ -24,6 +24,29 @@ export type FullVersionRange = {
   [s: string]: VersionRange
 }
 
+// Wrapping single and allkv like this is sort of dumb, but it works better
+// with TS type checks.
+export type Query = {type: 'single' | 'allkv'} | {
+  type: 'kv',
+  q: KVQuery,
+} /*| {
+  type: 'kvranges',
+  q: void // TODO
+}*/
+
+// This is an internal type. Its sort of gross that it exists. I think
+// eventually I'd like to move to using a single "empty" query type that
+// completed queries end up at.
+export type QueryData = KVQuery | boolean
+
+// export type Result = {
+//   type: 'single',
+//   d: any
+// } | {
+//   type: 'resultmap',
+//   d: Map<Key, Val>
+// }
+
 export interface SingleOp {
   readonly type: string,
   readonly data?: any
@@ -39,33 +62,31 @@ export type KVTxn = Map<Key, Op>
 export type Txn = SingleTxn | KVTxn
 export type TxnWithMeta = {versions: FullVersion, txn: Txn}
 
-
 export type FetchResults = {
   // results: Map<Key, Val>,
   results: any, // Dependant on query.
-  queryRun: any,
+  queryRun: Query,
   versions: FullVersionRange, // Range across which version is valid.
 }
 
-export type Callback<T> = (err: Error | null, results?: T) => void
+// export type Callback<T> = (err: Error | null, results?: T) => void
 
 export type FetchOpts = {
   noDocs?: boolean // Don't actually return any data. Useful for figuring out the version. Default: false
 }
-export type FetchCallback = Callback<FetchResults>
+// export type FetchCallback = Callback<FetchResults>
 
 
-export type CatchupResults = {
-  type: 'txns',
-  queryRun: any,
-  versions: FullVersionRange, // Resultant version post catchup.
-  txns: TxnWithMeta[],
-} | {
-  type: 'aggregate',
-  queryRun: any,
-  versions: FullVersionRange, // Resultant version post catchup.
-  txn: Txn,
-} | null // Null when no results are returned.
+export type CatchupData = {
+  // This feels overcomplicated. The problem is that catchup isn't always
+  // possible, so sometimes you just gotta send a diff with new documents in it;
+  // and you have no idea how you got there.
+  queryChange: Query | null,
+  resultingVersions: FullVersionRange, // This should be a diff as well. Maybe rename it?
+
+  replace?: Map<Key, Val> | any, // Replace the results in queryRun with this, if it exists
+  txns: TxnWithMeta[], // ... then apply txns.
+}
 
 export interface SubscribeOpts {
   // Supported client-side operation types. Also forwarded to getOps.
@@ -109,16 +130,14 @@ export interface CatchupOpts {
   readonly limitBytes?: number,
 }
 
-export type SubCursorCallback = Callback<{
-  activeQuery: any,
+export type SubCursorResult = {
+  activeQuery: Query,
   activeVersions: FullVersionRange,
-}>
+}
 export interface Subscription {
   // modify(qop, newqv)
-  cursorNext(opts: any, callback: SubCursorCallback): void
-
-  cursorAll(callback?: SubCursorCallback): void
-  cursorAll(opts: any, callback?: SubCursorCallback): void
+  cursorNext(opts?: any): Promise<SubCursorResult>
+  cursorAll(opts?: any): Promise<SubCursorResult>
 
   isComplete(): boolean
   cancel(): void
@@ -165,9 +184,9 @@ export interface Capabilities {
   // readonly ops:OpsSupport,
 }
 
-export type FetchFn = (qtype: QueryType, query: any, opts: FetchOpts, callback: FetchCallback) => void
-export type GetOpsFn = (qtype: QueryType, query: any, versions: FullVersionRange, opts: GetOpsOptions, callback: Callback<GetOpsResult>) => void
-export type CatchupFn = (qtype: QueryType, query: any, opts: CatchupOpts, callback: Callback<CatchupResults>) => void
+export type FetchFn = (q: Query, opts?: FetchOpts) => Promise<FetchResults>
+export type GetOpsFn = (q: Query, versions: FullVersionRange, opts?: GetOpsOptions) => Promise<GetOpsResult>
+export type CatchupFn = (q: Query, opts: CatchupOpts) => Promise<CatchupData>
 // The updates argument here could either work as
 //  {txn, v:fullrange}[]
 // or
@@ -175,32 +194,38 @@ export type CatchupFn = (qtype: QueryType, query: any, opts: CatchupOpts, callba
 // Its inconsistent how it is now, but this also makes it much more convenient
 // to aggregate.
 
-export type SubUpdate = {
-  type: 'txns',
-  txns: TxnWithMeta[], // Resulting version can be derived from this.
-} | {
-  type: 'aggregate',
-  txn: Txn,
-  versions: FullVersionRange,
-}
-export type SubListener = (updates: SubUpdate, resultingVersion: FullVersionRange, s: Subscription) => void
-export type SubscribeFn = (qtype: QueryType, query: any, opts: SubscribeOpts, listener: SubListener) => Subscription
-export type MutateFn = (type: ResultType, txn: Txn, versions: FullVersion, opts: MutateOptions, callback: Callback<FullVersion>) => void
+// export type SubUpdate = {
+//   type: 'txns',
+//   txns: TxnWithMeta[], // Resulting version can be derived from this.
+// } | {
+//   type: 'aggregate',
+//   txn: Txn,
+//   versions: FullVersionRange,
+// }
+export type SubListener = (updates: CatchupData, s: Subscription) => void
+export type SubscribeFn = (q: Query, opts: SubscribeOpts, listener: SubListener) => Subscription
+
+// TODO: Consider wrapping ResultType + txn in an object like I did with Query.
+export type MutateFn = (type: ResultType, txn: Txn, versions?: FullVersion, opts?: MutateOptions) => Promise<FullVersion>
 
 export type TxnListener = (source: Source, fromV: Version, toV: Version, type: ResultType, txn: Txn) => void
 
-export interface SimpleStore {
+
+export interface StoreInfo {
   // If there's one, and its available.
   // readonly source?: Source,
   readonly sources?: Source[],
 
   readonly capabilities: Capabilities,
 
-  // fetch(qtype: 'all', query: null, opts: object, callback: FetchCallback): void
-  // fetch(qtype: 'kv', query: Key[] | Set<Key>, opts: object, callback: FetchCallback): void
-  // fetch(qtype: 'sortedkv', query: RangeOp, opts: object, callback: FetchCallback): void
+  // And ideally, recursive querying support.
+  [k: string]: any
+}
 
-  // fetch(qtype: QueryType, query: any, opts: object, callback: FetchCallback): void
+export interface SimpleStore {
+  readonly storeInfo: StoreInfo, // TODO: Should this be a promise?
+
+  // (q: Query, opts?: FetchOpts) => Promise<FetchResults>
   readonly fetch: FetchFn,
 
   // Modify the db. txn is a map from key => {type, data}. versions is just source => v.

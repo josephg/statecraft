@@ -1,13 +1,13 @@
 import * as I from '../types/interfaces'
-import * as N from '../types/netmessages'
+import * as N from '../net/netmessages'
 import storeFromStreams, {
   TinyReader, TinyWriter
-} from '../client'
+} from '../net/client'
 
 import net = require('net')
 import msgpack = require('msgpack-lite')
 
-export default function(port: number, host: string, callback: I.Callback<I.Store>) {
+export default function(port: number, host: string): Promise<I.Store> {
   const socket = net.createConnection(port, host)
 
   const writer: TinyWriter = {
@@ -32,5 +32,5 @@ export default function(port: number, host: string, callback: I.Callback<I.Store
     reader.onmessage!(msg as any as N.SCMsg)
   })
 
-  storeFromStreams(reader, writer, callback)
+  return storeFromStreams(reader, writer)
 }

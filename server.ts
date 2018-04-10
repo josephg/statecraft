@@ -4,10 +4,12 @@ import augment from './lib/augment'
 import lmdbStore from './lib/stores/lmdb'
 import {reconnecter} from 'prozess-client'
 
-import createWss from './lib/wsserver'
+import createWss from './lib/net/wsserver'
 
 import express = require('express')
 import http = require('http')
+
+process.on('unhandledRejection', err => { throw err })
 
 const app = express()
 
@@ -17,18 +19,17 @@ app.use(express.static(`public`))
 
 const server = http.createServer(app)
 
-const client = reconnecter(9999, 'localhost', err => {
+const client = reconnecter(9999, 'localhost', async err => {
   if (err) throw err
 
-  const store = augment(lmdbStore(client, process.argv[2] || 'testdb', err => {
-    console.log('using store', store.sources)
-    const wss = createWss(store, {server})
+  const store = augment(await lmdbStore(client, process.argv[2] || 'testdb'))
 
-    server.listen(4411, () => {
-      console.log('listening on port 4411')
-    })
+  console.log('using store', store.storeInfo.sources)
+  const wss = createWss(store, {server})
 
-  }))
+  server.listen(4411, () => {
+    console.log('listening on port 4411')
+  })
 })
 
 // const store = augment(singleStore())

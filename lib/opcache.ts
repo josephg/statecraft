@@ -1,6 +1,6 @@
 import * as I from './types/interfaces'
 import * as err from './err'
-import {queryTypes} from './types/queryops'
+import {queryTypes, getQueryData} from './types/queryops'
 
 import binsearch = require('binary-search')
 import assert = require('assert')
@@ -37,7 +37,8 @@ const opcache = (opts: OpCacheOpts): {
       while (maxNum !== 0 && ops.length > maxNum) ops.shift()
     },
 
-    getOps(qtype, query, versions, options, callback) {
+    getOps(query, versions, options = {}) {
+      const qtype = query.type
       const qops = queryTypes[qtype]
       assert(qops, 'Missing qops for type ' + qtype)
 
@@ -74,7 +75,7 @@ const opcache = (opts: OpCacheOpts): {
 
           // The transaction will be null if the operation doesn't match
           // the supplied query.
-          const txn = qops.filterTxn(item.txn, query)
+          const txn = qops.filterTxn(item.txn, getQueryData(query))
           if (txn != null) result.push({versions:{[source]: item.toV}, txn: txn})
 
           vTo = item.toV
@@ -85,7 +86,7 @@ const opcache = (opts: OpCacheOpts): {
         if (limitOps === 0) break
       }
 
-      return callback(null, {ops: result, versions: vOut})
+      return Promise.resolve({ops: result, versions: vOut})
     },
   }
 }

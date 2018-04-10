@@ -15,30 +15,32 @@ const singleStore = (initialValue: any = null, source: I.Source = genSource(), i
   let data = initialValue
 
   const store: I.SimpleStore = {
-    capabilities,
-    sources: [source],
-    fetch(qtype, query, opts, callback) {
-      if (qtype !== 'single') return callback(new err.UnsupportedTypeError())
+    storeInfo: {
+      capabilities,
+      sources: [source]
+    },
+    fetch(query, opts) {
+      if (query.type !== 'single') return Promise.reject(new err.UnsupportedTypeError())
 
-      callback(null, {
+      return Promise.resolve({
         results: data,
         queryRun: query,
         versions: {[source]: {from:version, to:version}},
       })
     },
 
-    mutate(type, txn, versions, opts, callback) {
-      if (type !== 'single') return callback(new err.UnsupportedTypeError())
+    mutate(type, txn, versions, opts) {
+      if (type !== 'single') return Promise.reject(new err.UnsupportedTypeError())
       const op = txn as I.Op
 
-      const expectv = versions[source]
-      if (expectv != null && expectv < version) return callback(new err.VersionTooOldError())
+      const expectv = versions && versions[source]
+      if (expectv != null && expectv < version) return Promise.reject(new err.VersionTooOldError())
 
       if (op) data = fieldType.apply(data, op)
       const opv = ++version
 
       store.onTxn && store.onTxn(source, opv - 1, opv, type, op)
-      callback(null, {[source]: opv})
+      return Promise.resolve({[source]: opv})
     },
 
     close() {},

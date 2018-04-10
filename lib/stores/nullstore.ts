@@ -5,24 +5,26 @@ const nullstore: I.Store = {
   // We don't need a source; we have no data.
   //
   // It might make sense to add a dummy hard-coded source name here - not sure.
-  sources: [],
+  storeInfo: {
+    sources: [],
 
-  capabilities: {
-    queryTypes: new Set(),
-    mutationTypes: new Set(),
+    capabilities: {
+      queryTypes: new Set(),
+      mutationTypes: new Set(),
+    },
   },
 
-  fetch(qtype, query, opts, callback) {
-    callback(new err.UnsupportedTypeError('null store does not support querying'))
+  fetch(query, opts) {
+    return Promise.reject(new err.UnsupportedTypeError('null store does not support querying'))
   },
 
-  mutate(mtype, txn, versions, opts, callback) {
-    callback(new err.UnsupportedTypeError('null store does not support mutation'))
+  mutate(mtype, txn, versions, opts) {
+    return Promise.reject(new err.UnsupportedTypeError('null store does not support mutation'))
   },
 
-  getOps(qtype, query, versions, opts, callback) {
+  getOps(query, versions, opts) {
     // TODO: Alternate: Return empty getOps result.
-    callback(new err.UnsupportedTypeError('null store does not support operations'))
+    return Promise.reject(new err.UnsupportedTypeError('null store does not support operations'))
   },
 
   subscribe() {

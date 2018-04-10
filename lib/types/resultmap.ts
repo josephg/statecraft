@@ -2,6 +2,10 @@ import {ResultOps} from './type'
 import * as I from './interfaces'
 import fieldOps from './fieldops'
 
+// This is interesting because there's sort of 3 levels going on here:
+//
+// - A result snapshot is a kv store, and an operation is a transaction
+// -
 const type: ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
   name: 'resultmap',
 
@@ -13,10 +17,10 @@ const type: ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
     for (var [k, docop] of op) {
       const oldval = snap.get(k)
       const newval = fieldOps.apply(oldval, docop)
-      // I'm actually going to leave nulls in the map where docs were removed.
-      // When snapshots are turned into self-updates we need to differentiate
-      // between 'no-change' and 'removed'. Its a bit of a hack though.
-      snap.set(k, newval == null ? null : newval)
+
+      // Statecraft considers null / undefined to be the same as a document not existing.
+      if (newval == null) snap.delete(k)
+      else snap.set(k, newval)
     }
   },
 
@@ -24,14 +28,6 @@ const type: ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
     const newdata = new Map<I.Key, I.Val>(snap)
     type.applyMut!(newdata, op)
     return newdata
-  },
-
-  asOp(snap) {
-    const op = new Map<I.Key, I.Op>()
-    for (const [k, val] of snap) {
-      op.set(k, (val == null) ? {type:'rm'} : {type:'set', data:val})
-    }
-    return op
   },
 
   composeMut(txn, other) {

@@ -1,9 +1,9 @@
 import * as I from './types/interfaces'
-import {queryTypes} from './types/queryops'
+import {queryTypes, wrapQuery, getQueryData} from './types/queryops'
 import fieldOps from './types/fieldops'
 import {QueryOps} from './types/type'
 import {supportedTypes as localTypes} from './types/registry'
-import {genCursorAll} from './util'
+// import {genCursorAll} from './util'
 
 import assert = require('assert')
 
@@ -21,37 +21,27 @@ interface Sub extends I.Subscription {
 function catchupFnForStore(store: I.SimpleStore, getOps: I.GetOpsFn): I.CatchupFn {
   if (store.catchup) return store.catchup
 
-  const runFetch = (qtype: I.QueryType, query: any, opts: I.CatchupOpts, callback: I.Callback<I.CatchupResults>) => {
-    store.fetch(qtype, query, {}, (err, r) => {
-      if (err) return callback(err)
-      const {queryRun, results, versions} = r!
-
-      const txn = queryTypes[qtype].r.asOp(results)
-      callback(null, {type:'aggregate', queryRun, versions, txn})
-    })
+  const runFetch: I.CatchupFn = async (query, opts) => {
+    const {queryRun, results, versions} = await store.fetch(query, {})
+    return {queryChange: queryRun, resultingVersions: versions, replace: results, txns: []}
   }
 
-  const runGetOps = (qtype: I.QueryType, query: any, opts: I.CatchupOpts, callback: I.Callback<I.CatchupResults>) => {
+  const runGetOps: I.CatchupFn = async (query, opts) => {
     const versions: I.FullVersionRange = {_other: {from:0, to: -1}}
-    const {knownAtVersions} = opts
+
+    const knownAtVersions = opts.knownAtVersions
     if (knownAtVersions) for (const source in knownAtVersions) {
       versions[source] = {from:knownAtVersions[source], to: -1}
     }
-    getOps(qtype, query, versions, {bestEffort: opts.bestEffort}, (err, r) => {
-      if (err) return callback(err)
-      const {ops, versions} = r!
-      callback(null, {type: 'txns', queryRun: query, versions, txns: ops})
-    })
+
+    const {ops, versions: opVersions} = await getOps(query, versions, {bestEffort: opts.bestEffort})
+    return {queryChange: query, resultingVersions: opVersions, txns: ops}
   }
 
-  return (qtype, query, opts, callback) => {
+  return (query, opts) => {
     // This is pretty sparse right now. It might make sense to be a bit fancier
     // and call getOps after fetching or something like that.
-    if (opts.noAggregation) {
-      runGetOps(qtype, query, opts, callback)
-    } else {
-      runFetch(qtype, query, opts, callback)
-    }
+    return (opts && opts.noAggregation) ? runGetOps(query, opts) : runFetch(query, opts)
   }
 }
 
@@ -67,9 +57,10 @@ export default class SubGroup {
     for (const sub of this.allSubs) sub._onOp(source, toV, type, txn)
   }
 
-  create(qtype: I.QueryType, query: any, opts: I.SubscribeOpts, listener: I.SubListener): I.Subscription {
+  create(query: I.Query, opts: I.SubscribeOpts, listener: I.SubListener): I.Subscription {
     const self = this
 
+    const qtype = query.type
     const qops = queryTypes[qtype]
     assert(qops)
 
@@ -90,7 +81,7 @@ export default class SubGroup {
     // query are valid everywhere.
     const activeVersions: I.FullVersionRange = {}
 
-    let pendingQuery = qops.q.create(query)
+    let pendingQuery = qops.q.create(getQueryData(query))
     type BufferItem = {
       source: I.Source, version: I.Version, txn: I.Txn
     }
@@ -104,12 +95,13 @@ export default class SubGroup {
 
     let knownAtV: I.FullVersion = opts.knownAtVersions || {}
 
-    // let waitingFetch = false
-
-    const catchup = (query: any, catchupOpts: I.CatchupOpts, callback: I.Callback<I.CatchupResults>) => {
-      if (opts.noCatchup) return callback(null, null)
-      return self.catchup(qtype, query, catchupOpts, callback)
+    if (opts.noCatchup) {
+      throw Error('Not implemented')
+      // Something like this...
+      // [activeQuery, pendingQuery] = [pendingQuery, activeQuery]
     }
+
+    // let waitingFetch = false
 
     const sub: Sub = {
       // cancelled: false,
@@ -127,25 +119,34 @@ export default class SubGroup {
         if (activeTxn != null) {
           activeVersions[source] = {from: version, to: version}
           // Its pretty awkward sending just a single item in an array like this.
-          listener({type: 'txns', txns:[
-            {versions: {[source]:version}, txn:activeTxn}
-          ]}, activeVersions, this)
+          listener({
+            queryChange: null,
+            resultingVersions: activeVersions,
+            txns:[
+              {versions: {[source]:version}, txn:activeTxn}
+            ]
+          }, this)
         } else {
           // Extend the known upper bound of the range anyway.
           if (activeVersions[source]) {
             activeVersions[source].to = version
             // TODO: Its more correct to create an empty transaction object here and put it in the list.
             // Sorry future me!
-            if (opts.alwaysNotify) listener({type: 'txns', txns:[]}, activeVersions, this)
+            if (opts.alwaysNotify) listener({
+              queryChange: null, resultingVersions: activeVersions, txns: [] // TODO: Why is this list empty?
+            }, this)
           }
         }
       },
 
-      cursorNext(opts, callback) {
+      async cursorNext(opts = {}) {
         // console.log('pqe', pendingQuery, qops.q.isEmpty(pendingQuery))
-        if (qops.q.isEmpty(pendingQuery)) return callback(null, {activeQuery, activeVersions})
+        if (qops.q.isEmpty(pendingQuery)) return Promise.resolve({
+          activeQuery: wrapQuery(qtype, activeQuery),
+          activeVersions,
+        })
 
-        if (opsBuffer != null) return callback(Error('Already fetching'))
+        if (opsBuffer != null) return Promise.reject(Error('Already fetching'))
 
         opsBuffer = []
 
@@ -159,7 +160,7 @@ export default class SubGroup {
         }
 
         // console.log('qq', query, pendingQuery, knownDocs, qops.q.isNoop(knownDocs))
-        catchup(query, {
+        const result = await self.catchup(wrapQuery(qtype, query), {
           supportedTypes,
           raw,
           noAggregation,
@@ -167,64 +168,61 @@ export default class SubGroup {
           knownAtVersions: fromV,
           limitDocs: opts.limitDocs,
           limitBytes: opts.limitBytes,
-        }, (err, _result) => {
-          if (err) {
-            opsBuffer = null
-            return callback(err)
-          }
-
-          // Things we need to do here:
-          // - Update the returned snapshots based on opsBuffer
-          // - Move the query run to the working result set
-          // - Update activeQuery, pendingQuery and activeVersions.
-          // - Emit returned data via listener
-
-          const result = _result!
-          const {queryRun, versions: resultVersions} = result
-          // const {txn, queryRun, versions: resultVersions} = result
-
-          opsBuffer!.forEach(({source, version, txn: opTxn}) => {
-            const resultV = resultVersions[source]
-            if (resultV == null || version <= resultV.to) return
-
-            if (result.type === 'txns') {
-              result.txns.push({versions: {[source]: version}, txn: opTxn})
-            } else {
-              qops.r.composeMut!(result.txn, opTxn)
-            }
-            resultVersions[source] = {from:version, to:version}
-          })
-
+        }).catch(err => {
           opsBuffer = null
-
-          pendingQuery = qops.q.subtract(activeQuery, queryRun)
-          if (opts.knownDocs) knownDocs = qops.q.intersectDocs(knownDocs, pendingQuery)
-          activeQuery = qops.q.add(activeQuery, queryRun)
-
-          // resultVersions should just contain the versions that have changed,
-          // so I think this is correct O_o
-          for (const source in resultVersions) {
-            activeVersions[source] = resultVersions[source]
-          }
-
-          if (result.type === 'txns') {
-            listener({type: 'txns', txns: result.txns}, activeVersions, this)
-          } else {
-            listener({type: 'aggregate', txn: result.txn, versions: resultVersions}, activeVersions, this)
-          }
-
-          callback(null, {
-            activeQuery,
-            activeVersions,
-          })
+          throw err
         })
+
+        const {queryChange, resultingVersions} = result
+
+        // Things we need to do here:
+        // - Update the returned snapshots based on opsBuffer
+        // - Move the query run to the working result set
+        // - Update activeQuery, pendingQuery and activeVersions.
+        // - Emit returned data via listener
+
+        opsBuffer!.forEach(({source, version, txn: opTxn}) => {
+          const resultV = resultingVersions[source]
+          if (resultV == null || version <= resultV.to) return
+
+          result.txns.push({versions: {[source]: version}, txn: opTxn})
+          resultingVersions[source] = {from:version, to:version}
+        })
+
+        opsBuffer = null
+
+        if (queryChange != null) {
+          pendingQuery = qops.q.subtract(activeQuery, getQueryData(queryChange))
+          if (opts.knownDocs) knownDocs = qops.q.intersectDocs(knownDocs, pendingQuery)
+          activeQuery = qops.q.add(activeQuery, getQueryData(queryChange))
+        }
+
+        // resultingVersions should just contain the versions that have changed,
+        // so I think this is correct O_o
+        for (const source in resultingVersions) {
+          activeVersions[source] = resultingVersions[source]
+        }
+
+        listener(result, this)
+
+        return({
+          activeQuery: wrapQuery(qtype, activeQuery),
+          activeVersions,
+        })
+      },
+
+      async cursorAll(opts) {
+        while (true) {
+          const result = await this.cursorNext(opts)
+          if (this.isComplete()) return result
+        }
       },
 
       isComplete() {
         return qops.q.isEmpty(pendingQuery)
       },
 
-      cursorAll: null as any,
+      // cursorAll: null as any,
 
       cancel() {
         // this.cancelled = true
@@ -232,7 +230,7 @@ export default class SubGroup {
       }
     }
 
-    sub.cursorAll = genCursorAll(sub)
+    // sub.cursorAll = genCursorAll(sub)
 
     this.allSubs.add(sub)
     return sub

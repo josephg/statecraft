@@ -17,18 +17,15 @@ export const decodeEvent = (event: Event, source: I.Source): I.TxnWithMeta => ({
 export function sendTxn(client: PClient,
     txn: I.KVTxn,
     expectedVersion: I.Version,
-    opts: object,
-    callback: I.Callback<I.Version>) {
+    opts: object): Promise<I.Version> {
   const data = encodeTxn(txn)
 
   // TODO: This probably doesn't handle a missing version properly.
   // TODO: Add read conflict keys through opts.
-  client.sendRaw(data, {
+  return client.send(data, {
     // targetVersion: expectedVersion === -1 ? -1 : expectedVersion + 1,
     targetVersion: expectedVersion + 1,
     conflictKeys: Array.from(txn.keys()),
-  }, (err, version) => {
-    callback(err || null, version)
   })
 }
 

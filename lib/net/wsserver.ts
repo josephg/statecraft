@@ -1,4 +1,4 @@
-import * as I from './types/interfaces'
+import * as I from '../types/interfaces'
 import serve from './server'
 import {Readable, Writable, Transform} from 'stream'
 import WebSocket = require('ws')

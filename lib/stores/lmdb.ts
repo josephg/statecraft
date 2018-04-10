@@ -14,7 +14,7 @@ import {PClient} from 'prozess-client'
 import {encodeTxn, decodeTxn, decodeEvent, sendTxn} from '../prozess'
 
 import fieldOps from '../types/fieldops'
-import {queryTypes} from '../types/queryops'
+import {queryTypes, getQueryData} from '../types/queryops'
 
 import * as I from '../types/interfaces'
 import err from '../err'
@@ -31,7 +31,10 @@ const encodeVersion = (v: I.Version) => {
 const decodeVersion = (buf: NodeBuffer) => buf.readUInt32LE(4)
 
 // We take ownership of the PClient, so don't use it elsewhere after passing it to lmdbstore.
-const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.Version>): I.SimpleStore => {
+//
+// ... At some point it'll make sense for the caller to get more detailed notifications about catchup state.
+// For now the promise won't be called until catchup is complete.
+const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> => {
   const env = new lmdb.Env()
 
   assert(client.source, 'Cannot attach lmdb store until source is known')
@@ -99,11 +102,6 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
     })
   })
 
-  if (onCatchup) {
-    ready.then(() => onCatchup(null, version))
-    ready.catch(err => onCatchup(err))
-  }
-
   // TODO: Probably cleaner to write this as iterators? This is simpler / more
   // understandable though.
   const getKVResults = (dbTxn: lmdb.Txn, query: Iterable<I.Key>, opts: I.FetchOpts, resultsOut: Map<I.Key, I.Val>) => {
@@ -111,7 +109,8 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
 
     for (let k of query) {
       const [lastMod, doc] = rawGet(dbTxn, k)
-      resultsOut.set(k, opts.noDocs ? 1 : doc)
+      if (doc != null) resultsOut.set(k, opts.noDocs ? 1 : doc)
+      // Note we update maxVersion even if the document is null.
       maxVersion = Math.max(maxVersion, lastMod)
     }
 
@@ -125,7 +124,7 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
     while (k != null) {
       const bytes = cursor.getCurrentBinaryUnsafe()
       const [lastMod, doc] = msgpack.decode(bytes)
-      resultsOut.set(k as string, opts.noDocs ? 1 : doc)
+      if (doc != null) resultsOut.set(k as string, opts.noDocs ? 1 : doc)
       maxVersion = Math.max(maxVersion, lastMod)
 
       k = cursor.goToNext()
@@ -135,104 +134,103 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
   }
 
   const store: I.SimpleStore = {
-    sources: [source],
-    capabilities: capabilities,
+    storeInfo: {
+      sources: [source],
+      capabilities: capabilities,
+    },
 
-    fetch(qtype, query, opts, callback) {
+    fetch(query, opts = {}) {
       // TODO: Allow range queries too.
-      if (qtype !== 'allkv' && qtype !== 'kv') return callback(new err.UnsupportedTypeError(`${qtype} not supported by lmdb store`))
-      const qops = queryTypes[qtype]
+      if (query.type !== 'allkv' && query.type !== 'kv') return Promise.reject(new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`))
+      const qops = queryTypes[query.type]
 
-      ready.then(() => {
+      return ready.then(() => {
         const dbTxn = env.beginTxn({readOnly: true})
 
         const results = new Map<I.Key, I.Val>()
         // KV txn. Query is a set of keys.
-        let maxVersion = qtype === 'kv'
-          ? getKVResults(dbTxn, query, opts, results)
+        let maxVersion = query.type === 'kv'
+          ? getKVResults(dbTxn, query.q, opts, results)
           : getAllResults(dbTxn, opts, results)
 
         dbTxn.commit()
 
-        callback(null, {
+        return {
           results,
           queryRun: query,
           versions: {[source]: {from: maxVersion, to: version}}
-        })
-      }).catch(e => process.emit('uncaughtException', e))
+        }
+      })
     },
 
-    mutate(type, _txn, versions, opts, callback) {
-      if (type !== 'resultmap') return callback(new err.UnsupportedTypeError())
+    async mutate(type, _txn, versions, opts) {
+      if (type !== 'resultmap') throw new err.UnsupportedTypeError()
       const txn = _txn as I.KVTxn
 
-      ready.then(() => {
-        debug('mutate', txn)
+      await ready
 
-        const expectedVersion = versions[source] == null ? version : versions[source]
+      debug('mutate', txn)
 
-        // First check that the transaction applies cleanly.
-        const dbTxn = env.beginTxn({readOnly: true})
-        for (const [k, op] of txn) {
-          const [v, data] = rawGet(dbTxn, k)
-          if (expectedVersion !== -1 && v > expectedVersion) {
-            dbTxn.abort()
-            return callback(new err.WriteConflictError('Write conflict in key ' + k))
-          }
+      const expectedVersion = (versions && versions[source] != null) ? versions[source] : version
 
-          try {
-            if (fieldOps.checkOp) {
-              fieldOps.checkOp(op, fieldOps.create(data))
-            }
-          } catch (e) {
-            dbTxn.abort()
-            return callback(e)
-          }
+      // First check that the transaction applies cleanly.
+      const dbTxn = env.beginTxn({readOnly: true})
+      for (const [k, op] of txn) {
+        const [v, data] = rawGet(dbTxn, k)
+        if (expectedVersion !== -1 && v > expectedVersion) {
+          dbTxn.abort()
+          return Promise.reject(new err.WriteConflictError('Write conflict in key ' + k))
         }
-        dbTxn.commit()
 
-        // console.log('sendTxn', txn, expectedVersion)
-        sendTxn(client, txn, version, {}, (err, version) => {
-          if (err) callback(err)
-          else callback(null, {[source]: version!})
-          debug('mutate cb', err, version)
-        })
-      }).catch(e => process.emit('uncaughtException', e))
+        try {
+          if (fieldOps.checkOp) {
+            fieldOps.checkOp(op, fieldOps.create(data))
+          }
+        } catch (e) {
+          dbTxn.abort()
+          return Promise.reject(e)
+        }
+      }
+      dbTxn.commit()
+
+      // console.log('sendTxn', txn, expectedVersion)
+      const resultVersion = await sendTxn(client, txn, version, {})
+
+      debug('mutate cb', resultVersion)
+      return {[source]: resultVersion}
     },
 
-    getOps(qtype, query, versions, opts, callback) {
+    async getOps(query, versions, opts) {
       // We don't need to wait for ready here because the query is passed straight back.
 
       // TODO: Allow range queries too.
-      if (qtype !== 'allkv' && qtype !== 'kv') return callback(new err.UnsupportedTypeError())
-      const qops = queryTypes[qtype]
+      if (query.type !== 'allkv' && query.type !== 'kv') throw new err.UnsupportedTypeError()
+      const qops = queryTypes[query.type]
 
       // We need to fetch ops in the range of (from, to].
       const vs = versions[source] || versions._other
-      if (!vs || vs.from === vs.to) return callback(null, {ops: [], versions: {}})
+      if (!vs || vs.from === vs.to) return {ops: [], versions: {}}
 
       const {from, to} = vs
 
-      client.getEvents(from + 1, to, {}, (err, data) => {
-        // console.log('client.getEvents', from+1, to, data)
-        if (err) return callback(err)
+      const data = await client.getEvents(from + 1, to, {})
+      // console.log('client.getEvents', from+1, to, data)
 
-        // Filter events by query.
-        let ops = data!.events.map(event => decodeEvent(event, source))
-        .filter((data) => {
-          const txn = qops.filterTxn(data.txn, query)
-          if (txn == null) return false
-          else {
-            data.txn = txn
-            return true
-          }
-        })
-
-        callback(null, {
-          ops,
-          versions: {[source]: {from:data!.v_start - 1, to: data!.v_end - 1}}
-        })
+      // Filter events by query.
+      let ops = data!.events.map(event => decodeEvent(event, source))
+      .filter((data) => {
+        const txn = qops.filterTxn(data.txn, getQueryData(query))
+        if (txn == null) return false
+        else {
+          data.txn = txn
+          return true
+        }
       })
+
+      return {
+        ops,
+        versions: {[source]: {from:data!.v_start - 1, to: data!.v_end - 1}}
+      }
     },
 
     close() {
@@ -266,7 +264,8 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
       const nextVersion = event.version + event.batch_size - 1
 
       for (const [k, op] of txn) {
-        const oldData = fieldOps.create(rawGet(dbTxn, k)[0], op)
+        // const oldData = fieldOps.create(rawGet(dbTxn, k)[0], op)
+        const oldData = rawGet(dbTxn, k)[0]
 
         const newData = fieldOps.apply(oldData, op)
         // console.log('updated key', k, 'from', oldData, 'to', newData)
@@ -291,7 +290,7 @@ const lmdbStore = (client: PClient, location: string, onCatchup?: I.Callback<I.V
     )
   }
 
-  return store
+  return ready.then(() => store)
 }
 
 export default lmdbStore

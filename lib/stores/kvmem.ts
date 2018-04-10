@@ -46,28 +46,32 @@ export default function singleStore(
   let version: number = initialVersion
 
   const store: MemStore = {
-    capabilities,
-    sources: [source],
-    fetch(qtype, query, opts, callback) {
-      if (!capabilities.queryTypes.has(qtype)) return callback(new err.UnsupportedTypeError())
+    storeInfo: {
+      capabilities,
+      sources: [source],
+    },
+    fetch(query, opts = {}) {
+      // console.log('fetch query', query)
+      if (query.type !== 'allkv' && query.type !== 'kv') return Promise.reject(new err.UnsupportedTypeError())
 
       let results: Map<I.Key, I.Val>
       let lowerRange: I.Version = initialVersion
 
-      if (qtype === 'allkv') {
-        // If its allkv, we should technically return an empty map or something.
-        results = new Map(data)
-      } else {
+      if (query.type === 'kv') {
         // kv query.
-        results = resultMap.filter(data, query)
-        for (const k of query) {
+        results = resultMap.filter(data, query.q)
+        for (const k of query.q) {
           const v = lastModVersion.get(k)
           if (v !== undefined) lowerRange = Math.max(lowerRange, v)
         }
+      } else {
+        // allkv.
+        results = new Map(data)
       }
       // const results = qtype === 'allkv' ? new Map(data) : resultMap.filter(data, query)
 
-      callback(null, {
+      return Promise.resolve({
+        // this is a bit inefficient.... ehhhh
         results: opts.noDocs ? mapValueMapMut(results, () => true) : results,
         queryRun: query,
         versions: {[source]: {from:lowerRange, to:version}},
@@ -85,19 +89,19 @@ export default function singleStore(
       return opv
     },
 
-    mutate(type, _txn, versions, opts, callback) {
-      if (type !== 'resultmap') return callback(new err.UnsupportedTypeError())
-      if (storeOpts.readonly) return callback(new err.AccessDeniedError())
+    mutate(type, _txn, versions, opts = {}) {
+      if (type !== 'resultmap') return Promise.reject(new err.UnsupportedTypeError())
+      if (storeOpts.readonly) return Promise.reject(new err.AccessDeniedError())
 
       const txn = _txn as I.KVTxn
 
-      const expectv = versions[source] == null ? version : versions[source]
-      if (expectv < initialVersion) return callback(new err.VersionTooOldError())
+      const expectv = (!versions || versions[source] == null) ? version : versions[source]
+      if (expectv < initialVersion) return Promise.reject(new err.VersionTooOldError())
 
       // 1. Preflight. Check versions and (ideally) that the operations are valid.
       for (const [k, op] of txn) {
         const v = lastModVersion.get(k)
-        if (v !== undefined && expectv < v) return callback(new err.WriteConflictError())
+        if (v !== undefined && expectv < v) return Promise.reject(new err.WriteConflictError())
 
         // TODO: Also check that the operation is valid for the given document,
         // if the OT type supports it.
@@ -105,7 +109,7 @@ export default function singleStore(
 
       // 2. Actually apply.
       const opv = this.internalDidChange(txn, false)
-      callback(null, {[source]: opv})
+      return Promise.resolve({[source]: opv})
     },
 
     close() {},

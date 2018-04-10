@@ -21,14 +21,14 @@ const fileStore = (filename: string, sourceIn?: string): I.SimpleStore => {
   let state: 'ok' | 'error'
   let version: I.Version
 
-  const mutateCallbacks: I.Callback<I.FullVersion>[] = []
+  const resolveFns: ((v: I.FullVersion) => void)[] = []
 
   function onchange(v: I.Version) {
     console.log('file changed to', data, v)
     const oldVersion = version
     version = v
-    mutateCallbacks.forEach(cb => cb(null, {[source]: version}))
-    mutateCallbacks.length = 0
+    resolveFns.forEach(cb => cb({[source]: version}))
+    resolveFns.length = 0
     store.onTxn && store.onTxn(source, oldVersion, version, 'single', {type: 'set', data})
   }
 
@@ -84,38 +84,44 @@ const fileStore = (filename: string, sourceIn?: string): I.SimpleStore => {
   // watcher.on('error', err => console.error('Watcher error', err))
 
   const store: I.SimpleStore = {
-    capabilities,
-    sources: [source],
-    fetch(qtype, query, opts, callback) {
-      if (qtype !== 'single') return callback(new err.UnsupportedTypeError(`Unsupported query type ${qtype} to json store`))
+    storeInfo: {
+      capabilities,
+      sources: [source],
+    },
+    fetch(query, opts) {
+      if (query.type !== 'single') return Promise.reject(new err.UnsupportedTypeError(`Unsupported query type ${query.type} to json store`))
 
-      callback(null, {
+      return Promise.resolve({
         results: data,
         queryRun: query,
         versions: {[source]: {from:version, to:Date.now()}},
       })
     },
 
-    mutate(type, txn, versions, opts, callback) {
-      if (type !== 'single') return callback(new err.UnsupportedTypeError())
+    mutate(type, txn, versions, opts = {}) {
+      if (type !== 'single') return Promise.reject(new err.UnsupportedTypeError())
       const op = txn as I.Op
 
-      const expectv = versions[source]
-      if (expectv != null && expectv < version) return callback(new err.VersionTooOldError())
+      const expectv = versions && versions[source]
+      if (expectv != null && expectv < version) return Promise.reject(new err.VersionTooOldError())
 
       if (op) data = fieldType.apply(data, op)
       // console.log('fs.writefilesync')
-      mutateCallbacks.push(callback)
-      fs.writeFile(filename, JSON.stringify(data), (err) => {
-        if (err) {
-          callback(err)
-          // Remove the callback from the list
-          const index = mutateCallbacks.indexOf(callback)
-          if (index != -1) {
-            mutateCallbacks[index] = mutateCallbacks[mutateCallbacks.length - 1]
-            mutateCallbacks.length--
+      return new Promise((resolve, reject) => {
+        resolveFns.push(resolve)
+
+        // TODO: Lock around this.
+        fs.writeFile(filename, JSON.stringify(data), (err) => {
+          if (err) {
+            reject(err)
+            // Remove the callback from the list
+            const index = resolveFns.indexOf(resolve)
+            if (index != -1) {
+              resolveFns[index] = resolveFns[resolveFns.length - 1]
+              resolveFns.length--
+            }
           }
-        }
+        })
       })
     },
 

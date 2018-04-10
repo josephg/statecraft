@@ -14,7 +14,10 @@ export default constructors
 
 export interface ErrJson {msg: string, name: string}
 
-export const errToJSON = (err: Error): ErrJson => ({msg: err.message, name: err.name})
+export const errToJSON = (err: Error): ErrJson => {
+  // console.warn('Sending error to client', err.stack)
+  return {msg: err.message, name: err.name}
+}
 export const errFromJSON = (obj: ErrJson) => {
   const Con = (constructors as {[k: string]: ErrorConstructor})[obj.name]
   if (Con) return new Con(obj.msg)

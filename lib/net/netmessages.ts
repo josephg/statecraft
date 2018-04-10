@@ -1,4 +1,4 @@
-import * as I from './interfaces'
+import * as I from '../types/interfaces'
 import {ErrJson} from '../err'
 
 export type Ref = string | number
@@ -6,21 +6,21 @@ export type Ref = string | number
 export type NetKVTxn = [I.Key, I.Op][]
 export type NetTxn = I.SingleTxn | NetKVTxn
 
+export type NetQuery = 'single' | 'allkv' | [I.QueryType, any]
+
 // **************** Client -> Server messages
 
 export interface FetchRequest {
   a: 'fetch',
   ref: Ref,
-  qtype: I.QueryType,
-  query: any,
+  query: NetQuery,
   opts: I.FetchOpts,
 }
 
 export interface GetOpsRequest {
   a: 'getops',
   ref: Ref,
-  qtype: I.QueryType,
-  query: any,
+  query: NetQuery,
   v: I.FullVersionRange,
   opts: I.GetOpsOptions,
 }
@@ -37,8 +37,7 @@ export interface MutateRequest {
 export interface SubCreate {
   a: 'sub create',
   ref: Ref,
-  qtype: I.QueryType,
-  query: any,
+  query: NetQuery,
   opts: I.SubscribeOpts
 }
 
@@ -72,9 +71,13 @@ export interface HelloMsg {
   capabilities: any[]
 }
 
-export interface FetchResponse extends I.FetchResults {
+export interface FetchResponse {
   a: 'fetch',
   ref: Ref,
+  results: any, // Dependant on query.
+
+  queryRun: NetQuery,
+  versions: I.FullVersionRange, // Range across which version is valid.
 }
 
 export type NetTxnWithMeta = [any, I.FullVersion]
@@ -97,24 +100,13 @@ export interface ResponseErr { // Used for fetch, mutate and getops
   err: ErrJson,
 }
 
-export interface SubUpdateAggregate {
+export interface SubUpdate {
   a: 'sub update',
   ref: Ref,
-  rv: I.FullVersionRange, // Resulting version
-
-  type: 'aggregate',
-  txn: NetTxn,
-  v: I.FullVersionRange,
-}
-
-export interface SubUpdateTxns {
-  a: 'sub update',
-  ref: Ref,
-  rv: I.FullVersionRange, // Resulting version
-
-  // This is all sort of gross.
-  type: 'txns',
-  txns: {v: I.FullVersion, txn: any}[]
+  q: NetQuery | null, // active query diff
+  rv: I.FullVersionRange, // version diff
+  r?: any, // replacement
+  txns: {v: I.FullVersion, txn: any}[], // updates on top of replacement
 }
 
 export interface SubNextCallback {
@@ -122,7 +114,7 @@ export interface SubNextCallback {
   ref: Ref,
 
   // activeQuery and activeVersions
-  q: any,
+  q: NetQuery,
   v: I.FullVersionRange,
 
   c: boolean, // is the subscription now complete?
@@ -141,8 +133,7 @@ export type SCMsg =
   | GetOpsResponse
   | MutateResponse
   | ResponseErr
-  | SubUpdateTxns
-  | SubUpdateAggregate
+  | SubUpdate
   | SubNextCallback
   | SubNextErr
 

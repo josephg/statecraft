@@ -1,9 +1,9 @@
 import * as I from '../types/interfaces'
 import storeFromStreams, {
   TinyReader, TinyWriter
-} from '../client'
+} from '../net/client'
 
-export default function(path: string, callback: I.Callback<I.Store>) {
+export default function(path: string): Promise<I.Store> {
   // TODO: Auto-reconnection.
   const ws = new WebSocket('ws://' + window.location.host + path)
 
@@ -35,5 +35,5 @@ export default function(path: string, callback: I.Callback<I.Store>) {
     },
   }
 
-  storeFromStreams(reader, writer, callback)
+  return storeFromStreams(reader, writer)
 }

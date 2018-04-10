@@ -82,7 +82,7 @@ export default function createMock(): PClient {
     },
 
     // This gets ops in the range [from, to].
-    getEvents(from, to, opts, callback) {
+    getEventsRaw(from, to, opts, callback) {
       process.nextTick(() => {
         const f = clamp(from - base, 0, events.length-1)
         const t = to === -1 ? undefined : clamp(to - base, 0, events.length-1)+1
@@ -95,6 +95,15 @@ export default function createMock(): PClient {
           oneshot: true,
           size: evts.reduce((sum, e) => e.data.length + sum, 0),
           events: evts,
+        })
+      })
+    },
+
+    getEvents(from, to, opts) {
+      return new Promise((resolve, reject) => {
+        this.getEventsRaw(from, to, opts, (err, data) => {
+          if (err) reject(err)
+          else resolve(data)
         })
       })
     },

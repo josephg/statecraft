@@ -26,26 +26,26 @@ export const opFromJSON = <S, O>(type: Type<S, O>, data: any): O =>
 
 
 export const queryTypes: {[name: string]: {
-  q: QueryOps<any, any>,
+  q: QueryOps<I.QueryData, any>,
   r: ResultOps<any, I.Txn>,
-  filterTxn(txn: I.Txn, query: any): any | null,
+  filterTxn(txn: I.Txn, query: I.QueryData): any | null,
 }} = {
   single: {
     q: contentQueryOps,
     r: singleDocResult,
-    filterTxn(txn, query) { return query ? txn : null },
+    filterTxn(txn, query) { return txn },
   },
   allkv: {
     q: allkvQueryOps,
     r: resultMap,
-    filterTxn(txn, query) { return query ? txn : null },
+    filterTxn(txn, query) { return txn },
   },
   kv: {
     q: kvQuery,
     r: resultMap,
     filterTxn(txn: I.KVTxn, query) {
       let result: I.KVTxn | null = null
-      eachIntersect<I.Key>(txn, query, k => {
+      eachIntersect<I.Key>(txn, query as I.KVQuery, k => {
         if (result == null) result = new Map<I.Key, I.Op>()
         result.set(k, <I.Op>txn.get(k))
       })
@@ -53,6 +53,44 @@ export const queryTypes: {[name: string]: {
     },
   }
 }
+
+export const getQueryData = (q: I.Query): I.QueryData => {
+  switch (q.type) {
+    case 'kv': return q.q
+    default: return true
+  }
+}
+
+export const wrapQuery = (type: I.QueryType, data: I.QueryData): I.Query => {
+  switch (type) {
+    case 'kv': return {type, q: data as I.KVQuery}
+    default: return {type}
+  }
+}
+
+
+// This is the master type for queries. It basically just unwraps queries
+// based on their type and delegates requests to its children.
+// const queryType: QueryOps<I.Query, any> = {
+//   name: 'query',
+
+//   createWithType(type: I.QueryType) {
+//     const data = queryTypes[type].q.create
+//   },
+
+//   create(data) {return data as I.Query},
+//   apply(snapshot, op) {
+//     return queryTypes[snapshot.type].q.apply(getQueryData(snapshot), op)
+//   },
+//   // applyMut(snapshot, op) {
+//   //   const qt = queryTypes[snapshot.type].q
+//   //   if (qt.applyMut) qt.applyMut(getQueryData(snapshot), op)
+//   //   else qt.apply(
+//   // }
+
+
+// }
+// export default queryType
 
 export const resultTypes: {
   [name: string]: ResultOps<any, I.Txn>

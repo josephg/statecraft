@@ -1,4 +1,4 @@
-import {ResultType} from './interfaces'
+import {Query, ResultType} from './interfaces'
 
 export interface Type<Snap, Op> {
   name: string,
@@ -24,7 +24,7 @@ export interface Type<Snap, Op> {
 export interface ResultOps<Snap, Op> extends Type<Snap, Op> {
   compose(op1: Op, op2: Op): Op
   composeMut?(op1: Op, op2: Op): void
-  asOp(snap: Snap): Op
+  // asOp(snap: Snap, fromQuery: Query): Op
   from(type: ResultType, snap: any): Snap
 }
 

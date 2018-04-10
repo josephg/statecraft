@@ -23,14 +23,14 @@ process.on('exit', function() {
   }
 })
 
-const create = () => {
+const create = async () => {
   let path: string
   do {
     // path = __dirname + '/_test' + _dbid++
     path = '_test' + _dbid++
   } while (fs.existsSync(path))
 
-  const store = augment(lmdb(createMock(), path))
+  const store = augment(await lmdb(createMock(), path))
   pathOfDb.set(store, path)
   return store
 }
@@ -72,8 +72,5 @@ describe('lmdb on prozess', () => {
   it('supports two stores pointed to the same prozess backend')
   it('catches up on missing operations from prozess')
 
-  runTests(
-    () => Promise.resolve(create()),
-    teardown
-  )
+  runTests(create, teardown)
 })
