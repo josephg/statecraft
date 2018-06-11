@@ -134,15 +134,23 @@ export type SubCursorResult = {
   activeQuery: Query,
   activeVersions: FullVersionRange,
 }
-export interface Subscription {
-  // modify(qop, newqv)
-  cursorNext(opts?: any): Promise<SubCursorResult>
-  cursorAll(opts?: any): Promise<SubCursorResult>
 
-  isComplete(): boolean
-  cancel(): void
+export type AsyncIterableIteratorWithRet<T> = AsyncIterableIterator<T> & {
+  // AsyncIterableIterator declares the return function to be optional.
+  return(value?: any): Promise<IteratorResult<T>>
 }
 
+export interface Subscription extends AsyncIterable<CatchupData> {
+  // Having a return function is compulsory - its how the subscription is closed.
+  // The value passed to return is ignored.
+  iter: AsyncIterableIteratorWithRet<CatchupData>,
+
+  // modify(qop, newqv)
+
+  cursorNext(opts?: any): Promise<SubCursorResult>
+  cursorAll(opts?: any): Promise<SubCursorResult>
+  isComplete(): boolean
+}
 
 export interface GetOpsOptions {
   // Supported client-side operation types. Also forwarded to getOps.
@@ -203,8 +211,8 @@ export type CatchupFn = (q: Query, opts: CatchupOpts) => Promise<CatchupData>
 //   txn: Txn,
 //   versions: FullVersionRange,
 // }
-export type SubListener = (updates: CatchupData, s: Subscription) => void
-export type SubscribeFn = (q: Query, opts: SubscribeOpts, listener: SubListener) => Subscription
+// export type SubListener = (updates: CatchupData, s: Subscription) => void
+export type SubscribeFn = (q: Query, opts: SubscribeOpts) => Subscription
 
 // TODO: Consider wrapping ResultType + txn in an object like I did with Query.
 export type MutateFn = (type: ResultType, txn: Txn, versions?: FullVersion, opts?: MutateOptions) => Promise<FullVersion>
@@ -246,14 +254,18 @@ export interface SimpleStore {
   readonly mutate: MutateFn,
 
   // If needed.
-  close(): void
+  close(): void,
 
   // These are added automatically when store is augmented, but they can be supplied directly.
   readonly catchup?: CatchupFn,
   readonly getOps?: GetOpsFn,
   readonly subscribe?: SubscribeFn,
 
-  // This is set by the store's wrapper.
+  // This is set by the store's wrapper. Could be implemented as an async
+  // iterator - but this way makes it clear that we discard events when
+  // there's no listener.
+  // 
+  // ... Eh. 🤷‍♀️
   onTxn?: TxnListener,
 }
 

@@ -12,7 +12,7 @@ import {
   opToJSON, opFromJSON,
   wrapQuery
 } from '../types/queryops'
-
+import streamToIter from '../streamToIter'
 import {Readable, Writable, Duplex} from 'stream'
 import assert = require('assert')
 
@@ -50,8 +50,8 @@ interface RemoteSub extends I.Subscription {
   _nextPromise: [any, any] | null,
   _isComplete: boolean,
   _qtype: I.QueryType,
-  _listener: I.SubListener,
 
+  _append: (data: I.CatchupData) => void,
   // [k: string]: any
 }
 
@@ -145,7 +145,7 @@ export default function storeFromStreams(reader: TinyReader, writer: TinyWriter)
             }
             if (r) update.replace = snapFromJSON(type.r, r)
 
-            sub._listener(update, sub)
+            sub._append(update)
             break
           }
 
@@ -231,14 +231,19 @@ export default function storeFromStreams(reader: TinyReader, writer: TinyWriter)
           })
         },
 
-        subscribe(query, opts, listener) {
+        subscribe(query, opts) {
           const ref = nextRef++
+          const stream = streamToIter<I.CatchupData>(() => {
+            writer.write({a:'sub cancel', ref})
+          })
 
           const sub: RemoteSub = {
             _isComplete: false,
             _nextPromise: null,
             _qtype: query.type,
-            _listener: listener,
+            _append: stream.append,
+            iter: stream.iter,
+            [Symbol.asyncIterator]: () => stream.iter,
 
             cursorNext(opts) {
               // The client should really only have one next call in flight at a time
@@ -259,9 +264,6 @@ export default function storeFromStreams(reader: TinyReader, writer: TinyWriter)
             },
 
             isComplete() { return this._isComplete },
-            cancel() {
-              writer.write({a:'sub cancel', ref})
-            }
           }
 
           subByRef.set(ref, sub)

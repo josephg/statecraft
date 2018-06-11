@@ -20,14 +20,8 @@ const capabilitiesToJSON = (c: I.Capabilities): any[] => {
   ]
 }
 
-interface SubPlus extends I.Subscription {
-  _ref: N.Ref,
-  _qtype: I.QueryType,
-  [k: string]: any
-}
-
 export default function serve(reader: Readable, writer: Writable, store: I.Store) {
-  const subForRef = new Map<N.Ref, SubPlus>()
+  const subForRef = new Map<N.Ref, I.Subscription>()
   // let finished = false
 
   const protoErr = (err: Error) => {
@@ -57,24 +51,6 @@ export default function serve(reader: Readable, writer: Writable, store: I.Store
     sources: store.storeInfo.sources,
     capabilities: capabilitiesToJSON(store.storeInfo.capabilities),
   })
-
-  function subListener(updates: I.CatchupData, _sub: I.Subscription) {
-    const sub = _sub as SubPlus
-    const type = queryTypes[sub._qtype]
-
-    const msg: N.SCMsg = {
-      a: 'sub update', ref: sub._ref, rv: updates.resultingVersions,
-      q: updates.queryChange == null ? null : queryToNet(updates.queryChange),
-      txns: updates.txns.map(({versions, txn}) => ({
-        v: versions,
-        txn: opToJSON(type.r, txn),
-      })),
-    }
-    if (updates.replace) {
-      msg.r = snapToJSON(type.r, updates.replace)
-    }
-    write(msg)
-  }
 
   reader.on('data', (msg: N.CSMsg) => {
     // console.log('Got CS data', msg)
@@ -149,11 +125,30 @@ export default function serve(reader: Readable, writer: Writable, store: I.Store
       case 'sub create': {
         const {ref, query: netQuery, opts} = msg
         const query = queryFromNet(netQuery)
-        const sub = store.subscribe(query, opts, subListener) as SubPlus
-        sub._qtype = query.type // Kinda hacky, but eh its fine. I own the sub here anyway.
-        sub._ref = ref
+        const sub = store.subscribe(query, opts)
+        const type = queryTypes[query.type]
+
         assert(!subForRef.has(ref)) // TODO
         subForRef.set(ref, sub)
+
+        ;(async () => {
+          for await (const updates of sub.iter) {
+
+            const msg: N.SCMsg = {
+              a: 'sub update', ref, rv: updates.resultingVersions,
+              q: updates.queryChange == null ? null : queryToNet(updates.queryChange),
+              txns: updates.txns.map(({versions, txn}) => ({
+                v: versions,
+                txn: opToJSON(type.r, txn),
+              })),
+            }
+            if (updates.replace) {
+              msg.r = snapToJSON(type.r, updates.replace)
+            }
+            write(msg)
+          }
+          subForRef.delete(ref)
+        })()
         break
       }
 
@@ -161,7 +156,6 @@ export default function serve(reader: Readable, writer: Writable, store: I.Store
         const {ref, opts} = msg
         const sub = subForRef.get(ref)!
         assert(sub) // TODO
-        const type = queryTypes[sub._qtype]
         sub.cursorNext(opts || {}).then(data => {
           write({
             a: 'sub next',
@@ -181,8 +175,7 @@ export default function serve(reader: Readable, writer: Writable, store: I.Store
         const sub = subForRef.get(ref)
         // TODO: What should we do for invalid refs? Right now we're silently ignoring them..?
         if (sub != null) {
-          sub.cancel()
-          subForRef.delete(ref)
+          sub.iter.return()
         }
         break
       }

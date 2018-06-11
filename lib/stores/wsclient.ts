@@ -2,17 +2,21 @@ import * as I from '../types/interfaces'
 import storeFromStreams, {
   TinyReader, TinyWriter
 } from '../net/client'
+import WebSocket = require('isomorphic-ws')
 
-export default function(path: string): Promise<I.Store> {
+// const global = (function(this: any) { return this })()
+// 'ws://' + global.location.host + path
+
+export default function(wsurl: string): Promise<I.Store> {
   // TODO: Auto-reconnection.
-  const ws = new WebSocket('ws://' + window.location.host + path)
+  const ws = new WebSocket(wsurl)
 
   ws.onopen = () => {console.log('ws opened')}
   ws.onerror = (e) => {console.error('ws error', e)}
 
   const reader: TinyReader = {}
   ws.onmessage = (msg) => {
-    const data = JSON.parse(msg.data)
+    const data = JSON.parse(msg.data.toString())
     console.log('received', data)
     reader.onmessage!(data)
   }

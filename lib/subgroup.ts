@@ -4,6 +4,7 @@ import fieldOps from './types/fieldops'
 import {QueryOps} from './types/type'
 import {supportedTypes as localTypes} from './types/registry'
 // import {genCursorAll} from './util'
+import streamToIter from './streamToIter'
 
 import assert = require('assert')
 
@@ -45,6 +46,7 @@ function catchupFnForStore(store: I.SimpleStore, getOps: I.GetOpsFn): I.CatchupF
   }
 }
 
+
 export default class SubGroup {
   private readonly allSubs = new Set<Sub>()
   private readonly catchup: I.CatchupFn
@@ -57,7 +59,7 @@ export default class SubGroup {
     for (const sub of this.allSubs) sub._onOp(source, toV, type, txn)
   }
 
-  create(query: I.Query, opts: I.SubscribeOpts, listener: I.SubListener): I.Subscription {
+  create(query: I.Query, opts: I.SubscribeOpts): I.Subscription {
     const self = this
 
     const qtype = query.type
@@ -101,9 +103,15 @@ export default class SubGroup {
       // [activeQuery, pendingQuery] = [pendingQuery, activeQuery]
     }
 
+    let sub: Sub
+
+    const stream = streamToIter<I.CatchupData>(() => {
+      self.allSubs.delete(sub)
+    })
+
     // let waitingFetch = false
 
-    const sub: Sub = {
+    sub = {
       // cancelled: false,
       _onOp(source, version, type, intxn) {
         const txn = qops.r.name === type ? intxn : qops.r.from(type, intxn)
@@ -119,22 +127,22 @@ export default class SubGroup {
         if (activeTxn != null) {
           activeVersions[source] = {from: version, to: version}
           // Its pretty awkward sending just a single item in an array like this.
-          listener({
+          stream.append({
             queryChange: null,
             resultingVersions: activeVersions,
             txns:[
               {versions: {[source]:version}, txn:activeTxn}
             ]
-          }, this)
+          })
         } else {
           // Extend the known upper bound of the range anyway.
           if (activeVersions[source]) {
             activeVersions[source].to = version
             // TODO: Its more correct to create an empty transaction object here and put it in the list.
             // Sorry future me!
-            if (opts.alwaysNotify) listener({
+            if (opts.alwaysNotify) stream.append({
               queryChange: null, resultingVersions: activeVersions, txns: [] // TODO: Why is this list empty?
-            }, this)
+            })
           }
         }
       },
@@ -203,7 +211,7 @@ export default class SubGroup {
           activeVersions[source] = resultingVersions[source]
         }
 
-        listener(result, this)
+        stream.append(result)
 
         return({
           activeQuery: wrapQuery(qtype, activeQuery),
@@ -224,10 +232,9 @@ export default class SubGroup {
 
       // cursorAll: null as any,
 
-      cancel() {
-        // this.cancelled = true
-        self.allSubs.delete(this)
-      }
+      iter: stream.iter,
+
+      [Symbol.asyncIterator]() { return stream.iter }
     }
 
     // sub.cursorAll = genCursorAll(sub)

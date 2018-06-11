@@ -17,10 +17,12 @@ import server from './net/tcpserver'
 
 const testSingle = async () => {
   const store = augment(singleStore())
-  const sub = store.subscribe({type: 'single'}, {}, (update) => {
-  // const sub = store.subscribe('content', true, {}, (type, txn, v) => {
-    console.log('listener', update)
-  })
+  const sub = store.subscribe({type: 'allkv'}, {})
+  ;(async () => {
+    for await (const data of sub) {
+      console.log('subscribe data', inspect(data, false, 10, true))
+    }
+  })()
   const results = await sub.cursorAll()
   console.log('cursor next', results)
 
@@ -33,10 +35,12 @@ const testSingle = async () => {
 
 const testResultMap = async () => {
   const store = augment(kvStore())
-  const sub = store.subscribe({type: 'allkv'}, {}, (update) => {
-  // const sub = store.subscribe('content', true, {}, (type, txn, v) => {
-    console.log('listener', update)
-  })
+  const sub = store.subscribe({type: 'allkv'}, {})
+  ;(async () => {
+    for await (const data of sub) {
+      console.log('subscribe data', inspect(data, false, 10, true))
+    }
+  })()
   const results = await sub.cursorAll()
   console.log('cursor next', results)
 
@@ -75,9 +79,12 @@ const testLmdb = async () => {
 
   const store = augment(await lmdbStore(client, process.argv[2] || 'testdb'))
 
-  const sub = store.subscribe({type:'kv', q:new Set(['x', 'q', 'y'])}, {}, (data) => {
-    console.log('subscribe data', inspect(data, false, 10, true))
-  })
+  const sub = store.subscribe({type:'kv', q:new Set(['x', 'q', 'y'])}, {})
+  ;(async () => {
+    for await (const data of sub) {
+      console.log('subscribe data', inspect(data, false, 10, true))
+    }
+  })()
   sub.cursorAll()
 
   // store.onTxn = (source, from, to, type, txn) => {

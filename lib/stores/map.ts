@@ -85,20 +85,26 @@ const map = (inner: I.Store, mapfn: MapFn): I.Store => {
       }
     },
 
-    subscribe(q, opts, listener) {
+    subscribe(q, opts) {
       const qtype = queryTypes[q.type]
 
-      return inner.subscribe(q, {
+      const innerSub = inner.subscribe(q, {
         ...opts,
         supportedTypes: supportedOpTypes,
-      }, (innerUpdates, s) => {
-        const updates = {
-          ...innerUpdates,
-          replace: innerUpdates.replace ? qtype.r.map(innerUpdates.replace, mapfn) : undefined,
-          txns: mapTxnWithMetas(innerUpdates.txns, mapfn)
-        }
-        listener(updates, s)
       })
+
+      return {
+        ...innerSub,
+        iter: (async function*() {
+          for await (const innerUpdates of innerSub.iter) {
+            yield {
+              ...innerUpdates,
+              replace: innerUpdates.replace ? qtype.r.map(innerUpdates.replace, mapfn) : undefined,
+              txns: mapTxnWithMetas(innerUpdates.txns, mapfn)
+            }
+          }
+        })() as I.AsyncIterableIteratorWithRet<I.CatchupData>
+      }
     },
 
     close() {},
