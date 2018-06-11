@@ -31,7 +31,7 @@ const testSingle = async () => {
   console.log('results', results2)
 }
 
-const testMap = async () => {
+const testResultMap = async () => {
   const store = augment(kvStore())
   const sub = store.subscribe({type: 'allkv'}, {}, (update) => {
   // const sub = store.subscribe('content', true, {}, (type, txn, v) => {
@@ -49,7 +49,7 @@ const testMap = async () => {
   console.log(r2)
 }
 
-const testMap2 = async () => {
+const testResultMap2 = async () => {
   const store = augment(kvStore())
   const txn = new Map([['x', {type:'set', data: {x: 10}}]])
   const v = await store.mutate('resultmap', txn)
@@ -108,7 +108,7 @@ const testNet = async () => {
 
 process.on('unhandledRejection', err => { throw err })
 
-// testMap()
+// testResultMap()
 // testSingle()
 // testProzess()
 testLmdb()

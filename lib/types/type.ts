@@ -26,6 +26,8 @@ export interface ResultOps<Snap, Op> extends Type<Snap, Op> {
   composeMut?(op1: Op, op2: Op): void
   // asOp(snap: Snap, fromQuery: Query): Op
   from(type: ResultType, snap: any): Snap
+  map(snap: Snap, fn: (v: any, k: any) => any): Snap
+  mapAsync(snap: Snap, fn: (v: any, k: any) => Promise<any>): Promise<Snap>
 }
 
 export interface QueryOps<Snap, Op> extends Type<Snap, Op> {

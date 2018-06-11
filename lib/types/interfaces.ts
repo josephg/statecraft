@@ -146,7 +146,8 @@ export interface Subscription {
 
 export interface GetOpsOptions {
   // Supported client-side operation types. Also forwarded to getOps.
-  // readonly supportedTypes?: Set<string>,
+  readonly supportedTypes?: Set<string>, // TODO.
+
   // Ignore supportedTypes, just send full received ops. (default false)
   // readonly raw?: boolean,
 

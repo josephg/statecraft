@@ -27,7 +27,7 @@ const nullstore: I.Store = {
     return Promise.reject(new err.UnsupportedTypeError('null store does not support operations'))
   },
 
-  subscribe() {
+  subscribe(): never {
     throw new err.UnsupportedTypeError('null store does not support subscriptions')
   },
 

@@ -89,6 +89,9 @@ const type: ResultOps<any, Op> = {
 
   checkOp(op, snap) {
     type.apply(snap, op) // this will throw if invalid. TODO: use check on subtype if available.
-  }
+  },
+
+  map(data, fn) { return fn(data, null) },
+  mapAsync(data, fn) { return fn(data, null) },
 }
 export default type

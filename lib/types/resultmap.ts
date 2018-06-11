@@ -65,5 +65,23 @@ const type: ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
   snapToJSON(snap) { return Array.from(snap) },
   opToJSON(op) { return Array.from(op) },
   opFromJSON(data) { return new Map(data) },
+
+  map(snap, fn) {
+    const result = new Map<I.Key, I.Val>()
+    for (const [k, val] of snap) result.set(k, fn(val, k))
+    return result
+  },
+
+  mapAsync(snap, fn) {
+    const entries = Array.from(snap.entries())
+    const mapped = entries.map(([k, v]) => fn(v, k))
+    return Promise.all(entries).then((results) => {
+      const result = new Map<I.Key, I.Val>()
+      for (let i = 0; i < entries.length; i++) {
+        result.set(entries[i][0], results[i])
+      }
+      return result
+    })
+  },
 }
 export default type
