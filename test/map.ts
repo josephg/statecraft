@@ -4,8 +4,16 @@ import augment from '../lib/augment'
 import runTests from './common'
 import map from '../lib/stores/map'
 import splitWrites from '../lib/stores/splitwrites'
+import assert = require('assert')
 
-describe('kvmem', () => {
+describe('map', () => {
+  it('maps simple values', async () => {
+    const root = augment(kvmem(new Map([['x', 5]])))
+    const store = map(root, x => x + 1)
+    const result = await store.fetch({type: 'kv', q: new Set(['x'])})
+    assert.strictEqual(result.results.get('x'), 6)
+  })
+
   runTests(() => {
     const store = augment(kvmem())
     const read = map(store, i => i)

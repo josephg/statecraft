@@ -61,12 +61,13 @@ const map = (inner: I.Store, mapfn: MapFn): I.Store => {
       const innerResults = await inner.fetch(query, opts)
 
       const outerResults: I.FetchResults = {
-        results: (opts && opts.noDocs) ? null : qtype.r.map(innerResults.results, mapfn),
+        // In the noDocs case, inner.fetch will have already stripped the documents.
+        results: (opts && opts.noDocs) ? innerResults.results : qtype.r.map(innerResults.results, mapfn),
         queryRun: innerResults.queryRun,
         versions: innerResults.versions,
       }
 
-      return innerResults
+      return outerResults
     },
 
     mutate(mtype, txn, versions, opts) {
