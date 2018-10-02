@@ -59,7 +59,7 @@ export interface SingleOp {
 export type Op = SingleOp | SingleOp[]
 export type SingleTxn = Op
 export type KVTxn = Map<Key, Op>
-export type Txn = SingleTxn | KVTxn
+export type Txn = SingleTxn | KVTxn // SingleTxn for 'single', KVTxn for 'resultmap'.
 export type TxnWithMeta = {versions: FullVersion, txn: Txn}
 
 export type FetchResults = {
@@ -82,6 +82,9 @@ export type CatchupData = {
   // possible, so sometimes you just gotta send a diff with new documents in it;
   // and you have no idea how you got there.
   queryChange: Query | null,
+
+  // resultingVersions stores the resulting range of versions at which the
+  // current aggregate snapshot is valid
   resultingVersions: FullVersionRange, // This should be a diff as well. Maybe rename it?
 
   replace?: Map<Key, Val> | any, // Replace the results in queryRun with this, if it exists
@@ -101,7 +104,8 @@ export interface SubscribeOpts {
   // but return what we can. Passed through to getOps.
   readonly bestEffort?: boolean,
 
-  // Notify re version bump regardless of query? (default false)
+  // Always notify about version bumps even if the query results are empty?
+  // (default false)
   readonly alwaysNotify?: boolean,
 
   // The same as known: all from current version.
@@ -223,7 +227,7 @@ export type TxnListener = (source: Source, fromV: Version, toV: Version, type: R
 export interface StoreInfo {
   // If there's one, and its available.
   // readonly source?: Source,
-  readonly sources?: Source[],
+  readonly sources: Source[],
 
   readonly capabilities: Capabilities,
 

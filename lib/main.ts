@@ -9,6 +9,7 @@ import augment from './augment'
 import {inspect} from 'util'
 import {reconnecter} from 'prozess-client'
 import server from './net/tcpserver'
+import router, {ALL} from './stores/router'
 
 // store.fetch('all', null, {}, (err, results) => {
 //   console.log('fetch results', results)
@@ -113,10 +114,36 @@ const testNet = async () => {
   console.log(results)
 }
 
-process.on('unhandledRejection', err => { throw err })
+const setSingle = (k: I.Key, v: any) => new Map([[k, {type:'set', data: v}]])
+
+const testRouter = async () => {
+  const a = augment(kvStore())
+  const b = augment(kvStore())
+
+  const store = router()
+  store.mount(a, 'a/', ALL, '', true)
+  store.mount(b, 'b/', ALL, '', true)
+
+  const sub = store.subscribe({type: 'kv', q:new Set(['a/x', 'b/y'])}, {})
+  // const sub = a.subscribe({type: 'kv', q:new Set(['x'])}, {})
+  await sub.cursorAll()
+  ;(async () => {
+    for await (const data of sub) {
+      console.log('subscribe data', inspect(data, false, 10, true))
+    }
+  })()
+
+  // const txn = new Map([['x', {type:'set', data: {x: 10}}]])
+  const v = await a.mutate('resultmap', setSingle('x', 'hi'), {[a.storeInfo.sources![0]!]: 0})
+}
+
+process.on('unhandledRejection', err => {
+  throw err
+})
 
 // testResultMap()
 // testSingle()
 // testProzess()
-testLmdb()
+// testLmdb()
+testRouter()
 // testNet()

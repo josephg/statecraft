@@ -123,9 +123,20 @@ export default class SubGroup {
 
         // TODO: Apply supportedTypes.
         const activeTxn = qops.filterTxn(txn, activeQuery)
+
+        // Extend the known upper bound of the range no matter what.
+        let av = activeVersions[source]
+        if (av) av.to = version // null av = valid for whole source range.
+
         // console.log(activeQuery, activeTxn)
-        if (activeTxn != null) {
-          activeVersions[source] = {from: version, to: version}
+        if (opts.alwaysNotify || activeTxn != null) {
+          if (activeTxn != null) {
+            if (av == null) {
+              av = {from: version, to: version}
+              activeVersions[source] = av
+            } else av.from = version
+          }
+
           // Its pretty awkward sending just a single item in an array like this.
           stream.append({
             queryChange: null,
@@ -135,9 +146,7 @@ export default class SubGroup {
             ]
           })
         } else {
-          // Extend the known upper bound of the range anyway.
           if (activeVersions[source]) {
-            activeVersions[source].to = version
             // TODO: Its more correct to create an empty transaction object here and put it in the list.
             // Sorry future me!
             if (opts.alwaysNotify) stream.append({

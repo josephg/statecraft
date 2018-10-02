@@ -29,12 +29,12 @@ export interface TinyWriter {
 }
 
 const parseStoreInfo = (helloMsg: N.HelloMsg): I.StoreInfo => ({
+  sources: helloMsg.sources,
+
   capabilities: {
     queryTypes: new Set(helloMsg.capabilities[0]),
     mutationTypes: new Set(helloMsg.capabilities[1])
   },
-
-  sources: helloMsg.sources,
 })
 
 type Callback<T> = (err: Error | null, results?: T) => void

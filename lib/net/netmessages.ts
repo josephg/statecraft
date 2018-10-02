@@ -67,7 +67,7 @@ export interface HelloMsg {
   a: 'hello',
   p: 'statecraft',
   pv: number,
-  sources?: I.Source[], // ??? TODO: Still not sure whether to allow unknown sources.
+  sources: I.Source[], // ??? TODO: Still not sure whether to allow unknown sources.
   capabilities: any[]
 }
 
