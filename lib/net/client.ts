@@ -132,14 +132,18 @@ export default function storeFromStreams(reader: TinyReader, writer: TinyWriter)
           }
 
           case 'sub update': {
-            const {ref, q, rv, r, txns} = msg
+            const {ref, rv, q, r, txns} = msg
             const sub = subByRef.get(ref)!
             assert(sub)
             const type = queryTypes[sub._qtype]
 
             const update: I.CatchupData = {
-              queryChange: q == null ? null : queryFromNet(q),
               resultingVersions: rv,
+
+              replace: r == null ? undefined : {
+                q: queryFromNet(q!),
+                with: snapFromJSON(type.r, r)
+              },
 
               txns: txns.map(({v, txn}) => ({versions: v, txn: opFromJSON(type.r, txn)}))
             }
@@ -231,7 +235,7 @@ export default function storeFromStreams(reader: TinyReader, writer: TinyWriter)
           })
         },
 
-        subscribe(query, opts) {
+        subscribe(query, opts = {}) {
           const ref = nextRef++
           const stream = streamToIter<I.CatchupData>(() => {
             writer.write({a:'sub cancel', ref})
@@ -271,7 +275,12 @@ export default function storeFromStreams(reader: TinyReader, writer: TinyWriter)
           // const type = queryTypes[qtype]
           // assert(type) // TODO.
 
-          writer.write({a: 'sub create', ref, query: queryToNet(query), opts})
+          const netOpts: N.SubscribeOpts = {
+            kd: typeof opts.knownDocs === 'object' ? Array.from(opts.knownDocs)
+              : opts.knownDocs,
+            kv: opts.knownAtVersions,
+          }
+          writer.write({a: 'sub create', ref, query: queryToNet(query), opts: netOpts})
 
           return sub
         },

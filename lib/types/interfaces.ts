@@ -72,7 +72,11 @@ export type FetchResults = {
 // export type Callback<T> = (err: Error | null, results?: T) => void
 
 export type FetchOpts = {
-  noDocs?: boolean // Don't actually return any data. Useful for figuring out the version. Default: false
+  readonly noDocs?: boolean // Don't actually return any data. Useful for figuring out the version. Default: false
+
+  // Results already known at specified version. Return nothing in this case.
+  // readonly knownAtVersions?: FullVersion,
+  // TODO: knownDocs?
 }
 // export type FetchCallback = Callback<FetchResults>
 
@@ -81,13 +85,25 @@ export type CatchupData = {
   // This feels overcomplicated. The problem is that catchup isn't always
   // possible, so sometimes you just gotta send a diff with new documents in it;
   // and you have no idea how you got there.
-  queryChange: Query | null,
+
+  // If supplied, the query
+  // queryChange: Query | null,
 
   // resultingVersions stores the resulting range of versions at which the
   // current aggregate snapshot is valid
   resultingVersions: FullVersionRange, // This should be a diff as well. Maybe rename it?
 
-  replace?: Map<Key, Val> | any, // Replace the results in queryRun with this, if it exists
+  // Replace the results in q with this result set, if it exists
+  replace?: {
+    // This is a bit of a hack. If the query here contains more keys / ranges
+    // than the original request, they should be added to the active known
+    // set.
+    // Queries are currently only expanded, so this works but a QueryDelta would
+    // be better.
+    q: Query,
+    with: Map<Key, Val> | any,
+  },
+
   txns: TxnWithMeta[], // ... then apply txns.
 }
 
@@ -111,7 +127,10 @@ export interface SubscribeOpts {
   // The same as known: all from current version.
   readonly noCatchup?: boolean,
 
-  readonly knownDocs?: any, // Query object of the appropriate type.
+  // I'm not sure if I want knownDocs. knownAtVersions with no knownDocs
+  // should imply we know everything at that point, and will be used more in
+  // practice.
+  readonly knownDocs?: QueryData, // Query object of the appropriate type.
   readonly knownAtVersions?: FullVersion,
 
   // NYI:
@@ -216,7 +235,7 @@ export type CatchupFn = (q: Query, opts: CatchupOpts) => Promise<CatchupData>
 //   versions: FullVersionRange,
 // }
 // export type SubListener = (updates: CatchupData, s: Subscription) => void
-export type SubscribeFn = (q: Query, opts: SubscribeOpts) => Subscription
+export type SubscribeFn = (q: Query, opts?: SubscribeOpts) => Subscription
 
 // TODO: Consider wrapping ResultType + txn in an object like I did with Query.
 export type MutateFn = (type: ResultType, txn: Txn, versions?: FullVersion, opts?: MutateOptions) => Promise<FullVersion>

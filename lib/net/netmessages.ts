@@ -34,11 +34,17 @@ export interface MutateRequest {
   opts: I.MutateOptions,
 }
 
+export interface SubscribeOpts {
+  // TODO: Add all the rest!!!
+  kd?: boolean | I.Key[], // known docs
+  kv?: I.FullVersion, // known at versions
+}
+
 export interface SubCreate {
   a: 'sub create',
   ref: Ref,
   query: NetQuery,
-  opts: I.SubscribeOpts
+  opts: SubscribeOpts
 }
 
 export interface SubNext {
@@ -103,9 +109,12 @@ export interface ResponseErr { // Used for fetch, mutate and getops
 export interface SubUpdate {
   a: 'sub update',
   ref: Ref,
-  q: NetQuery | null, // active query diff
   rv: I.FullVersionRange, // version diff
+
+  // if r exists, q must exist too.
+  q?: NetQuery, // active query diff
   r?: any, // replacement
+
   txns: {v: I.FullVersion, txn: any}[], // updates on top of replacement
 }
 

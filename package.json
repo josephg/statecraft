@@ -17,7 +17,9 @@
     "debug": "^2.2.0",
     "errno": "^0.1.4",
     "isomorphic-ws": "^4.0.1",
+    "jsesc": "^2.5.1",
     "msgpack-lite": "^0.1.26",
+    "nanohtml": "^1.2.5",
     "node-lmdb": "^0.6.0",
     "prozess-client": "*",
     "ws": "^5.1.0"
@@ -26,10 +28,11 @@
     "@types/chokidar": "^1.7.2",
     "@types/debug": "^0.0.30",
     "@types/express": "^4.11.1",
+    "@types/jsesc": "^0.4.29",
     "@types/mocha": "^2.2.46",
     "@types/node": "^8.0.28",
     "@types/ws": "^4.0.1",
-    "browserify": "^16.1.1",
+    "browserify": "^16.2.3",
     "express": "^4.16.3",
     "memdown": "^1.2.0",
     "mocha": "^4.1.0",
@@ -37,6 +40,7 @@
     "tsify": "^3.0.4",
     "typescript": "^2.9.1",
     "uglifyify": "^4.0.5",
-    "unassertify": "^2.1.0"
+    "unassertify": "^2.1.0",
+    "watchify": "^3.11.0"
   }
 }

@@ -125,7 +125,11 @@ export default function serve(reader: Readable, writer: Writable, store: I.Store
       case 'sub create': {
         const {ref, query: netQuery, opts} = msg
         const query = queryFromNet(netQuery)
-        const sub = store.subscribe(query, opts)
+        const innerOpts: I.SubscribeOpts = {
+          knownDocs: Array.isArray(opts.kd) ? new Set(opts.kd) : opts.kd,
+          knownAtVersions: opts.kv,
+        }
+        const sub = store.subscribe(query, innerOpts)
         const type = queryTypes[query.type]
 
         assert(!subForRef.has(ref)) // TODO
@@ -136,14 +140,14 @@ export default function serve(reader: Readable, writer: Writable, store: I.Store
 
             const msg: N.SCMsg = {
               a: 'sub update', ref, rv: updates.resultingVersions,
-              q: updates.queryChange == null ? null : queryToNet(updates.queryChange),
               txns: updates.txns.map(({versions, txn}) => ({
                 v: versions,
                 txn: opToJSON(type.r, txn),
               })),
             }
             if (updates.replace) {
-              msg.r = snapToJSON(type.r, updates.replace)
+              msg.q = queryToNet(updates.replace.q)
+              msg.r = snapToJSON(type.r, updates.replace.with)
             }
             write(msg)
           }

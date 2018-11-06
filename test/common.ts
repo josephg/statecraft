@@ -64,13 +64,13 @@ const eachFetchMethod = async (store: I.Store, query: I.Query): Promise<SimpleRe
 
           if (update.replace) {
             // Only supporting kv for now.
-            const q = update.queryChange
+            const q = update.replace.q
             if (q == null) throw Error('Invalid update')
             else if (q.type === 'allkv' || q.type === 'single') {
               r = update.replace
             } else if (q.type === 'kv') {
               for (const k of q.q) {
-                const val = update.replace.get(k)
+                const val = update.replace.with.get(k)
                 if (val == null) r.delete(k)
                 else r.set(k, val)
               }

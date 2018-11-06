@@ -24,7 +24,12 @@ function catchupFnForStore(store: I.SimpleStore, getOps: I.GetOpsFn): I.CatchupF
 
   const runFetch: I.CatchupFn = async (query, opts) => {
     const {queryRun, results, versions} = await store.fetch(query, {})
-    return {queryChange: queryRun, resultingVersions: versions, replace: results, txns: []}
+    
+    return {
+      resultingVersions: versions,
+      replace: {q: queryRun, with: results},
+      txns: []
+    }
   }
 
   const runGetOps: I.CatchupFn = async (query, opts) => {
@@ -36,10 +41,15 @@ function catchupFnForStore(store: I.SimpleStore, getOps: I.GetOpsFn): I.CatchupF
     }
 
     const {ops, versions: opVersions} = await getOps(query, versions, {bestEffort: opts.bestEffort})
-    return {queryChange: query, resultingVersions: opVersions, txns: ops}
+    return {
+      resultingVersions: opVersions,
+      // queryChange: query,
+      txns: ops,
+    }
   }
 
   return (query, opts) => {
+    // console.log('running catchup', query, opts)
     // This is pretty sparse right now. It might make sense to be a bit fancier
     // and call getOps after fetching or something like that.
     return (opts && opts.noAggregation) ? runGetOps(query, opts) : runFetch(query, opts)
@@ -138,21 +148,13 @@ export default class SubGroup {
           }
 
           // Its pretty awkward sending just a single item in an array like this.
+          // console.log('stream append')
           stream.append({
-            queryChange: null,
             resultingVersions: activeVersions,
             txns:[
               {versions: {[source]:version}, txn:activeTxn}
             ]
           })
-        } else {
-          if (activeVersions[source]) {
-            // TODO: Its more correct to create an empty transaction object here and put it in the list.
-            // Sorry future me!
-            if (opts.alwaysNotify) stream.append({
-              queryChange: null, resultingVersions: activeVersions, txns: [] // TODO: Why is this list empty?
-            })
-          }
         }
       },
 
@@ -190,7 +192,7 @@ export default class SubGroup {
           throw err
         })
 
-        const {queryChange, resultingVersions} = result
+        const {replace, resultingVersions} = result
 
         // Things we need to do here:
         // - Update the returned snapshots based on opsBuffer
@@ -208,10 +210,10 @@ export default class SubGroup {
 
         opsBuffer = null
 
-        if (queryChange != null) {
-          pendingQuery = qops.q.subtract(activeQuery, getQueryData(queryChange))
+        if (replace != null) {
+          pendingQuery = qops.q.subtract(activeQuery, getQueryData(replace.q))
           if (opts.knownDocs) knownDocs = qops.q.intersectDocs(knownDocs, pendingQuery)
-          activeQuery = qops.q.add(activeQuery, getQueryData(queryChange))
+          activeQuery = qops.q.add(activeQuery, getQueryData(replace.q))
         }
 
         // resultingVersions should just contain the versions that have changed,

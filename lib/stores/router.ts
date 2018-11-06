@@ -53,7 +53,6 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string) => {
 }
 
 const mapKeysInto = <T>(dest: Map<I.Key, T> | null, oldMap: Map<I.Key, T> | null, keyRoutes: Map<I.Key, Route>) => {
-  console.log('mapKeysInto', oldMap, keyRoutes)
   if (dest == null) dest = new Map<I.Key, T>()
   if (oldMap == null) return dest
 
@@ -66,7 +65,7 @@ const mapKeysInto = <T>(dest: Map<I.Key, T> | null, oldMap: Map<I.Key, T> | null
 }
 
 // Gross.
-const mapSetKeysInto = (dest: Set<I.Key> | null, oldSet: Set<I.Key>, keyRoutes: Map<I.Key, Route>) => {
+const mapSetKeysInto = (dest: Set<I.Key> | null, oldSet: Iterable<I.Key>, keyRoutes: Map<I.Key, Route>) => {
   if (dest == null) dest = new Set<I.Key>()
 
   for (const bk of oldSet) {
@@ -91,12 +90,10 @@ export default function router(): Router {
     return null
   }
 
-  const splitQueryByStore = (q: I.Query) => {
-    if (q.type !== 'kv') throw new err.UnsupportedTypeError('Router only supports kv queries')
-
+  const splitKeysByStore = (keys: Set<I.Key>) => {
     const result = new Map<I.Store, Map<I.Key, Route>>()
 
-    for (const fKey of q.q) {
+    for (const fKey of keys) {
       const route = getRoute(fKey)
       if (route) {
         const bKey = changePrefix(fKey, route.fPrefix, route.bPrefix)
@@ -111,6 +108,11 @@ export default function router(): Router {
     }
 
     return result
+  }
+
+  const splitQueryByStore = (q: I.Query) => {
+    if (q.type !== 'kv') throw new err.UnsupportedTypeError('Router only supports kv queries')
+    return splitKeysByStore(q.q)
   }
 
   return {
@@ -255,9 +257,9 @@ export default function router(): Router {
       }
     },
 
-    subscribe(q, opts) {
+    subscribe(q, opts = {}) {
       if (q.type !== 'kv') throw new err.UnsupportedTypeError('Router only supports kv queries')
-      
+
       // Subscribe here merges a view over a number of child subscriptions.
       // 
       // - For advancing the cursors, we do them one at a time
@@ -266,15 +268,27 @@ export default function router(): Router {
       
       // List of [store, Map<Key, Route>]
       const queryByStore = Array.from(splitQueryByStore(q))
-      console.log('qbs', queryByStore)
-      const childOpts = {...opts, alwaysNotify: true}
-      const childSubs = queryByStore.map(([store, keyRoutes]) => ({
-        store,
-        keyRoutes,
-        sub: store.subscribe({type:'kv', q:new Set(keyRoutes.keys())}, childOpts),
-      }))
+      // console.log('qbs', queryByStore)
 
-      console.log('subscribing to', queryByStore.map(([store, keyRoutes]) => (new Set(keyRoutes.keys()))))
+      const childOpts = {
+        ...opts,
+        knownAtVersions: opts.knownAtVersions,
+        alwaysNotify: true
+      }
+      const knownDocsByStore = opts.knownDocs ? splitKeysByStore(opts.knownDocs as Set<I.Key>) : null
+      const childSubs = queryByStore.map(([store, keyRoutes]) => {
+        const knownDocMap = knownDocsByStore && knownDocsByStore.get(store)
+        return {
+          store,
+          keyRoutes,
+          sub: store.subscribe({type:'kv', q:new Set(keyRoutes.keys())}, {
+            ...childOpts,
+            knownDocs: knownDocMap ? new Set(knownDocMap.keys()) : undefined,
+          }),
+        }
+      })
+
+      // console.log('subscribing to', queryByStore.map(([store, keyRoutes]) => (new Set(keyRoutes.keys()))))
 
       let activeVersions: I.FullVersionRange = {}
 
@@ -342,7 +356,7 @@ export default function router(): Router {
         }
       }
 
-      console.log('subgroups', subGroups.map(sg => sg.map(ss => ss.store.storeInfo.sources)))
+      // console.log('subgroups', subGroups.map(sg => sg.map(ss => ss.store.storeInfo.sources)))
 
 
       // Unfortunately I don't have a way to cancel the Promise.all I'm using below.
@@ -362,11 +376,10 @@ export default function router(): Router {
             // console.log('aa', iters.map(i => i.next()))
             // iters[0].next().then(x => console.log('stream iter next', x))
             const nexts = await Promise.all(iters.map(i => i.next()))
-            console.log('nexts', nexts)
+            // console.log('nexts', nexts)
             if (cancelled) break
 
             const nextResult: I.CatchupData = {
-              queryChange: null, // Not implemented
               // Versions merged into activeVersions.
               resultingVersions: {}, // Acceptable version range for results post txns
               txns: [],
@@ -378,7 +391,21 @@ export default function router(): Router {
               // console.log('value', value)
               // TODO To make this work we'll need to make the replace data
               // also name the query around which we're replacing contents
-              if (value.replace && value.replace.size) throw new Error('Router over replace data not implemented')
+              if (value.replace && value.replace.with.size) {
+                // console.log('replace', value.replace)
+
+                let replace = nextResult.replace
+                if (replace == null) {
+                  replace = nextResult.replace = {
+                    q: {type: "kv", q: new Set()},
+                    with: new Map<I.Key, I.Val>(),
+                  }
+                }
+
+                if (value.replace.q.type !== 'kv') throw Error('Unimplemented r type')
+                mapSetKeysInto((replace.q as any).q, value.replace.q.q, keyRoutes[n])
+                mapKeysInto(replace.with, value.replace.with, keyRoutes[n])
+              }
 
               if (done || !value) throw new Error('Child subscription ended prematurely')
 
@@ -415,11 +442,11 @@ export default function router(): Router {
 
       return {
         async cursorNext() {
-          console.log('css', cursorNextSub, childSubs.length)
+          // console.log('css', cursorNextSub, childSubs.length)
           if (cursorNextSub < childSubs.length) {
             const {sub, keyRoutes} = childSubs[cursorNextSub]
             const next = await sub.cursorNext()
-            console.log('cursorNext', next)
+            // console.log('cursorNext', next)
             if (next.activeQuery.type !== 'kv') throw Error('Unsupported result type ' + next.activeQuery.type)
             mapSetKeysInto(activeQuery.q, next.activeQuery.q, keyRoutes)
             if (intersectVersionsMut(activeVersions, next.activeVersions) == null) {

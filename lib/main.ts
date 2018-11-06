@@ -117,7 +117,7 @@ const testNet = async () => {
 const setSingle = (k: I.Key, v: any) => new Map([[k, {type:'set', data: v}]])
 
 const testRouter = async () => {
-  const a = augment(kvStore())
+  const a = augment(kvStore(new Map([['x', 'yo']])))
   const b = augment(kvStore())
 
   const store = router()

@@ -37,6 +37,7 @@ export default function<T>(onCancel?: () => void) {
 
   return {
     append(val: T) {
+      // console.log('stream app', done, resolvers)
       if (done) return
 
       if (resolvers.length) {

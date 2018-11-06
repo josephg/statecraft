@@ -100,7 +100,10 @@ const map = (inner: I.Store, mapfn: MapFn): I.Store => {
           for await (const innerUpdates of innerSub.iter) {
             yield {
               ...innerUpdates,
-              replace: innerUpdates.replace ? qtype.r.map(innerUpdates.replace, mapfn) : undefined,
+              replace: innerUpdates.replace ? {
+                q: innerUpdates.replace.q,
+                with: qtype.r.map(innerUpdates.replace.with, mapfn)
+              } : undefined,
               txns: mapTxnWithMetas(innerUpdates.txns, mapfn)
             }
           }
