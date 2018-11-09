@@ -1,0 +1,74 @@
+.toolpanel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  text-align: center;
+  padding-bottom: 26px;
+  color: white;
+
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  cursor: default;
+  /*background-color: hsl(184, 49%, 7%);*/
+  pointer-events: none;
+}
+
+.toolpanel > div {
+  width: 80px;
+  margin: 0px;
+  display: inline-block;
+  text-align: center;
+  text-transform: uppercase;
+  border-left: 2px hsl(0, 100%, 50%);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.toolpanel > div:not(:first-child) {
+  margin-left: 6px;
+}
+.toolpanel > div:not(:last-child) {
+  margin-right: 6px;
+}
+
+.toolpanel > div:not(.selected) {
+  box-shadow: 0px 8px hsl(0, 0%, 47%);
+  padding: 20px 0px 20px 0px;
+  position: relative;
+}
+.toolpanel > div:not(.selected)::after {
+  content: '';
+  z-index: 1;
+  position: absolute;
+  left:0;
+  top: 0;
+  width: 80px;
+  height: 70px;
+
+  /*background-color: hsla(0, 0%, 0%, 0.31);*/
+}
+
+.toolpanel > div.selected {
+  /*box-shadow: 0px -8px white;*/
+  padding: 20px 0px 20px 0px;
+  position: relative;
+  top: 8px;
+}
+
+.toolpanel > #move { color: black; background-color: hsl(44, 87%, 52%); }
+
+.toolpanel > #nothing { color: black; background-color: white; }
+.toolpanel > #thinsolid { color: black; background-color: hsl(0, 0%, 71%); }
+.toolpanel > #solid { background-color: hsl(184, 49%, 7%); }
+.toolpanel > #bridge { background-color: hsl(208, 78%, 47%); }
+
+.toolpanel > #positive { background-color: #5ECC5E; }
+.toolpanel > #negative { background-color: #D65A2B; }
+
+.toolpanel > #shuttle { background-color: #9429BF; }
+.toolpanel > #thinshuttle { color: black; background-color: hsl(283, 89%, 75%); }
+
+.toolpanel > #glue { background-color: #af8145; }
+.toolpanel > #cut { color: black; background-color: #d2c1ac; }
