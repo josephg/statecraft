@@ -23,12 +23,21 @@ const capabilitiesToJSON = (c: I.Capabilities): any[] => {
 export default function serve(reader: Readable, writer: Writable, store: I.Store) {
   const subForRef = new Map<N.Ref, I.Subscription>()
   // let finished = false
+  let closed = false
 
   const protoErr = (err: Error) => {
     console.error('Invalid client', err)
   }
 
+  writer.on("error", err => {
+    console.warn('Error in client socket', err)
+    closed = true
+  })
+  writer.on("close", () => closed = true)
+  writer.on("finish", () => closed = true)
+
   const write = (data: N.SCMsg) => {
+    if (closed) return
     writer.write(data)
 
     // Work around this bug:

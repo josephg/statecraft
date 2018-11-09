@@ -14,6 +14,7 @@ import fs = require('fs')
 import url = require('url')
 
 import express = require('express')
+import bodyParser = require('body-parser')
 import jsesc = require('jsesc')
 
 import mod = require('./rustpng')
@@ -64,15 +65,18 @@ store.mount(imgStore, 'img/', ALL, '', false)
 
 const app = express()
 app.use(express.static(`${__dirname}/../../public`))
-app.get('*', async (req, res) => {
+app.use(bodyParser.json())
+
+app.get('*', async (req, res, next) => {
+  // Try to answer request using a rendered statecraft store
   res.setHeader('content-type', 'text/html')
 
   const key = url.parse(req.url).pathname!.slice(1)
   // console.log('key', key)
   const result = await store.fetch({type: 'kv', q: new Set([key])})
   // console.log('result', result)
-  const value = result.results.get(key)
-  if (value == null) return res.sendStatus(404)
+  let value = result.results.get(key)
+  if (value == null) return next()
 
   res.setHeader('x-sc-version', JSON.stringify(result.versions))
   // TODO: generate an etag based off the version, and parse it back to pass to fetch.
@@ -82,12 +86,16 @@ app.get('*', async (req, res) => {
   for (const s in versionRange) versions[s] = versionRange[s].to
 
   const mimetype = Buffer.isBuffer(value) ? 'image/png' : 'application/json'
+  // if (Buffer.isBuffer(value)) value = value.toString('base64')
+  if (Buffer.isBuffer(value)) value = `data:${mimetype};base64,${value.toString('base64')}`
+
   // const v = Buffer.isBuffer(value) ? value.toString('base64') : value
   res.send(`<!doctype html>
 <div id=content>${render(mimetype, value).toString()}</div>
 <script>
 const Buffer = {from(arr) { return new Uint8Array(arr) }};
 const config = ${jsesc({
+  mimetype,
   key,
   initialValue: value,
   initialVersions: versions
@@ -95,6 +103,33 @@ const config = ${jsesc({
 </script>
 <script src="/bundle.js"></script>
 `)
+})
+
+app.get('/:user/:key.json', async (req, res, next) => {
+  const {user, key} = req.params
+  const k = `world/${user}/${key}`
+  const result = await store.fetch({type: 'kv', q: new Set([k])})
+  const value = result.results.get(k)
+  if (value == null) return next()
+  res.setHeader('x-sc-version', JSON.stringify(result.versions))
+  res.setHeader('content-type', 'application/json')
+  res.json({
+    v: 0,
+    data: value,
+    readonly: false,
+  })
+})
+
+app.put('/:user/:key.json', async (req, res, next) => {
+  const {user, key} = req.params
+  const txn = new Map([[`world/${user}/${key}`, {type:'set', data: req.body.data}]])
+  const result = await store.mutate('resultmap', txn)
+  console.log(result)
+  res.end()
+})
+
+app.get('/:user/:key', (req, res) => {
+  res.sendFile('public/bp/editor.html', {root: process.env['PWD']})
 })
 
 const server = http.createServer(app)

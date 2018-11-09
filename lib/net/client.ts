@@ -147,7 +147,6 @@ export default function storeFromStreams(reader: TinyReader, writer: TinyWriter)
 
               txns: txns.map(({v, txn}) => ({versions: v, txn: opFromJSON(type.r, txn)}))
             }
-            if (r) update.replace = snapFromJSON(type.r, r)
 
             sub._append(update)
             break
