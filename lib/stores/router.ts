@@ -482,7 +482,6 @@ export default function router(): Router {
     // transactions is too hard / impossible with the current architecture.
     // We'll only allow transactions which hit one store.
     async mutate(type, fTxn, versions, opts) {
-      console.log('xxx router mutate opts', opts)
       if (type !== 'resultmap') throw new err.UnsupportedTypeError('Only resultmap mutations supported')
       fTxn = fTxn as I.KVTxn
 

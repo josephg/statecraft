@@ -100,7 +100,8 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
 
 
 ;(async () => {
-  const store = onekey(await connect('ws://localhost:2001/'), config.key)
+  const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/`
+  const store = onekey(await connect(wsurl), config.key)
 
   if (config.initialValue == null) {
     console.log('Creating the document on the server...')

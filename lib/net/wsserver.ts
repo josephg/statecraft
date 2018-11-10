@@ -3,6 +3,8 @@ import serve from './server'
 import {Readable, Writable, Transform} from 'stream'
 import WebSocket = require('ws')
 
+const isProd = process.env.NODE_ENV === 'production'
+
 export default (store: I.Store, wsOpts: WebSocket.ServerOptions) => {
   const wss = new WebSocket.Server(wsOpts)
 
@@ -13,14 +15,14 @@ export default (store: I.Store, wsOpts: WebSocket.ServerOptions) => {
     })
 
     client.on("message", data => {
-      console.log('C->S', data)
+      if (!isProd) console.log('C->S', data)
       reader.push(JSON.parse(data as any))
     })
 
     const writer = new Writable({
       objectMode: true,
       write(data, _, callback) {
-        console.log('S->C', data)
+        if (!isProd) console.log('S->C', data)
         if (client.readyState === client.OPEN) {
           client.send(JSON.stringify(data))
         }
