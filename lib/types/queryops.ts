@@ -64,7 +64,7 @@ export const getQueryData = (q: I.Query): I.QueryData => {
 export const wrapQuery = (type: I.QueryType, data: I.QueryData): I.Query => {
   switch (type) {
     case 'kv': return {type, q: data as I.KVQuery}
-    default: return {type}
+    default: return {type, q: data as boolean}
   }
 }
 

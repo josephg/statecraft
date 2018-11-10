@@ -18,7 +18,7 @@ import router, {ALL} from './stores/router'
 
 const testSingle = async () => {
   const store = augment(singleStore())
-  const sub = store.subscribe({type: 'allkv'}, {})
+  const sub = store.subscribe({type: 'allkv', q: true}, {})
   ;(async () => {
     for await (const data of sub) {
       console.log('subscribe data', inspect(data, false, 10, true))
@@ -30,13 +30,13 @@ const testSingle = async () => {
   const v = await store.mutate('single', {type:'set', data: {x: 10}})
   console.log('mutate run', v)
 
-  const results2 = await store.fetch({type: 'single'})
+  const results2 = await store.fetch({type: 'single', q: true})
   console.log('results', results2)
 }
 
 const testResultMap = async () => {
   const store = augment(kvStore())
-  const sub = store.subscribe({type: 'allkv'}, {})
+  const sub = store.subscribe({type: 'allkv', q: true}, {})
   ;(async () => {
     for await (const data of sub) {
       console.log('subscribe data', inspect(data, false, 10, true))
@@ -58,7 +58,7 @@ const testResultMap2 = async () => {
   const store = augment(kvStore())
   const txn = new Map([['x', {type:'set', data: {x: 10}}]])
   const v = await store.mutate('resultmap', txn)
-  const r = await store.getOps!({type: 'allkv'}, {[store.storeInfo.sources![0]!]: {from:0, to:100}})
+  const r = await store.getOps!({type: 'allkv', q: true}, {[store.storeInfo.sources![0]!]: {from:0, to:100}})
   console.log(r)
 }
 
@@ -98,7 +98,7 @@ const testLmdb = async () => {
   const v = await store.mutate('resultmap', txn, {[store.storeInfo.sources![0]!]: -1})
   console.log('mutate cb', v)
 
-  const results = await store.fetch({type:'allkv'})
+  const results = await store.fetch({type:'allkv', q: true})
   console.log('fetch results', results)
 
   // store.close()

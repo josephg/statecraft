@@ -1,8 +1,11 @@
+// This was written for the boilerplate demo. Its still quite tightly tied to that.
+
 import html from 'nanohtml'
 import connect from '../../stores/wsclient'
 import render from './render'
 import * as I from '../../types/interfaces'
 import fieldOps from '../../types/fieldops'
+import onekey from '../../stores/onekey'
 
 
 declare const config: {
@@ -43,12 +46,10 @@ const setObj = (data: any) => {
 }
 
 ;(async () => {
-  const store = await connect('ws://localhost:2000/')
+  const store = onekey(await connect('ws://localhost:2000/'), config.key)
 
-  // This would all be waaaay cleaner if we had a map from kv store -> single store.
-
-  const sub = store.subscribe({type: 'kv', q: new Set([config.key])}, {
-    knownDocs: new Set([config.key]),
+  const sub = store.subscribe({type: 'single', q: true}, {
+    knownDocs: new Set(['']),
     knownAtVersions: config.initialVersions,
   })
   await sub.cursorAll()
@@ -57,27 +58,16 @@ const setObj = (data: any) => {
   // const r = new Map()
   for await (const update of sub) {
     if (update.replace) {
-      const q = update.replace.q
-      if (q == null) throw Error('Invalid update')
-      else if (q.type === 'allkv' || q.type === 'single') {
-        throw Error('unimplemented')
-      } else if (q.type === 'kv') {
-        if (q.q.has(config.key)) {
-          const val = update.replace.with.get(config.key)
-          setObj(val)
-          last = val
-        }
-      }
+      const val = update.replace.with
+      setObj(val)
+      last = val
     }
 
     update.txns.forEach(txn => {
       console.warn('txn', txn) // NOT PROCESSING
 
-      const op = (txn.txn as I.KVTxn).get(config.key)
-      if (op != null) {
-        last = fieldOps.apply(last, op)
-        setObj(last)
-      }
+      last = fieldOps.apply(last, txn.txn as I.SingleTxn)
+      setObj(last)
     })
     // update.txns.forEach(txn => rtype.applyMut!(r, txn.txn))
     // TODO: And update the versions?

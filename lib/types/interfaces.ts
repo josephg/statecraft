@@ -26,7 +26,7 @@ export type FullVersionRange = {
 
 // Wrapping single and allkv like this is sort of dumb, but it works better
 // with TS type checks.
-export type Query = {type: 'single' | 'allkv'} | {
+export type Query = {type: 'single' | 'allkv', q: boolean} | {
   type: 'kv',
   q: KVQuery,
 } /*| {
