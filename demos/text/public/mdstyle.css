@@ -4,8 +4,13 @@
 }
 
 body {
-  margin: 0;
-  background-color: #ffd1fa;
+  margin: 0 auto;
+  /*background-color: #ffd1fa;*/
+  max-width: 40em;
+}
+
+#content {
+
 }
 
 /*! Typebase.less v0.1.0 | MIT License */
@@ -101,12 +106,4 @@ code {
 /* Hug the block above you */
 .hug {
   margin-top: 0;
-}
-
-#content {
-  max-width: 30em;
-
-  padding-top: 30px;
-  margin-left: 300px;
-  padding-bottom: 200px;
 }
