@@ -77,6 +77,7 @@ const otDoc = async <Op>(
   // Written assuming the type has a compose() function.
   let pendingTxn: Op | null = null
   let inflightTxn: Op | null = null
+  let inflightUid: string | null = null
 
   const idStem = genIdStem()
   let nextId = 0
@@ -98,9 +99,27 @@ const otDoc = async <Op>(
     }
   }
 
+  const flush = async () => {
+    if (inflightTxn || pendingTxn == null) return
+
+    inflightTxn = pendingTxn
+    pendingTxn = null
+    inflightUid = idStem + (nextId++)
+    // For now I'm assuming this doesn't fail.
+    // TODO: Add metadata to this.
+    /*const resultingVersion =*/ await store.mutate('single',
+        {type: typeName, data: inflightTxn},
+        {[source]: version},
+        {uid: inflightUid}) // Returns the version # of our op
+    // inflightTxn = null
+
+    // flush()
+  }
+
   ;(async () => {
     for await (const update of sub) {
       console.log('got update', update)
+      let tryFlush = false
 
       if (update.replace) {
         // This situation with versions is a huge mess. What is authoritative?
@@ -113,12 +132,19 @@ const otDoc = async <Op>(
       }
 
       update.txns.forEach(txn => {
-        console.log('txn', txn)
-        
+        // console.log('txn', txn)
+
         // Ignore any ops we've generated locally. This is not quite
         // sufficient - if we want to handle reconnects properly we'll also
         // need to store previous id stems somewhere.
-        if (txn.uid && txn.uid.startsWith(idStem)) return
+        if (txn.uid && txn.uid.startsWith(idStem)) {
+          if (txn.uid === inflightUid) {
+            // We've seen our own op on the op stream. Mark it as confirmed and try to send more.
+            inflightTxn = inflightUid = null
+            tryFlush = true
+          }
+          return
+        }
 
         const innerTxn = txn.txn as I.SingleTxn
         if (Array.isArray(innerTxn)) innerTxn.forEach(op => processTxn(op, txn.versions[source]))
@@ -128,25 +154,10 @@ const otDoc = async <Op>(
       if (update.resultingVersions[source]) {
         version = update.resultingVersions[source].to
       }
+
+      if (tryFlush) flush()
     }
   })()
-
-  const flush = async () => {
-    if (inflightTxn || pendingTxn == null) return
-
-    inflightTxn = pendingTxn
-    pendingTxn = null
-
-    // For now I'm assuming this doesn't fail.
-    // TODO: Add metadata to this.
-    await store.mutate('single',
-        {type: typeName, data: inflightTxn},
-        {[source]: version},
-        {uid: idStem + (nextId++)}) // Returns the version # of our op
-    console.log('mutate returned')
-    inflightTxn = null
-    flush()
-  }
 
   await ready
 
