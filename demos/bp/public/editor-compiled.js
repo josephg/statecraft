@@ -1712,7 +1712,7 @@ const saveNow = () => bpromise.then(bp => {
 const save = (() => {
   if (readonly) return;
   // Rate limit saving to once every two seconds
-  const DELAY = 2000;
+  const DELAY = 0;
   var last = 0, timer = -1;
   return () => {
     const now = Date.now();
