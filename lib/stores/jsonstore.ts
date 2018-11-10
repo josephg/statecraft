@@ -1,3 +1,11 @@
+// This is a simple store that is backed up by a file on disk.
+//
+// It uses file watchers to keep the data up to date as the file content
+// changes.
+
+// It'd be great to make a KV wrap for this which re-exposes it out as a kv
+// store. Basically the inverse of onekey.
+
 import * as I from '../types/interfaces'
 import fieldType from '../types/fieldops'
 import err from '../err'

@@ -68,7 +68,8 @@ const renderEditor = (value: string | null, key: I.Key, versions: I.FullVersion)
       'content-type': 'text/html',
     },
     data: `<!doctype html>
-<link rel="stylesheet" type="text/css" href="/editorstyle.css" />
+<meta name="viewport" content="width=device-width">
+<link rel="stylesheet" type="text/css" href="/editorstyle.css">
 <textarea id=content autofocus>${value || 'YOOOOOOO'}</textarea>
 <script>
 const config = ${jsesc({
@@ -101,6 +102,7 @@ const renderMarkdown = (value: string, key: I.Key, versions: I.FullVersion): HTM
       'content-type': 'text/html',
     },
     data: `<!doctype html>
+<meta name="viewport" content="width=1000, initial-scale=1, maximum-scale=1">
 <link rel="stylesheet" type="text/css" href="/mdstyle.css" />
 <div id=content>${value}</div>
 `
