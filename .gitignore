@@ -5,3 +5,4 @@ db
 rust/target
 rust/Cargo.lock
 dist
+bundle.js
