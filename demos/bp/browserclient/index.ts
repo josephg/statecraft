@@ -1,9 +1,9 @@
-// This was written for the boilerplate demo. Its still quite tightly tied to that.
+// This is the main entrypoint for the in-browser viewer of live data.
 
 import html from 'nanohtml'
 import render from './render'
 
-// Should be able to use an alias here, but its broken in tsc for some reason.
+// Should be able to use an alias here, but its broken in tsify for some reason.
 import * as I from '../../../lib/types/interfaces'
 import connect from '../../../lib/stores/wsclient'
 import fieldOps from '../../../lib/types/fieldops'
@@ -16,12 +16,6 @@ declare const config: {
   initialValue: any,
   initialVersions: I.FullVersion,
 }
-
-// document.body.appendChild(html`<h1>oh hi</h1>`)
-
-const content = document.getElementById('content')
-if (content == null) throw Error('Could not find content root')
-// content.appendChild(render('application/json', {x:5, y:[1,2,3]}))
 
 const container = document.getElementById('content')
 if (container == null) throw Error('Could not find document #content div')

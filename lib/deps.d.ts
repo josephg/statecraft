@@ -90,3 +90,20 @@ declare module 'node-lmdb' {
     close(): void
   }
 }
+
+declare module 'ot-text' {
+  type TextOpComponent = number | string | {d: number}
+  type TextOp = TextOpComponent[]
+
+  let type: {
+    name: string
+    uri: string
+
+    create(): string
+
+    normalize(op: TextOp): TextOp
+    apply(doc: string, op: TextOp): string
+    transform(op: TextOp, other: TextOp, side: 'left' | 'right'): TextOp
+    compose(a: TextOp, b: TextOp): TextOp
+  }
+}

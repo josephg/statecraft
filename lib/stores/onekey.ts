@@ -44,7 +44,7 @@ const onekey = (innerStore: I.Store, key: I.Key): I.Store => {
 
   return {
     storeInfo: {
-      sources: innerStore.sources,
+      sources: innerStore.storeInfo.sources,
       capabilities: {
         mutationTypes: canMutate ? capabilities.mutationTypes : new Set(),
         ...capabilities,

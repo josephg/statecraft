@@ -67,10 +67,10 @@ const app = express()
 app.use(express.static(`${__dirname}/public`))
 app.use(bodyParser.json())
 
+
+// TODO: Do all this work in another map() function.
 app.get('*', async (req, res, next) => {
   // Try to answer request using a rendered statecraft store
-  res.setHeader('content-type', 'text/html')
-
   const key = url.parse(req.url).pathname!.slice(1)
   // console.log('key', key)
   const result = await store.fetch({type: 'kv', q: new Set([key])})
@@ -78,6 +78,7 @@ app.get('*', async (req, res, next) => {
   let value = result.results.get(key)
   if (value == null) return next()
 
+  res.setHeader('content-type', 'text/html')
   res.setHeader('x-sc-version', JSON.stringify(result.versions))
   // TODO: generate an etag based off the version, and parse it back to pass to fetch.
 
