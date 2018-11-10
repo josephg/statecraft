@@ -28,6 +28,7 @@ import commonmark = require('commonmark')
 // import commonmark from 'commonmark'
 
 import ottext = require('ot-text')
+import fresh = require('fresh')
 
 process.on('unhandledRejection', err => { throw err })
 
@@ -86,10 +87,16 @@ store.mount(
   'editor/', ALL, '', false
 )
 
+const genEtag = (key: string, versions: I.FullVersion): string => {
+  const sources = Object.keys(versions).sort()
+  return key + '_' + sources.map(s => `${s}-${versions[s]}`).join('_')
+}
+
 const renderMarkdown = (value: string, key: I.Key, versions: I.FullVersion): HTMLDocData => (
   {
     headers: {
       'x-sc-version': JSON.stringify(versions),
+      'etag': genEtag(key, versions),
       // ETAG.
       'content-type': 'text/html',
     },
@@ -128,6 +135,8 @@ const scHandler = (
     let value = result.results.get(k)
     if (value == null && getDefault) value = getDefault(req.params, result.versions)
     if (value == null) return next()
+    
+    if (fresh(req.headers, value.headers)) return res.sendStatus(304)
     
     res.set(value.headers)
     res.send(value.data)
