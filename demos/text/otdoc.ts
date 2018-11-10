@@ -100,7 +100,7 @@ const otDoc = async <Op>(
   }
 
   const flush = async () => {
-    if (inflightTxn || pendingTxn == null) return
+    if (inflightTxn != null || pendingTxn == null) return
 
     inflightTxn = pendingTxn
     pendingTxn = null

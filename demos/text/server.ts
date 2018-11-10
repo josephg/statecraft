@@ -12,6 +12,7 @@ import * as I from '../../lib/types/interfaces'
 import lmdbStore from '../../lib/stores/lmdb'
 import augment from '../../lib/augment'
 import kvStore from '../../lib/stores/kvmem'
+import otStore from '../../lib/stores/ot'
 import mapStore from '../../lib/stores/map'
 import router, {ALL} from '../../lib/stores/router'
 import createWss from '../../lib/net/wsserver'
@@ -32,7 +33,7 @@ process.on('unhandledRejection', err => { throw err })
 
 register(ottext.type)
 
-const rootStore = augment(kvStore(undefined, {source: 'rootstore'}))
+const rootStore = otStore(augment(kvStore(undefined, {source: 'rootstore'})))
 
 const store = router()
 store.mount(rootStore, 'raw/', ALL, '', true)

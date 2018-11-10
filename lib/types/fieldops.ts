@@ -93,5 +93,7 @@ const type: ResultOps<any, Op> = {
 
   map(data, fn) { return fn(data, null) },
   mapAsync(data, fn) { return fn(data, null) },
+
+  getCorrespondingQuery(data) { return {type: 'single', q: true} },
 }
 export default type

@@ -83,5 +83,9 @@ const type: ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
       return result
     })
   },
+
+  getCorrespondingQuery(snap) {
+    return {type: 'kv', q: new Set(snap.keys())}
+  },
 }
 export default type

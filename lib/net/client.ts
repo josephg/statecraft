@@ -202,6 +202,8 @@ export default function storeFromStreams(reader: TinyReader, writer: TinyWriter)
 
         mutate(mtype, txn, versions = {}, opts = {}) {
           return new Promise((resolve, reject) => {
+            // console.log('....')
+            // setTimeout(() => {
             const ref = nextRef++
 
             const type = resultTypes[mtype]
@@ -214,6 +216,7 @@ export default function storeFromStreams(reader: TinyReader, writer: TinyWriter)
               txn: opToJSON(type, txn),
               v: versions, opts
             })
+            // }, 5000)
           })
         },
 

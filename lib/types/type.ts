@@ -28,6 +28,7 @@ export interface ResultOps<Snap, Op> extends Type<Snap, Op> {
   from(type: ResultType, snap: any): Snap
   map(snap: Snap, fn: (v: any, k: any) => any): Snap
   mapAsync(snap: Snap, fn: (v: any, k: any) => Promise<any>): Promise<Snap>
+  getCorrespondingQuery(snap: Snap): Query
 }
 
 export interface QueryOps<Snap, Op> extends Type<Snap, Op> {
