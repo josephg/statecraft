@@ -100,8 +100,9 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
 
 
 ;(async () => {
-  const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/`
+  const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws`
   const store = onekey(await connect(wsurl), config.key)
+  console.log('Connected to websocket server', wsurl)
 
   if (config.initialValue == null) {
     console.log('Creating the document on the server...')
