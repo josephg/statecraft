@@ -1,12 +1,12 @@
-import * as I from '../types/interfaces'
-import lmdbStore from '../stores/lmdb'
-import augment from '../augment'
-import kvStore from '../stores/kvmem'
-import mapStore from '../stores/map'
-import router, {ALL} from '../stores/router'
-import createWss from '../net/wsserver'
+import * as I from '../../lib/types/interfaces'
+import lmdbStore from '../../lib/stores/lmdb'
+import augment from '../../lib/augment'
+import kvStore from '../../lib/stores/kvmem'
+import mapStore from '../../lib/stores/map'
+import router, {ALL} from '../../lib/stores/router'
+import createWss from '../../lib/net/wsserver'
 
-import render from '../net/browserclient/render'
+import render from './browserclient/render'
 // import createHttp from '../net/httpserver'
 import http = require('http')
 
@@ -64,7 +64,7 @@ store.mount(imgStore, 'img/', ALL, '', false)
 
 
 const app = express()
-app.use(express.static(`${__dirname}/../../public`))
+app.use(express.static(`${__dirname}/public`))
 app.use(bodyParser.json())
 
 app.get('*', async (req, res, next) => {
@@ -129,7 +129,7 @@ app.put('/:user/:key.json', async (req, res, next) => {
 })
 
 app.get('/:user/:key', (req, res) => {
-  res.sendFile('public/bp/editor.html', {root: process.env['PWD']})
+  res.sendFile('public/editor.html', {root: __dirname})
 })
 
 const server = http.createServer(app)

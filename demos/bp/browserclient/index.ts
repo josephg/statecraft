@@ -1,11 +1,13 @@
 // This was written for the boilerplate demo. Its still quite tightly tied to that.
 
 import html from 'nanohtml'
-import connect from '../../stores/wsclient'
 import render from './render'
-import * as I from '../../types/interfaces'
-import fieldOps from '../../types/fieldops'
-import onekey from '../../stores/onekey'
+
+// Should be able to use an alias here, but its broken in tsc for some reason.
+import * as I from '../../../lib/types/interfaces'
+import connect from '../../../lib/stores/wsclient'
+import fieldOps from '../../../lib/types/fieldops'
+import onekey from '../../../lib/stores/onekey'
 
 
 declare const config: {
@@ -49,7 +51,7 @@ const setObj = (data: any) => {
   const store = onekey(await connect('ws://localhost:2000/'), config.key)
 
   const sub = store.subscribe({type: 'single', q: true}, {
-    knownDocs: new Set(['']),
+    knownDocs: true,
     knownAtVersions: config.initialVersions,
   })
   await sub.cursorAll()
@@ -64,12 +66,8 @@ const setObj = (data: any) => {
     }
 
     update.txns.forEach(txn => {
-      console.warn('txn', txn) // NOT PROCESSING
-
       last = fieldOps.apply(last, txn.txn as I.SingleTxn)
       setObj(last)
     })
-    // update.txns.forEach(txn => rtype.applyMut!(r, txn.txn))
-    // TODO: And update the versions?
   }
 })()

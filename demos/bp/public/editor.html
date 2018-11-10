@@ -1,8 +1,17 @@
+<!DOCTYPE html>
+<title>Steamdance</title>
+<meta charset="utf-8">
+<link href='/toolpanel.css' rel='stylesheet' type='text/css'>
+<link href='/icon.png' rel='icon' type='image/png'>
+<script>
+  window.currentUser = "josephg"
+</script>
+<style>
 @font-face {
   font-family: 'Play';
   font-style: normal;
   font-weight: 700;
-  src: local('Play-Bold'), url(/bp/Play.woff) format('woff');
+  src: local('Play-Bold'), url(/Play.woff) format('woff');
 }
 
 body, html {
@@ -163,3 +172,50 @@ a:after {
   background-color: hsla(184, 47%, 3%, 0.47);
   transition: height 0.6s;
 }
+</style>
+
+<div id="bp" tabIndex=0 autofocus class="boilerplate"></div>
+
+<div class='overlay topleft'>
+  <a href='/'>&#9664;Browse</a>
+  <span id='readonly'>CHANGES WILL NOT BE SAVED</span>
+  <span id='worldname'></span>
+  <div id='playpanel'>
+    <span id="playpause" title="play (space bar)">►</span>
+    <!-- <span id="pause" title="pause (space bar)">||</span> -->
+    <span id="step" title="step (enter)">&gt;|</span>
+  </div>
+</div>
+
+<div class='overlay' id='componentPanel'>
+  <div id='moduleList'>
+    <div class='module' id='addmod'>+</div>
+  </div>
+  <div class='disclosure'>▼ Modules</div>
+</div>
+
+<div class='overlay botright'>
+  <span><a href="https://github.com/josephg/steamdance">github</a></span>
+</div>
+
+<div class="toolpanel">
+  <div id="move">Move
+
+  </div><div id="nothing">Empty
+  </div><div id="thinsolid">grill
+  </div><div id="solid">Solid
+
+  </div><div id="bridge">bridge
+
+  </div><div id="positive">pos
+  </div><div id="negative">neg
+
+  </div><div id="shuttle">shuttle
+  </div><div id="thinshuttle">ts
+  </div><div id="glue">S Glue
+  </div><div id="cut">S Cut ✂
+  </div>
+</div>
+
+<datalist id=worldlist></datalist>
+<script src='/editor-compiled.js'></script>

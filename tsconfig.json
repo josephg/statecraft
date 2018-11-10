@@ -40,6 +40,7 @@
     "baseUrl": "./lib",                       /* Base directory to resolve non-absolute module names. */
     "paths": {
         "errno": ["deps"]
+        // "statecraft": ["./lib"]
     }                           /* A series of entries which re-map imports to lookup locations relative to the 'baseUrl'. */
     // "rootDirs": [],                        /* List of root folders whose combined content represents the structure of the project at runtime. */
     // "typeRoots": ["./lib"],                       /* List of folders to include type definitions from. */
@@ -58,9 +59,13 @@
     // "experimentalDecorators": true,        /* Enables experimental support for ES7 decorators. */
     // "emitDecoratorMetadata": true,         /* Enables experimental support for emitting type metadata for decorators. */
   },
-  "exclude": [
-    "node_modules",
-    "junk",
-    "dist"
+  // "exclude": [
+  //   "node_modules",
+  //   "junk",
+  //   "dist"
+  // ]
+  "include": [
+    "lib/**/*",
+    "demos/**/*"
   ]
 }
