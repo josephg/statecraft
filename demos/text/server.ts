@@ -37,7 +37,8 @@ const rootStore = otStore(augment(kvStore(undefined, {source: 'rootstore'})))
 
 const store = router()
 store.mount(rootStore, 'raw/', ALL, '', true)
-store.mount(mapStore(rootStore, (v, k) => {
+
+const mdstore = mapStore(rootStore, (v, k) => {
   console.log('v', v)
   const parser = new commonmark.Parser({smart: true})
   const writer = new commonmark.HtmlRenderer({smart: true, safe: true})
@@ -45,7 +46,8 @@ store.mount(mapStore(rootStore, (v, k) => {
   const tree = parser.parse(v)
   return writer.render(tree)
   // return Buffer.from(mod.convert(v.img, 8, 1, 2) as any)
-}), 'md/', ALL, '', false)
+})
+store.mount(mdstore, 'mdraw/', ALL, '', false)
 
 interface HTMLDocData {
   headers: {[k: string]: string},
@@ -57,7 +59,7 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string) => {
   return toPrefix + k.slice(fromPrefix.length)
 }
 
-const render = (value: string | null, key: I.Key, versions: I.FullVersion) => (
+const renderEditor = (value: string | null, key: I.Key, versions: I.FullVersion): HTMLDocData => (
   {
     headers: {
       'x-sc-version': JSON.stringify(versions),
@@ -65,7 +67,7 @@ const render = (value: string | null, key: I.Key, versions: I.FullVersion) => (
       'content-type': 'text/html',
     },
     data: `<!doctype html>
-<link rel="stylesheet" type="text/css" href="/style.css" />
+<link rel="stylesheet" type="text/css" href="/editorstyle.css" />
 <textarea id=content autofocus>${value || 'YOOOOOOO'}</textarea>
 <script>
 const config = ${jsesc({
@@ -80,8 +82,30 @@ const config = ${jsesc({
 )
 
 store.mount(
-  mapStore(rootStore, (value, key, versions) => render(value, 'raw/' + key!, versions)),
+  mapStore(rootStore, (value, key, versions) => renderEditor(value, 'raw/' + key!, versions)),
   'editor/', ALL, '', false
+)
+
+const renderMarkdown = (value: string, key: I.Key, versions: I.FullVersion): HTMLDocData => (
+  {
+    headers: {
+      'x-sc-version': JSON.stringify(versions),
+      // ETAG.
+      'content-type': 'text/html',
+    },
+    data: `<!doctype html>
+<link rel="stylesheet" type="text/css" href="/mdstyle.css" />
+<div id=content>${value}</div>
+`
+  }
+)
+// const mdrender = mapStore(mdstore, (v, k) => {
+
+// })
+
+store.mount(
+  mapStore(mdstore, (value, key, versions) => renderMarkdown(value, key!, versions)),
+  'md/', ALL, '', false
 )
 
 
@@ -94,31 +118,46 @@ const resultingVersion = (v: I.FullVersionRange): I.FullVersion => {
   return result
 }
 
-app.get('/edit/:name', async (req, res, next) => {
-  const {name} = req.params
-  const k = `editor/${name}`
-  const result = await store.fetch({type: 'kv', q: new Set([k])})
-  console.log('Got result from', k, result.results)
-  const value = result.results.get(k) || render(null, `raw/${name}`, resultingVersion(result.versions))
-  if (value == null) return next()
-  
-  res.set(value.headers)
-  res.send(value.data)
-})
+const scHandler = (
+    getKey: (params: any) => string,
+    getDefault?: (params: any, versions: I.FullVersionRange) => HTMLDocData | null): express.RequestHandler => (
+  async (req, res, next) => {
+    const k = getKey(req.params)
+    const result = await store.fetch({type: 'kv', q: new Set([k])})
+    console.log('Got result from', k, result.results)
+    let value = result.results.get(k)
+    if (value == null && getDefault) value = getDefault(req.params, result.versions)
+    if (value == null) return next()
+    
+    res.set(value.headers)
+    res.send(value.data)
+  }
+)
 
-// TODO: Refactor this to share code with the above.
-app.get('/md/:name', async (req, res, next) => {
-  const {name} = req.params
-  const k = `md/${name}`
-  const result = await store.fetch({type: 'kv', q: new Set([k])})
-  const value = result.results.get(k)
-  if (value == null) return next()
-  res.setHeader('x-sc-version', JSON.stringify(result.versions))
-  res.setHeader('content-type', 'application/json')
-  res.send(`<!doctype html>
-<div id=content>${value}</div>
-`)
-})
+// app.get('/edit/:name', handler(params => `editor/${name}`,
+//   params => renderEditor(null, `raw/${name}`, resultingVersion(result.versions))))
+
+app.get('/edit/:name', scHandler(
+  ({name}) => `editor/${name}`,
+  (params, versions) => renderEditor(null, `raw/${params.name}`, resultingVersion(versions))
+))
+
+app.get('/md/:name', scHandler(
+  ({name}) => `md/${name}`
+))
+
+// app.get('/md/:name', async (req, res, next) => {
+//   const {name} = req.params
+//   const k = `md/${name}`
+//   const result = await store.fetch({type: 'kv', q: new Set([k])})
+//   const value = result.results.get(k)
+//   if (value == null) return next()
+//   res.setHeader('x-sc-version', JSON.stringify(result.versions))
+//   res.setHeader('content-type', 'text/html')
+//   res.send(`<!doctype html>
+// <div id=content>${value}</div>
+// `)
+// })
 
 app.get('/raw/:name', async (req, res, next) => {
   const {name} = req.params
