@@ -149,9 +149,10 @@ export default function serve(reader: Readable, writer: Writable, store: I.Store
 
             const msg: N.SCMsg = {
               a: 'sub update', ref, rv: updates.resultingVersions,
-              txns: updates.txns.map(({versions, txn}) => ({
+              txns: updates.txns.map(({versions, txn, uid}) => ({
                 v: versions,
                 txn: opToJSON(type.r, txn),
+                uid,
               })),
             }
             if (updates.replace) {

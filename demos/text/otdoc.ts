@@ -1,7 +1,21 @@
+// This is a wrapper around a single value store which implements simple
+// operational transformation using a specified type.
+
+// This code is based on ShareJS's doc type here:
+// https://github.com/josephg/ShareJS/blob/master/lib/client/doc.js
+
 import * as I from '../../lib/types/interfaces'
 import * as T from '../../lib/types/type'
 import fieldOps from '../../lib/types/fieldops'
 import {typeOrThrow} from '../../lib/types/registry'
+
+const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+const genIdStem = () => {
+  let result = ''
+  for (let i = 0; i < 8; i++) result += alphabet[(Math.random() * alphabet.length)|0]
+  return result + '_'
+}
+
 
 const xf = <Op>(type: T.AnyOTType, client: Op | null, server: I.SingleOp | null): [Op | null, I.SingleOp | null] => {
   if (client == null || server == null) return [client, server]
@@ -64,11 +78,15 @@ const otDoc = async <Op>(
   let pendingTxn: Op | null = null
   let inflightTxn: Op | null = null
 
+  const idStem = genIdStem()
+  let nextId = 0
+
   let readyResolve: null | (() => void) = null
   const ready = new Promise(resolve => readyResolve = resolve)
 
+
   const processTxn = (serverOp: I.SingleOp | null, newVersion: number) => {
-    if (false /* TODO */) { return } // If its mine, we're done.
+    // if (false /* TODO */) { return } // If its mine, we're done.
 
     if (inflightTxn) [inflightTxn, serverOp] = xf(type, inflightTxn, serverOp)
     if (pendingTxn) [pendingTxn, serverOp] = xf(type, pendingTxn, serverOp)
@@ -96,6 +114,11 @@ const otDoc = async <Op>(
 
       update.txns.forEach(txn => {
         console.log('txn', txn)
+        
+        // Ignore any ops we've generated locally. This is not quite
+        // sufficient - if we want to handle reconnects properly we'll also
+        // need to store previous id stems somewhere.
+        if (txn.uid && txn.uid.startsWith(idStem)) return
 
         const innerTxn = txn.txn as I.SingleTxn
         if (Array.isArray(innerTxn)) innerTxn.forEach(op => processTxn(op, txn.versions[source]))
@@ -116,7 +139,10 @@ const otDoc = async <Op>(
 
     // For now I'm assuming this doesn't fail.
     // TODO: Add metadata to this.
-    await store.mutate('single', {type: typeName, data: inflightTxn}, {[source]: version}) // Returns the version # of our op
+    await store.mutate('single',
+        {type: typeName, data: inflightTxn},
+        {[source]: version},
+        {uid: idStem + (nextId++)}) // Returns the version # of our op
     console.log('mutate returned')
     inflightTxn = null
     flush()

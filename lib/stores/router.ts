@@ -186,7 +186,7 @@ export default function router(): Router {
       // general version of this function requires some fancy graph data
       // structures, and its simply not important enough at the moment.
       
-      type SingleTxn = {txn: I.KVTxn, v: I.Version}
+      type SingleTxn = {txn: I.KVTxn, v: I.Version, uid?: string}
       const opsForSource = new Map<I.Source, SingleTxn[]>()
 
       await Promise.all(byStoreList.map(async ([store, keyRoutes]) => {
@@ -216,6 +216,7 @@ export default function router(): Router {
           mappedOps.push({
             txn: mapKeysInto(null, op.txn as Map<I.Key, I.Op>, keyRoutes),
             v: op.versions[source],
+            uid: op.uid,
           })
         }
         if (source == null) return // No ops.
@@ -236,10 +237,12 @@ export default function router(): Router {
             if (a.v === b.v) {
               // Merge them together
               oldMerged.shift(); mappedOps.shift()
+              assert.strictEqual(a.uid, b.uid)
               merged.push({
                 // TODO: Replace this with a result type specific merge function.
                 txn: new Map(Array.from(a.txn).concat(Array.from(b.txn))), // gross.
                 v: a.v,
+                uid: a.uid,
               })
             } else if (a.v < b.v) merged.push(oldMerged.shift()!)
             else if (a.v > b.v) merged.push(mappedOps.shift()!)
@@ -252,7 +255,7 @@ export default function router(): Router {
 
       return {
         ops: flatMap(Array.from(opsForSource),
-          ([source, ops]) => ops.map(({txn, v}) => ({txn, versions: {[source]: v}}))),
+          ([source, ops]) => ops.map(({txn, v, uid}) => ({txn, versions: {[source]: v}, uid}))),
         versions: validRange,
       }
     },
@@ -415,12 +418,12 @@ export default function router(): Router {
                 throw new Error('Subscription ops misaligned')
               }
 
-              value.txns.forEach(({versions, txn}) => {
+              value.txns.forEach(({versions, txn, uid}) => {
                 // The downside of doing it this way is that the results won't
                 // be strictly ordered by version. They should still be
                 // correct if applied in sequence though.
                 nextResult.txns.push({
-                  versions,
+                  versions, uid,
                   txn: mapKeysInto(null, txn as I.KVTxn, keyRoutes[n])
                 })
               })
@@ -479,6 +482,7 @@ export default function router(): Router {
     // transactions is too hard / impossible with the current architecture.
     // We'll only allow transactions which hit one store.
     async mutate(type, fTxn, versions, opts) {
+      console.log('xxx router mutate opts', opts)
       if (type !== 'resultmap') throw new err.UnsupportedTypeError('Only resultmap mutations supported')
       fTxn = fTxn as I.KVTxn
 

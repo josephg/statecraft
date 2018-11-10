@@ -27,8 +27,10 @@ export interface KVMemOptions {
 export interface MemStore extends I.SimpleStore {
   // internalDidChange(type: I.ResultType, txn: I.Txn, versions: I.FullVersion, opts: I.MutateOptions): void
 
-  // Apply and notify that a change happened in the database.
-  internalDidChange(txn: I.KVTxn, preApplied?: boolean): I.Version
+  // Apply and notify that a change happened in the database. This is useful
+  // so if the memory store wraps an object that is edited externally, you can
+  // update listeners.
+  internalDidChange(txn: I.KVTxn, uid?: string, preApplied?: boolean): I.Version
 }
 
 export default function singleStore(
@@ -78,14 +80,14 @@ export default function singleStore(
       })
     },
 
-    internalDidChange(txn, preapplied = false) {
+    internalDidChange(txn, uid?: string, preapplied = false) {
       const fromv = version
       const opv = ++version
 
       for (const [k, op] of txn) lastModVersion.set(k, opv)
       if (!preapplied) resultMap.applyMut!(data, txn)
 
-      if (this.onTxn != null) this.onTxn(source, fromv, opv, 'resultmap', txn)
+      if (this.onTxn != null) this.onTxn(source, fromv, opv, 'resultmap', txn, uid)
       return opv
     },
 
@@ -108,7 +110,7 @@ export default function singleStore(
       }
 
       // 2. Actually apply.
-      const opv = this.internalDidChange(txn, false)
+      const opv = this.internalDidChange(txn, opts.uid, false)
       return Promise.resolve({[source]: opv})
     },
 

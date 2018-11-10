@@ -11,11 +11,16 @@ export interface OpCacheOpts {
   readonly maxNum?: number, // Max number of ops kept for each source.
 }
 
-interface OpsEntry {fromV: I.Version, toV: I.Version, txn: I.Txn}
+interface OpsEntry {
+  fromV: I.Version,
+  toV: I.Version,
+  txn: I.Txn,
+  uid?: string,
+}
 const cmp = (item: OpsEntry, v: I.Version) => item.toV - v
 
 const opcache = (opts: OpCacheOpts): {
-  onOp(source: I.Source, fromV: I.Version, toV: I.Version, type: I.ResultType, txn: I.Txn): void,
+  onOp(source: I.Source, fromV: I.Version, toV: I.Version, type: I.ResultType, txn: I.Txn, uid?: string): void,
   getOps: I.GetOpsFn,
 } => {
   const maxNum = opts.maxNum || 0
@@ -30,10 +35,10 @@ const opcache = (opts: OpCacheOpts): {
   }
 
   return {
-    onOp(source, fromV, toV, type, txn) {
+    onOp(source, fromV, toV, type, txn, uid) {
       const ops = getOpsForSource(source)
       if (ops.length) assert(ops[ops.length - 1].toV === fromV, 'Emitted versions don\'t match')
-      ops.push({fromV, toV, txn})
+      ops.push({fromV, toV, txn, uid})
       while (maxNum !== 0 && ops.length > maxNum) ops.shift()
     },
 
@@ -76,7 +81,7 @@ const opcache = (opts: OpCacheOpts): {
           // The transaction will be null if the operation doesn't match
           // the supplied query.
           const txn = qops.filterTxn(item.txn, getQueryData(query))
-          if (txn != null) result.push({versions:{[source]: item.toV}, txn: txn})
+          if (txn != null) result.push({versions:{[source]: item.toV}, txn: txn, uid: item.uid})
 
           vTo = item.toV
           if (limitOps > 0 && --limitOps === 0) break

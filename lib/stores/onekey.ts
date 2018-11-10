@@ -20,7 +20,10 @@ const onekey = (innerStore: I.Store, key: I.Key): I.Store => {
   const unwrapTxns = (txns: I.TxnWithMeta[]): I.TxnWithMeta[] => (
     txns.map(txn => {
       if(!(txn.txn instanceof Map)) throw new err.InvalidDataError()
-      return {versions: txn.versions, txn: txn.txn.get(key)} as I.TxnWithMeta
+      return {
+        ...txn,
+        txn: txn.txn.get(key),
+      } as I.TxnWithMeta
     })
   )
 
@@ -70,7 +73,8 @@ const onekey = (innerStore: I.Store, key: I.Key): I.Store => {
 
       const innerTxn = new Map([[key, txn as I.Op]])
       return await innerStore.mutate('resultmap', innerTxn, versions, {
-        conflictKeys: opts.conflictKeys && opts.conflictKeys.includes(key) ? [''] : undefined
+        ...opts,
+        conflictKeys: opts.conflictKeys && opts.conflictKeys.includes(key) ? [''] : undefined,
       })
     },
 
