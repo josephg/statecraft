@@ -25,7 +25,7 @@ const createPair = <T>(): [TinyReader<T>, TinyWriter<T>] => {
   // const reader = wrapReader(r)
   // const writer = wrapWriter(w)
 
-  const reader: TinyReader<T> = {}
+  const reader: TinyReader<T> = {isClosed: false}
   const writer: TinyWriter<T> = {
     write(msg) { process.nextTick(() => reader.onmessage!(msg)) },
     close() {},

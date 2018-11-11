@@ -7,6 +7,8 @@ import {Readable, Writable} from 'stream'
 
 export interface TinyReader<Msg> {
   onmessage?: (msg: Msg) => void
+  onclose?: () => void
+  isClosed: boolean,
 }
 
 export interface TinyWriter<Msg> {
@@ -15,10 +17,14 @@ export interface TinyWriter<Msg> {
 }
 
 export const wrapReader = <Msg>(r: Readable) => {
-  const reader: TinyReader<Msg> = {}
+  const reader: TinyReader<Msg> = {isClosed: false}
 
   r.on('data', msg => {
     reader.onmessage!(msg as any as Msg)
+  })
+  r.on('end', () => {
+    reader.isClosed = true
+    if (reader.onclose) reader.onclose()
   })
   
   return reader

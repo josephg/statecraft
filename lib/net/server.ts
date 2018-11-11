@@ -31,8 +31,9 @@ const txnsWithMetaToNet = (type: T.Type<any, I.Txn>, txns: I.TxnWithMeta[]): N.N
 )
 
 export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.SCMsg>, store: I.Store): void {
+  if (reader.isClosed) return
+  
   const subForRef = new Map<N.Ref, I.Subscription>()
-  // let closed = false
 
   const protoErr = (err: Error) => {
     console.error('Invalid client', err)
@@ -45,6 +46,15 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
   const writeErr = (ref: N.Ref, err: Error) => {
     console.warn('Error processing client data', err)
     write({a: 'err', ref, err: errToJSON(err)})
+  }
+
+  // let closed = false
+  reader.onclose = () => {
+    for (const sub of subForRef.values()) {
+      sub.iter.return()
+    }
+    subForRef.clear()
+    // closed = true
   }
 
   // First we send the capabilities

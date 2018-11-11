@@ -11,7 +11,7 @@ export const serveWS = (store: I.Store, wsOpts: WebSocket.ServerOptions) => {
   const wss = new WebSocket.Server(wsOpts)
 
   wss.on('connection', client => {
-    const reader: TinyReader<N.CSMsg> = {}
+    const reader: TinyReader<N.CSMsg> = {isClosed: false}
 
     client.on("message", data => {
       if (!isProd) console.log('C->S', data)
@@ -36,6 +36,8 @@ export const serveWS = (store: I.Store, wsOpts: WebSocket.ServerOptions) => {
 
     client.on('close', () => {
       writer.end() // Does this help??
+      reader.isClosed = true
+      reader.onclose && reader.onclose()
     })
 
     serve(reader, wrapWriter(writer), store)

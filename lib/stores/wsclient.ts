@@ -14,7 +14,7 @@ export default function(wsurl: string): Promise<I.Store> {
   ws.onopen = () => {console.log('ws opened')}
   ws.onerror = (e) => {console.error('ws error', e)}
 
-  const reader: TinyReader<N.SCMsg> = {}
+  const reader: TinyReader<N.SCMsg> = {isClosed: false}
   ws.onmessage = (msg) => {
     const data = JSON.parse(msg.data.toString())
     console.log('received', data)
@@ -23,6 +23,8 @@ export default function(wsurl: string): Promise<I.Store> {
 
   ws.onclose = () => {
     console.warn('---- WEBSOCKET CLOSED ----')
+    reader.isClosed = true
+    reader.onclose && reader.onclose()
   }
 
   const writer: TinyWriter<N.CSMsg> = {
