@@ -18,7 +18,7 @@ import router, {ALL} from './stores/router'
 
 const testSingle = async () => {
   const store = augment(singleStore())
-  const sub = store.subscribe({type: 'allkv', q: true}, {})
+  const sub = store.subscribe({type: 'single', q: true}, {})
   ;(async () => {
     for await (const data of sub) {
       console.log('subscribe data', inspect(data, false, 10, true))

@@ -7,7 +7,7 @@ import WebSocket = require('ws')
 
 const isProd = process.env.NODE_ENV === 'production'
 
-export default (store: I.Store, wsOpts: WebSocket.ServerOptions) => {
+export const serveWS = (store: I.Store, wsOpts: WebSocket.ServerOptions) => {
   const wss = new WebSocket.Server(wsOpts)
 
   wss.on('connection', client => {
@@ -43,3 +43,5 @@ export default (store: I.Store, wsOpts: WebSocket.ServerOptions) => {
 
   return wss
 }
+
+export default serveWS

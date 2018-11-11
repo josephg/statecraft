@@ -30,7 +30,7 @@ const txnsWithMetaToNet = (type: T.Type<any, I.Txn>, txns: I.TxnWithMeta[]): N.N
   ]))
 )
 
-export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.SCMsg>, store: I.Store) {
+export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.SCMsg>, store: I.Store): void {
   const subForRef = new Map<N.Ref, I.Subscription>()
   // let closed = false
 

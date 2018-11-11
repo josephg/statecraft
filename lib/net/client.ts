@@ -279,6 +279,9 @@ export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: Ti
               : opts.knownDocs,
             kv: opts.knownAtVersions,
           }
+
+          // Advertise that the subscription has been created, but don't wait
+          // for acknowledgement before returning it locally.
           writer.write({a: 'sub create', ref, query: queryToNet(query), opts: netOpts})
 
           return sub

@@ -1,7 +1,7 @@
 import * as I from '../types/interfaces'
 import {ErrJson} from '../err'
 
-export type Ref = string | number
+export type Ref = /*string |*/ number
 
 export type NetKVTxn = [I.Key, I.Op][]
 export type NetTxn = I.SingleTxn | NetKVTxn
