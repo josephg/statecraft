@@ -86,7 +86,9 @@ export interface FetchResponse {
   versions: I.FullVersionRange, // Range across which version is valid.
 }
 
-export type NetTxnWithMeta = [any, I.FullVersion]
+// txn, version, meta.
+export type NetTxnWithMeta = [any, I.FullVersion, any]
+
 export interface GetOpsResponse {
   a: 'getops',
   ref: Ref,
@@ -115,7 +117,7 @@ export interface SubUpdate {
   q?: NetQuery, // active query diff
   r?: any, // replacement
 
-  txns: {v: I.FullVersion, txn: any, meta: any}[], // updates on top of replacement
+  txns: NetTxnWithMeta[], // updates on top of replacement
 }
 
 export interface SubNextCallback {

@@ -1,4 +1,5 @@
 import * as I from '../types/interfaces'
+import * as T from '../types/type'
 import * as N from './netmessages'
 
 import {queryToNet, queryFromNet} from './util'
@@ -19,6 +20,14 @@ const capabilitiesToJSON = (c: I.Capabilities): any[] => {
     Array.from(c.mutationTypes)
   ]
 }
+
+const txnsWithMetaToNet = (type: T.Type<any, I.Txn>, txns: I.TxnWithMeta[]): N.NetTxnWithMeta[] => (
+  txns.map(txn => (<N.NetTxnWithMeta>[
+    opToJSON(type, txn.txn),
+    txn.versions,
+    txn.meta,
+  ]))
+)
 
 export default function serve(reader: Readable, writer: Writable, store: I.Store) {
   const subForRef = new Map<N.Ref, I.Subscription>()
@@ -102,11 +111,12 @@ export default function serve(reader: Readable, writer: Writable, store: I.Store
         if (!type) return writeErr(ref, new errs.InvalidDataError('Invalid query type'))
 
         store.getOps(query, v, opts).then(data => {
-          const jsonTxns = data!.ops.map(txn => (<N.NetTxnWithMeta>[
-            opToJSON(type.r, txn.txn),
-            txn.versions,
-          ]))
-          write({a: 'getops', ref, ops: jsonTxns, v: data!.versions})
+          write({
+            a: 'getops',
+            ref,
+            ops: txnsWithMetaToNet(type.r, data!.ops),
+            v: data!.versions
+          })
         }, err => {
           writeErr(ref, err)
         })
@@ -149,11 +159,7 @@ export default function serve(reader: Readable, writer: Writable, store: I.Store
 
             const msg: N.SCMsg = {
               a: 'sub update', ref, rv: updates.resultingVersions,
-              txns: updates.txns.map(({versions, txn, meta}) => ({
-                v: versions,
-                txn: opToJSON(type.r, txn),
-                meta,
-              })),
+              txns: txnsWithMetaToNet(type.r, updates.txns),
             }
             if (updates.replace) {
               msg.q = queryToNet(updates.replace.q)

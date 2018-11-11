@@ -354,10 +354,10 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
         this.v4 = (await setSingle(this.store, 'b', 4)).version
 
         this.expectedOps = [
-          {versions:{[source]: this.v1}, txn:new Map([['a', {type:'set', data:1}]])},
-          {versions:{[source]: this.v2}, txn:new Map([['b', {type:'set', data:2}]])},
-          {versions:{[source]: this.v3}, txn:new Map([['a', {type:'set', data:3}]])},
-          {versions:{[source]: this.v4}, txn:new Map([['b', {type:'set', data:4}]])},
+          {versions:{[source]: this.v1}, txn:new Map([['a', {type:'set', data:1}]]), meta:{}},
+          {versions:{[source]: this.v2}, txn:new Map([['b', {type:'set', data:2}]]), meta:{}},
+          {versions:{[source]: this.v3}, txn:new Map([['a', {type:'set', data:3}]]), meta:{}},
+          {versions:{[source]: this.v4}, txn:new Map([['b', {type:'set', data:4}]]), meta:{}},
         ]
 
         this.allVersions = <I.FullVersionRange>{

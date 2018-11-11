@@ -24,7 +24,6 @@ export const opToJSON = <S, O>(type: Type<S, O>, data: O): any =>
 export const opFromJSON = <S, O>(type: Type<S, O>, data: any): O =>
   type.opFromJSON ? type.opFromJSON(data) : data
 
-
 export const queryTypes: {[name: string]: {
   q: QueryOps<I.QueryData, any>,
   r: ResultOps<any, I.Txn>,

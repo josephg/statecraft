@@ -2,6 +2,7 @@
 // and via a browser through JSON-over-websockets
 
 import * as I from '../types/interfaces'
+import * as T from '../types/type'
 import * as N from './netmessages'
 import {errToJSON, errFromJSON} from '../err'
 
@@ -38,6 +39,14 @@ const parseStoreInfo = (helloMsg: N.HelloMsg): I.StoreInfo => ({
     mutationTypes: new Set(helloMsg.capabilities[1])
   },
 })
+
+const parseTxnsWithMeta = (type: T.Type<any, I.Txn>, data: N.NetTxnWithMeta[]): I.TxnWithMeta[] => (
+  data.map(([op, v, meta]) => (<I.TxnWithMeta>{
+    txn: opFromJSON(type, op),
+    versions: v,
+    meta
+  }))
+)
 
 type Callback<T> = (err: Error | null, results?: T) => void
 const awaitHello = (reader: TinyReader, callback: Callback<N.HelloMsg>) => {
@@ -110,10 +119,7 @@ export default function storeFromStreams(reader: TinyReader, writer: TinyWriter)
             const {resolve, type: qtype} = takeCallback(ref)
             const type = queryTypes[qtype]!
             resolve(<I.GetOpsResult>{
-              ops: ops.map(([op, v]) => (<I.TxnWithMeta>{
-                txn: opFromJSON(type.r, op),
-                versions: v,
-              })),
+              ops: parseTxnsWithMeta(type.r, ops),
               versions: v,
             })
             break
@@ -147,7 +153,7 @@ export default function storeFromStreams(reader: TinyReader, writer: TinyWriter)
                 with: snapFromJSON(type.r, r)
               },
 
-              txns: txns.map(({v, txn, meta}) => ({versions: v, txn: opFromJSON(type.r, txn), meta}))
+              txns: parseTxnsWithMeta(type.r, txns),
             }
 
             sub._append(update)

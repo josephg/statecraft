@@ -4,11 +4,11 @@ import storeFromStreams, {
 } from '../net/client'
 import WebSocket = require('isomorphic-ws')
 
-// const global = (function(this: any) { return this })()
-// 'ws://' + global.location.host + path
+// const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws`
 
+// TODO: Implement automatic reconnection and expose a simple server
+// describing the connection state
 export default function(wsurl: string): Promise<I.Store> {
-  // TODO: Auto-reconnection.
   const ws = new WebSocket(wsurl)
 
   ws.onopen = () => {console.log('ws opened')}
