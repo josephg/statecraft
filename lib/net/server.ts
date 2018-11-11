@@ -9,9 +9,10 @@ import {
   opToJSON, opFromJSON,
   getQueryData
 } from '../types/queryops'
+import {TinyReader, TinyWriter} from './tinystream'
 import errs, {errToJSON, errFromJSON} from '../err'
 
-import {Readable, Writable, Transform} from 'stream'
+// import {Readable, Writable} from 'stream'
 import assert = require('assert')
 
 const capabilitiesToJSON = (c: I.Capabilities): any[] => {
@@ -29,31 +30,16 @@ const txnsWithMetaToNet = (type: T.Type<any, I.Txn>, txns: I.TxnWithMeta[]): N.N
   ]))
 )
 
-export default function serve(reader: Readable, writer: Writable, store: I.Store) {
+export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.SCMsg>, store: I.Store) {
   const subForRef = new Map<N.Ref, I.Subscription>()
-  // let finished = false
-  let closed = false
+  // let closed = false
 
   const protoErr = (err: Error) => {
     console.error('Invalid client', err)
   }
 
-  writer.on("error", err => {
-    console.warn('Error in client socket', err)
-    closed = true
-  })
-  writer.on("close", () => closed = true)
-  writer.on("finish", () => closed = true)
-
   const write = (data: N.SCMsg) => {
-    if (closed) return
     writer.write(data)
-
-    // Work around this bug:
-    // https://github.com/kawanet/msgpack-lite/issues/80
-    if ((writer as any).encoder) {
-      (writer as any).encoder.flush()
-    }
   }
 
   const writeErr = (ref: N.Ref, err: Error) => {
@@ -70,7 +56,7 @@ export default function serve(reader: Readable, writer: Writable, store: I.Store
     capabilities: capabilitiesToJSON(store.storeInfo.capabilities),
   })
 
-  reader.on('data', (msg: N.CSMsg) => {
+  reader.onmessage = (msg: N.CSMsg) => {
     // console.log('Got CS data', msg)
     switch (msg.a) {
       case 'fetch': {
@@ -203,5 +189,5 @@ export default function serve(reader: Readable, writer: Writable, store: I.Store
       default:
         protoErr(new Error('Invalid msg: ' + msg))
     }
-  })
+  }
 }

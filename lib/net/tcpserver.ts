@@ -1,5 +1,6 @@
 import * as I from '../types/interfaces'
 import serve from './server'
+import {wrapReader, wrapWriter} from './tinystream'
 
 import net = require('net')
 import msgpack = require('msgpack-lite')
@@ -14,6 +15,6 @@ export default (store: I.Store) => {
     const reader = msgpack.createDecodeStream()
     c.pipe(reader)
 
-    serve(reader, writer, store)
+    serve(wrapReader(reader), wrapWriter(writer), store)
   })
 }

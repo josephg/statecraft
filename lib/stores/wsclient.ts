@@ -1,7 +1,7 @@
 import * as I from '../types/interfaces'
-import storeFromStreams, {
-  TinyReader, TinyWriter
-} from '../net/client'
+import * as N from '../net/netmessages'
+import storeFromStreams from '../net/client'
+import {TinyReader, TinyWriter} from '../net/tinystream'
 import WebSocket = require('isomorphic-ws')
 
 // const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws`
@@ -14,7 +14,7 @@ export default function(wsurl: string): Promise<I.Store> {
   ws.onopen = () => {console.log('ws opened')}
   ws.onerror = (e) => {console.error('ws error', e)}
 
-  const reader: TinyReader = {}
+  const reader: TinyReader<N.SCMsg> = {}
   ws.onmessage = (msg) => {
     const data = JSON.parse(msg.data.toString())
     console.log('received', data)
@@ -25,7 +25,7 @@ export default function(wsurl: string): Promise<I.Store> {
     console.warn('---- WEBSOCKET CLOSED ----')
   }
 
-  const writer: TinyWriter = {
+  const writer: TinyWriter<N.CSMsg> = {
     write(data) {
       if (ws.readyState === ws.OPEN) {
         console.log('sending', data)

@@ -13,23 +13,12 @@ import {
   opToJSON, opFromJSON,
   wrapQuery
 } from '../types/queryops'
+import {TinyReader, TinyWriter} from './tinystream'
 import streamToIter from '../streamToIter'
 import {Readable, Writable, Duplex} from 'stream'
 // import assert = require('assert')
 
 const assert = (a: any) => { if (!a) throw Error('Assertion error: ' + a) }
-
-// Not using proper streams because they add about 150k of crap to the browser
-// bundle
-
-export interface TinyReader {
-  onmessage?: (msg: N.SCMsg) => void
-}
-
-export interface TinyWriter {
-  write(data: N.CSMsg): void,
-  close(): void,
-}
 
 const parseStoreInfo = (helloMsg: N.HelloMsg): I.StoreInfo => ({
   sources: helloMsg.sources,
@@ -49,7 +38,7 @@ const parseTxnsWithMeta = (type: T.Type<any, I.Txn>, data: N.NetTxnWithMeta[]): 
 )
 
 type Callback<T> = (err: Error | null, results?: T) => void
-const awaitHello = (reader: TinyReader, callback: Callback<N.HelloMsg>) => {
+const awaitHello = (reader: TinyReader<N.SCMsg>, callback: Callback<N.HelloMsg>) => {
   reader.onmessage = (msg: N.SCMsg) => {
     if (msg.a !== 'hello' || msg.p !== 'statecraft') return callback(Error('Invalid hello message'))
     if (msg.pv !== 0) return callback(Error('Incompatible protocol versions'))
@@ -66,7 +55,7 @@ interface RemoteSub extends I.Subscription {
   // [k: string]: any
 }
 
-export default function storeFromStreams(reader: TinyReader, writer: TinyWriter): Promise<I.Store> {
+export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: TinyWriter<N.CSMsg>): Promise<I.Store> {
   return new Promise((resolve, reject) => {
     // It'd be nice to rewrite this using promises. The problem is that we
     // have to onmessage() syncronously with the hello message being
