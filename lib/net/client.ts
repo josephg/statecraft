@@ -14,7 +14,9 @@ import {
 } from '../types/queryops'
 import streamToIter from '../streamToIter'
 import {Readable, Writable, Duplex} from 'stream'
-import assert = require('assert')
+// import assert = require('assert')
+
+const assert = (a: any) => { if (!a) throw Error('Assertion error: ' + a) }
 
 // Not using proper streams because they add about 150k of crap to the browser
 // bundle
@@ -253,7 +255,7 @@ export default function storeFromStreams(reader: TinyReader, writer: TinyWriter)
 
             cursorNext(opts) {
               // The client should really only have one next call in flight at a time
-              assert.strictEqual(this._nextPromise, null)
+              if (this._nextPromise !== null) throw Error('Invalid internal state')
 
               return new Promise((resolve, reject) => {
                 this._nextPromise = [resolve, reject]
