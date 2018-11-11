@@ -47,7 +47,8 @@ process.on('unhandledRejection', err => { throw err })
     })
   })
 
-  const backend = await lmdbStore(pclient, 'textdemo')
+  const LMDBPATH = process.env.LMDBPATH || 'textdemo_db'
+  const backend = await lmdbStore(pclient, LMDBPATH)
 
   // const backend = lmdbStore(
   const rootStore = otStore(augment(backend))
@@ -201,6 +202,7 @@ process.on('unhandledRejection', err => { throw err })
 
   const wss = createWss(store, {server})
 
-  server.listen(2001)
-  console.log('http server listening on port 2001')
+  const port = process.env.PORT || '2001'
+  server.listen(+port)
+  console.log('http server listening on port', port)
 })()
