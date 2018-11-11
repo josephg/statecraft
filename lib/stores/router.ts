@@ -186,7 +186,7 @@ export default function router(): Router {
       // general version of this function requires some fancy graph data
       // structures, and its simply not important enough at the moment.
       
-      type SingleTxn = {txn: I.KVTxn, v: I.Version, uid?: string}
+      type SingleTxn = {txn: I.KVTxn, v: I.Version, meta: I.Metadata}
       const opsForSource = new Map<I.Source, SingleTxn[]>()
 
       await Promise.all(byStoreList.map(async ([store, keyRoutes]) => {
@@ -216,7 +216,7 @@ export default function router(): Router {
           mappedOps.push({
             txn: mapKeysInto(null, op.txn as Map<I.Key, I.Op>, keyRoutes),
             v: op.versions[source],
-            uid: op.uid,
+            meta: op.meta,
           })
         }
         if (source == null) return // No ops.
@@ -237,12 +237,12 @@ export default function router(): Router {
             if (a.v === b.v) {
               // Merge them together
               oldMerged.shift(); mappedOps.shift()
-              assert.strictEqual(a.uid, b.uid)
+              assert.deepStrictEqual(a.meta, b.meta)
               merged.push({
                 // TODO: Replace this with a result type specific merge function.
                 txn: new Map(Array.from(a.txn).concat(Array.from(b.txn))), // gross.
                 v: a.v,
-                uid: a.uid,
+                meta: a.meta,
               })
             } else if (a.v < b.v) merged.push(oldMerged.shift()!)
             else if (a.v > b.v) merged.push(mappedOps.shift()!)
@@ -255,7 +255,7 @@ export default function router(): Router {
 
       return {
         ops: flatMap(Array.from(opsForSource),
-          ([source, ops]) => ops.map(({txn, v, uid}) => ({txn, versions: {[source]: v}, uid}))),
+          ([source, ops]) => ops.map(({txn, v, meta}) => ({txn, versions: {[source]: v}, meta}))),
         versions: validRange,
       }
     },
@@ -418,12 +418,12 @@ export default function router(): Router {
                 throw new Error('Subscription ops misaligned')
               }
 
-              value.txns.forEach(({versions, txn, uid}) => {
+              value.txns.forEach(({versions, txn, meta}) => {
                 // The downside of doing it this way is that the results won't
                 // be strictly ordered by version. They should still be
                 // correct if applied in sequence though.
                 nextResult.txns.push({
-                  versions, uid,
+                  versions, meta,
                   txn: mapKeysInto(null, txn as I.KVTxn, keyRoutes[n])
                 })
               })

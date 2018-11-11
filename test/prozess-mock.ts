@@ -1,3 +1,10 @@
+// This is a simple in-memory mock for prozess. This is useful so we don't
+// have to spin up & down lots of prozess instances to run tests.
+
+// This can't be used outside of tests because its used as the central source
+// of truth, and it loses all content on restart. So if you back an LMDB store
+// with this, it'll correctly fail to restart.
+
 import {
   PClient,
   VersionConflictError,

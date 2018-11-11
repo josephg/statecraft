@@ -115,7 +115,7 @@ export interface SubUpdate {
   q?: NetQuery, // active query diff
   r?: any, // replacement
 
-  txns: {v: I.FullVersion, txn: any, uid?: string}[], // updates on top of replacement
+  txns: {v: I.FullVersion, txn: any, meta: any}[], // updates on top of replacement
 }
 
 export interface SubNextCallback {

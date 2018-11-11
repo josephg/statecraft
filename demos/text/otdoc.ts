@@ -110,7 +110,7 @@ const otDoc = async <Op>(
     /*const resultingVersion =*/ await store.mutate('single',
         {type: typeName, data: inflightTxn},
         {[source]: version},
-        {uid: inflightUid}) // Returns the version # of our op
+        {meta: {uid: inflightUid}}) // Returns the version # of our op
     // inflightTxn = null
 
     // flush()
@@ -137,8 +137,8 @@ const otDoc = async <Op>(
         // Ignore any ops we've generated locally. This is not quite
         // sufficient - if we want to handle reconnects properly we'll also
         // need to store previous id stems somewhere.
-        if (txn.uid && txn.uid.startsWith(idStem)) {
-          if (txn.uid === inflightUid) {
+        if (txn.meta.uid && txn.meta.uid.startsWith(idStem)) {
+          if (txn.meta.uid === inflightUid) {
             // We've seen our own op on the op stream. Mark it as confirmed and try to send more.
             inflightTxn = inflightUid = null
             tryFlush = true

@@ -9,7 +9,7 @@ import streamToIter from './streamToIter'
 import assert = require('assert')
 
 interface Sub extends I.Subscription {
-  _onOp(source: I.Source, version: I.Version, type: I.ResultType, txn: I.Txn, uid?: string): void
+  _onOp(source: I.Source, version: I.Version, type: I.ResultType, txn: I.Txn, meta: I.Metadata): void
   [prop: string]: any
 }
 
@@ -65,8 +65,8 @@ export default class SubGroup {
     this.catchup = catchupFnForStore(store, getOps)
   }
 
-  onOp(source: I.Source, fromV: I.Version, toV: I.Version, type: I.ResultType, txn: I.Txn, uid?: string) {
-    for (const sub of this.allSubs) sub._onOp(source, toV, type, txn, uid)
+  onOp(source: I.Source, fromV: I.Version, toV: I.Version, type: I.ResultType, txn: I.Txn, meta: I.Metadata) {
+    for (const sub of this.allSubs) sub._onOp(source, toV, type, txn, meta)
   }
 
   create(query: I.Query, opts: I.SubscribeOpts): I.Subscription {
@@ -95,7 +95,7 @@ export default class SubGroup {
 
     let pendingQuery = qops.q.create(getQueryData(query))
     type BufferItem = {
-      source: I.Source, version: I.Version, txn: I.Txn, uid?: string
+      source: I.Source, version: I.Version, txn: I.Txn, meta: I.Metadata
     }
     let opsBuffer: BufferItem[] | null = null
 
@@ -123,12 +123,12 @@ export default class SubGroup {
 
     sub = {
       // cancelled: false,
-      _onOp(source, version, type, intxn, uid) {
+      _onOp(source, version, type, intxn, meta) {
         const txn = qops.r.name === type ? intxn : qops.r.from(type, intxn)
 
         if (opsBuffer) {
           const pendingTxn = qops.filterTxn(txn, pendingQuery)
-          if (pendingTxn) opsBuffer.push({source, version, txn: pendingTxn, uid})
+          if (pendingTxn) opsBuffer.push({source, version, txn: pendingTxn, meta})
         }
 
         // TODO: Apply supportedTypes.
@@ -152,7 +152,7 @@ export default class SubGroup {
           stream.append({
             resultingVersions: activeVersions,
             txns:[
-              {versions: {[source]:version}, txn:activeTxn, uid}
+              {versions: {[source]:version}, txn:activeTxn, meta}
             ]
           })
         }
@@ -200,11 +200,11 @@ export default class SubGroup {
         // - Update activeQuery, pendingQuery and activeVersions.
         // - Emit returned data via listener
 
-        opsBuffer!.forEach(({source, version, txn: opTxn, uid}) => {
+        opsBuffer!.forEach(({source, version, txn: opTxn, meta}) => {
           const resultV = resultingVersions[source]
           if (resultV == null || version <= resultV.to) return
 
-          result.txns.push({versions: {[source]: version}, txn: opTxn, uid})
+          result.txns.push({versions: {[source]: version}, txn: opTxn, meta})
           resultingVersions[source] = {from:version, to:version}
         })
 

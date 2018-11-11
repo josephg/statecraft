@@ -15,12 +15,12 @@ interface OpsEntry {
   fromV: I.Version,
   toV: I.Version,
   txn: I.Txn,
-  uid?: string,
+  meta: I.Metadata,
 }
 const cmp = (item: OpsEntry, v: I.Version) => item.toV - v
 
 const opcache = (opts: OpCacheOpts): {
-  onOp(source: I.Source, fromV: I.Version, toV: I.Version, type: I.ResultType, txn: I.Txn, uid?: string): void,
+  onOp(source: I.Source, fromV: I.Version, toV: I.Version, type: I.ResultType, txn: I.Txn, meta: I.Metadata): void,
   getOps: I.GetOpsFn,
 } => {
   const maxNum = opts.maxNum || 0
@@ -35,10 +35,10 @@ const opcache = (opts: OpCacheOpts): {
   }
 
   return {
-    onOp(source, fromV, toV, type, txn, uid) {
+    onOp(source, fromV, toV, type, txn, meta) {
       const ops = getOpsForSource(source)
       if (ops.length) assert(ops[ops.length - 1].toV === fromV, 'Emitted versions don\'t match')
-      ops.push({fromV, toV, txn, uid})
+      ops.push({fromV, toV, txn, meta})
       while (maxNum !== 0 && ops.length > maxNum) ops.shift()
     },
 
@@ -81,7 +81,7 @@ const opcache = (opts: OpCacheOpts): {
           // The transaction will be null if the operation doesn't match
           // the supplied query.
           const txn = qops.filterTxn(item.txn, getQueryData(query))
-          if (txn != null) result.push({versions:{[source]: item.toV}, txn: txn, uid: item.uid})
+          if (txn != null) result.push({versions:{[source]: item.toV}, txn, meta: item.meta})
 
           vTo = item.toV
           if (limitOps > 0 && --limitOps === 0) break

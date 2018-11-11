@@ -145,7 +145,7 @@ export default function storeFromStreams(reader: TinyReader, writer: TinyWriter)
                 with: snapFromJSON(type.r, r)
               },
 
-              txns: txns.map(({v, txn, uid}) => ({versions: v, txn: opFromJSON(type.r, txn), uid}))
+              txns: txns.map(({v, txn, meta}) => ({versions: v, txn: opFromJSON(type.r, txn), meta}))
             }
 
             sub._append(update)

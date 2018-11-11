@@ -29,7 +29,7 @@ const singleStore = (initialValue: any = null, source: I.Source = genSource(), i
       })
     },
 
-    mutate(type, txn, versions, opts) {
+    mutate(type, txn, versions, opts = {}) {
       if (type !== 'single') return Promise.reject(new err.UnsupportedTypeError())
       const op = txn as I.Op
 
@@ -39,7 +39,7 @@ const singleStore = (initialValue: any = null, source: I.Source = genSource(), i
       if (op) data = fieldType.apply(data, op)
       const opv = ++version
 
-      store.onTxn && store.onTxn(source, opv - 1, opv, type, op)
+      store.onTxn && store.onTxn(source, opv - 1, opv, type, op, opts.meta || {})
       return Promise.resolve({[source]: opv})
     },
 

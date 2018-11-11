@@ -5,20 +5,24 @@ import {Event, PClient, SubCbData} from 'prozess-client'
 import * as I from './types/interfaces'
 import msgpack = require('msgpack-lite')
 
-export const encodeTxn = (txn: I.KVTxn) => msgpack.encode(Array.from(txn))
-export const decodeTxn = (data: NodeBuffer) => new Map<I.Key, I.Op>(msgpack.decode(data))
+export const encodeTxn = (txn: I.KVTxn, meta: I.Metadata) => msgpack.encode([Array.from(txn), meta])
+export const decodeTxn = (data: NodeBuffer): [I.KVTxn, I.Metadata] => {
+  const [txn, meta] = msgpack.decode(data)
+  return [new Map<I.Key, I.Op>(txn), meta]
+}
 
 // TODO: This should work with batches.
-export const decodeEvent = (event: Event, source: I.Source): I.TxnWithMeta => ({
-  versions: {[source]: event.version},
-  txn: decodeTxn(event.data),
-})
+export const decodeEvent = (event: Event, source: I.Source): I.TxnWithMeta => {
+  const [txn, meta] = decodeTxn(event.data)
+  return { versions: {[source]: event.version}, txn, meta }
+}
 
 export function sendTxn(client: PClient,
     txn: I.KVTxn,
+    meta: I.Metadata,
     expectedVersion: I.Version,
     opts: object): Promise<I.Version> {
-  const data = encodeTxn(txn)
+  const data = encodeTxn(txn, meta)
 
   // TODO: This probably doesn't handle a missing version properly.
   // TODO: Add read conflict keys through opts.

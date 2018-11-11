@@ -36,11 +36,11 @@ const prozessStore = (port: number = 9999, hostname: string = 'localhost'): Prom
           return Promise.reject(new err.UnsupportedTypeError('Unsupported query type'))
         },
 
-        async mutate(type, _txn, versions, opts) {
+        async mutate(type, _txn, versions, opts = {}) {
           if (type !== 'resultmap') throw new err.UnsupportedTypeError()
           const txn = _txn as I.KVTxn
 
-          const version = await sendTxn(conn, txn, (versions && versions[source]) || -1, {})
+          const version = await sendTxn(conn, txn, opts.meta || {}, (versions && versions[source]) || -1, {})
           return {[source]: version!}
         },
 
@@ -78,8 +78,8 @@ const prozessStore = (port: number = 9999, hostname: string = 'localhost'): Prom
         if (store.onTxn) {
           subdata!.events.forEach(event => {
             // TODO: Pack & unpack batches.
-            const txn = decodeTxn(event.data)
-            store.onTxn!(source, event.version, event.version + 1, 'resultmap', txn)
+            const [txn, meta] = decodeTxn(event.data)
+            store.onTxn!(source, event.version, event.version + 1, 'resultmap', txn, meta)
           })
         }
       })

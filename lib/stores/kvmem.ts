@@ -30,7 +30,7 @@ export interface MemStore extends I.SimpleStore {
   // Apply and notify that a change happened in the database. This is useful
   // so if the memory store wraps an object that is edited externally, you can
   // update listeners.
-  internalDidChange(txn: I.KVTxn, uid?: string, preApplied?: boolean): I.Version
+  internalDidChange(txn: I.KVTxn, meta: I.Metadata, preApplied?: boolean): I.Version
 }
 
 export default function singleStore(
@@ -80,14 +80,14 @@ export default function singleStore(
       })
     },
 
-    internalDidChange(txn, uid?: string, preapplied = false) {
+    internalDidChange(txn, meta, preapplied = false) {
       const fromv = version
       const opv = ++version
 
       for (const [k, op] of txn) lastModVersion.set(k, opv)
       if (!preapplied) resultMap.applyMut!(data, txn)
 
-      if (this.onTxn != null) this.onTxn(source, fromv, opv, 'resultmap', txn, uid)
+      if (this.onTxn != null) this.onTxn(source, fromv, opv, 'resultmap', txn, meta)
       return opv
     },
 
@@ -110,7 +110,7 @@ export default function singleStore(
       }
 
       // 2. Actually apply.
-      const opv = this.internalDidChange(txn, opts.uid, false)
+      const opv = this.internalDidChange(txn, opts.meta || {}, false)
       return Promise.resolve({[source]: opv})
     },
 

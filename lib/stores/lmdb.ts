@@ -163,7 +163,7 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
       })
     },
 
-    async mutate(type, _txn, versions, opts) {
+    async mutate(type, _txn, versions, opts = {}) {
       if (type !== 'resultmap') throw new err.UnsupportedTypeError()
       const txn = _txn as I.KVTxn
 
@@ -191,10 +191,10 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
           return Promise.reject(e)
         }
       }
-      dbTxn.commit()
+      dbTxn.abort()
 
       // console.log('sendTxn', txn, expectedVersion)
-      const resultVersion = await sendTxn(client, txn, version, {})
+      const resultVersion = await sendTxn(client, txn, opts.meta || {}, version, {})
 
       debug('mutate cb', resultVersion)
       return {[source]: resultVersion}
@@ -251,7 +251,7 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
 
     let newVersion = version
 
-    const txnsOut: {txn: I.KVTxn, from: I.Version, to: I.Version}[] = []
+    const txnsOut: {txn: I.KVTxn, from: I.Version, to: I.Version, meta: I.Metadata}[] = []
 
     events.forEach(event => {
       // This is kind of a big assertion.
@@ -260,12 +260,13 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
       )
 
       // TODO: Batches.
-      const txn = decodeTxn(event.data)
+      const [txn, meta] = decodeTxn(event.data)
+      // console.log('decodeTxn', txn, meta)
       const nextVersion = event.version + event.batch_size - 1
 
       for (const [k, op] of txn) {
         // const oldData = fieldOps.create(rawGet(dbTxn, k)[0], op)
-        const oldData = rawGet(dbTxn, k)[0]
+        const oldData = rawGet(dbTxn, k)[1]
 
         const newData = fieldOps.apply(oldData, op)
         // console.log('updated key', k, 'from', oldData, 'to', newData)
@@ -277,7 +278,7 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
         dbTxn.putBinary(dbi, k, msgpack.encode([nextVersion, newData]))
       }
 
-      txnsOut.push({txn, from: version, to: nextVersion})
+      txnsOut.push({txn, from: version, to: nextVersion, meta})
       newVersion = nextVersion
     })
 
@@ -285,8 +286,8 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
     setVersion(dbTxn, newVersion)
     dbTxn.commit()
 
-    if (store.onTxn) txnsOut.forEach(({txn, from, to}) =>
-      store.onTxn!(source, from, to, 'resultmap', txn)
+    if (store.onTxn) txnsOut.forEach(({txn, from, to, meta}) =>
+      store.onTxn!(source, from, to, 'resultmap', txn, meta)
     )
   }
 

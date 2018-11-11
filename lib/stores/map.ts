@@ -35,10 +35,10 @@ const mapTxn = (txn: I.Txn, version: I.FullVersion, fn: MapFn) => {
 }
 
 const mapTxnWithMetas = (txn: I.TxnWithMeta[], fn: MapFn) => (
-  txn.map(({versions, txn, uid}) => ({
+  txn.map(({versions, txn, meta}) => ({
     txn: mapTxn(txn, versions, fn),
     versions,
-    uid,
+    meta,
   }))
 )
 
