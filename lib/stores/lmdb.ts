@@ -28,7 +28,7 @@ const encodeVersion = (v: I.Version) => {
   buf.writeUInt32LE(v, 4)
   return buf
 }
-const decodeVersion = (buf: NodeBuffer) => buf.readUInt32LE(4)
+const decodeVersion = (buf: Buffer) => buf.readUInt32LE(4)
 
 // We take ownership of the PClient, so don't use it elsewhere after passing it to lmdbstore.
 //

@@ -10,8 +10,8 @@ declare module 'msgpack-lite' {
 
   interface Codec {}
 
-  function encode(data: any, opts?: {codec?: Codec}): NodeBuffer
-  function decode(buf: NodeBuffer, opts?: {codec?: Codec}): any
+  function encode(data: any, opts?: {codec?: Codec}): Buffer
+  function decode(buf: Buffer, opts?: {codec?: Codec}): any
 
   function createCodec(opts: object): Codec
 
@@ -29,17 +29,17 @@ declare module 'node-lmdb' {
     close(): void
   }
 
-  type Key = NodeBuffer | string | number
+  type Key = Buffer | string | number
 
   interface Txn {
     getString(dbi: Database, key: Key): string
     getStringUmsafe(dbi: Database, key: Key): string
-    getBinary(dbi: Database, key: Key): NodeBuffer
-    getBinaryUnsafe(dbi: Database, key: Key): NodeBuffer
+    getBinary(dbi: Database, key: Key): Buffer
+    getBinaryUnsafe(dbi: Database, key: Key): Buffer
     getNumber(dbi: Database, key: Key): number
     getBoolean(dbi: Database, key: Key): boolean
 
-    putBinary(dbi: Database, key: Key, val: NodeBuffer): void
+    putBinary(dbi: Database, key: Key, val: Buffer): void
     putString(dbi: Database, key: Key, val: string): void
     putString(dbi: Database, key: Key, val: number): void
     putString(dbi: Database, key: Key, val: boolean): void

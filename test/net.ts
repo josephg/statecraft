@@ -5,6 +5,7 @@ import createServer from '../lib/net/tcpserver'
 import connectStore from '../lib/stores/tcpclient'
 import runTests from './common'
 import * as I from '../lib/types/interfaces'
+import {AddressInfo} from 'net'
 
 describe('net', () => {
   const serverForStore = new WeakMap<I.Store, any>()
@@ -12,7 +13,7 @@ describe('net', () => {
     const store = augment(kvStore())
     const server = createServer(store)
     server.listen(0, () => {
-      const port = server.address().port
+      const port = (server.address() as AddressInfo).port
       connectStore(port, 'localhost').then(remoteStore => {
         serverForStore.set(remoteStore!, server)
         resolve(remoteStore!)

@@ -6,7 +6,7 @@ import * as I from './types/interfaces'
 import msgpack = require('msgpack-lite')
 
 export const encodeTxn = (txn: I.KVTxn, meta: I.Metadata) => msgpack.encode([Array.from(txn), meta])
-export const decodeTxn = (data: NodeBuffer): [I.KVTxn, I.Metadata] => {
+export const decodeTxn = (data: Buffer): [I.KVTxn, I.Metadata] => {
   const [txn, meta] = msgpack.decode(data)
   return [new Map<I.Key, I.Op>(txn), meta]
 }

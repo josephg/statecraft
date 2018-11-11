@@ -26,7 +26,7 @@ export default function createMock(): PClient {
   let subscribed = false
 
   const addEvent = (
-    data: NodeBuffer | string,
+    data: Buffer | string,
     targetVersion: number = events.length,
     conflictKeys: string[] = []) => {
 

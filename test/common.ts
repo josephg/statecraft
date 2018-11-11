@@ -199,7 +199,7 @@ const getVersionForKeys = async (store: I.Store, _keys: I.Key[] | I.Key): Promis
   return splitSingleVersions(versions)
 }
 
-interface Context extends Mocha.ITestCallbackContext {
+interface Context extends Mocha.Context {
   store: I.Store
 }
 

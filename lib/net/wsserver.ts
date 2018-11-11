@@ -12,10 +12,6 @@ export default (store: I.Store, wsOpts: WebSocket.ServerOptions) => {
 
   wss.on('connection', client => {
     const reader: TinyReader<N.CSMsg> = {}
-    // const reader = new Readable({
-    //   objectMode: true,
-    //   read() {},
-    // })
 
     client.on("message", data => {
       if (!isProd) console.log('C->S', data)
