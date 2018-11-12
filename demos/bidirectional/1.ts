@@ -27,7 +27,10 @@ const createPair = <T>(): [TinyReader<T>, TinyWriter<T>] => {
 
   const reader: TinyReader<T> = {isClosed: false}
   const writer: TinyWriter<T> = {
-    write(msg) { process.nextTick(() => reader.onmessage!(msg)) },
+    write(msg) {
+      // console.log('msg', msg)
+      process.nextTick(() => reader.onmessage!(msg))
+    },
     close() {},
   }
   return [reader, writer]
@@ -47,13 +50,14 @@ const [r2, w1] = createPair<BothMsg>()
   console.log('store2', await remoteStore2.fetch({type: 'single', q:true}))
 
   const sub = remoteStore1.subscribe({type: 'single', q: true}, {})
+  const results = await sub.next()
+  console.log('initial', results.value)
+  
   ;(async () => {
     for await (const data of sub) {
       console.log('subscribe data', inspect(data, false, 10, true))
     }
   })()
-  const results = await sub.cursorAll()
-  console.log('cursor next', results)
 
   const v = await remoteStore1.mutate('single', {type:'set', data: {x: 10}})
   console.log('mutate run', v)

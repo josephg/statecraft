@@ -171,7 +171,7 @@ export default class SubGroup {
         }
       }
       sub.opsBuffer = null
-
+      console.log('catchup', catchup)
       stream.append(catchup)
     }).catch(err => {
       // Bubble up to create an exception in the client.

@@ -45,10 +45,9 @@ const setObj = (data: any) => {
   const store = onekey(await connect('ws://localhost:2000/'), config.key)
 
   const sub = store.subscribe({type: 'single', q: true}, {
-    knownDocs: true,
-    knownAtVersions: config.initialVersions,
+    fromVersion: config.initialVersions,
   })
-  await sub.cursorAll()
+
   let last: any = null
 
   // const r = new Map()

@@ -31,7 +31,7 @@ function appendMut(a: Op, b: SingleOp) {
 }
 
 const type: ResultOps<any, Op> = {
-  name: 'doc',
+  name: 'single',
 
   create(data) {
     // Remember, this is creating a document.

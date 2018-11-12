@@ -66,10 +66,8 @@ const otDoc = async <Op>(
 
   // TODO: knownDocs
   const sub = store.subscribe({type: 'single', q: true}, {
-    // knownDocs: true,
-    // knownAtVersions: config.initialVersions,
+    // fromVersion: config.initialVersions
   })
-  await sub.cursorAll() // We should have the document by the time this returns.
 
   let doc: any = null
   let version: number = -1
@@ -123,7 +121,7 @@ const otDoc = async <Op>(
 
       if (update.replace) {
         // This situation with versions is a huge mess. What is authoritative?
-        processTxn({type: 'set', data: update.replace.with}, update.resultingVersions[source].to)
+        processTxn({type: 'set', data: update.replace.with}, update.replace.versions[source])
 
         if (readyResolve != null) {
           readyResolve!()
@@ -151,9 +149,8 @@ const otDoc = async <Op>(
         else processTxn(innerTxn, txn.versions[source])
       })
 
-      if (update.resultingVersions[source]) {
-        version = update.resultingVersions[source].to
-      }
+      // Could instead do this using the txn - its equivalent.
+      if (update.toVersion[source]) version = update.toVersion[source]
 
       if (tryFlush) flush()
     }

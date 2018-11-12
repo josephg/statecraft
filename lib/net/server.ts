@@ -161,6 +161,7 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
             if (update.replace) {
               msg.q = queryToNet(update.replace.q)
               msg.r = snapToJSON(type.r, update.replace.with)
+              msg.rv = update.replace.versions
             }
             write(msg)
           }
