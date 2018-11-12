@@ -50,6 +50,10 @@ const otDoc = async <Op>(
     typeName: string,
     opts: {
       source?: I.Source,
+      initial?: {
+        val: any,
+        version: I.FullVersion | I.Version,
+      }
     },
     listener: (op: I.SingleOp, resultingVal: any) => void
 ) => {
@@ -66,10 +70,14 @@ const otDoc = async <Op>(
 
   // TODO: knownDocs
   const sub = store.subscribe({type: 'single', q: true}, {
-    // fromVersion: config.initialVersions
+    fromVersion: opts.initial
+      ? (typeof opts.initial.version === 'number'
+        ? {[source]: opts.initial.version}
+        : opts.initial.version
+      ) : undefined,
   })
 
-  let doc: any = null
+  let doc: any = opts.initial ? opts.initial.val : null
   let version: number = -1
 
   // Written assuming the type has a compose() function.
@@ -81,7 +89,7 @@ const otDoc = async <Op>(
   let nextId = 0
 
   let readyResolve: null | (() => void) = null
-  const ready = new Promise(resolve => readyResolve = resolve)
+  const ready = opts.initial ? Promise.resolve(opts.initial.val) : new Promise(resolve => readyResolve = resolve)
 
 
   const processTxn = (serverOp: I.SingleOp | null, newVersion: number) => {
@@ -159,6 +167,7 @@ const otDoc = async <Op>(
   await ready
 
   return {
+    ready,
     initial: doc,
     get() { return doc },
     apply(op: Op) {

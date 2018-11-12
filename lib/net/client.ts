@@ -16,6 +16,7 @@ import {
 import {TinyReader, TinyWriter} from './tinystream'
 import streamToIter, {Stream} from '../streamToIter'
 import {Readable, Writable, Duplex} from 'stream'
+import {supportedTypes} from '../types/registry'
 // import assert = require('assert')
 
 const assert = (a: any) => { if (!a) throw Error('Assertion error: ' + a) }
@@ -235,7 +236,7 @@ export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: Ti
 
           const netOpts: N.SubscribeOpts = {
             // TODO more here.
-            st: opts.supportedTypes ? Array.from(opts.supportedTypes) : undefined,
+            st: Array.from(opts.supportedTypes || supportedTypes),
             fv: opts.fromVersion === 'current' ? 'c' : opts.fromVersion,
           }
 

@@ -110,6 +110,7 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
   }
 
   const otdoc = await otDoc<ottext.TextOp>(store, 'text', {
+    initial: { val: config.initialValue, version: config.initialVersions }
     // knownAtVersions: config.initialVersions,
   }, (txn, val) => {
     console.log('listener', txn, val)
@@ -141,6 +142,11 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
     insert(pos, text) { otdoc.apply([pos, text]) },
     remove(pos, length) { otdoc.apply([pos, {d: length}]) },
   }
+
+  elem.disabled = true
+  await otdoc.ready
+  elem.disabled = false
+  elem.focus()
 
   ;['textInput', 'keydown', 'keyup', 'select', 'cut', 'paste'].forEach(eventName => {
     elem.addEventListener(eventName, e => {

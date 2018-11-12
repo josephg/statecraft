@@ -154,6 +154,12 @@ export default class SubGroup {
     this.allSubs.add(sub)
 
     if (!fromCurrent) this.catchup(query, opts).then(catchup => {
+      // So quite often if you're passing in a known version, this catchup
+      // object will be empty. Is it still worth sending it?
+      // - Upside: The client can depend on it to know when they're up to date
+      // - Downside: Extra pointless work.
+      // TODO: ^?
+
       const catchupVersion = catchup.toVersion
       sub.expectVersion = catchupVersion
       

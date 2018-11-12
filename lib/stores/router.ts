@@ -446,8 +446,8 @@ export default function router(): Router {
           // more consistent with the behaviour of other, more normal stores.
           const initialCatchup = catchups.reduce((acc, upd, i) => (
             mapCatchupInto(acc, upd, childSubs[i].keyRoutes)
-          ), emptyCatchup())
-          stream.append(initialCatchup)
+          ), null as null | I.CatchupData)
+          if (initialCatchup != null) stream.append(initialCatchup)
         }
 
         // ***** Ok we have our initial data and fromVersion is set now.
