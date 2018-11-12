@@ -6,7 +6,6 @@ import html from 'nanohtml'
 import * as I from '../../lib/types/interfaces'
 import connect from '../../lib/stores/wsclient'
 import fieldOps from '../../lib/types/fieldops'
-import onekey from '../../lib/stores/onekey'
 import ottext = require('ot-text')
 import otDoc from './otdoc'
 import {register} from '../../lib/types/registry'
@@ -100,8 +99,8 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
 
 
 ;(async () => {
-  const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws`
-  const store = onekey(await connect(wsurl), config.key)
+  const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws/${config.key}`
+  const store = await connect(wsurl)
   console.log('Connected to websocket server', wsurl)
 
   if (config.initialValue == null) {
@@ -143,10 +142,11 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
     remove(pos, length) { otdoc.apply([pos, {d: length}]) },
   }
 
-  elem.disabled = true
-  await otdoc.ready
-  elem.disabled = false
-  elem.focus()
+  // If the editor isn't instantly available, disable until it is.
+  // elem.disabled = true
+  // await otdoc.ready
+  // elem.disabled = false
+  // elem.focus()
 
   ;['textInput', 'keydown', 'keyup', 'select', 'cut', 'paste'].forEach(eventName => {
     elem.addEventListener(eventName, e => {

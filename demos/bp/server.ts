@@ -135,7 +135,7 @@ app.get('/:user/:key', (req, res) => {
 
 const server = http.createServer(app)
 
-const wss = createWss(store, {server})
+const wss = createWss({server}, store)
 
 server.listen(2000)
 console.log('http server listening on port 2000')

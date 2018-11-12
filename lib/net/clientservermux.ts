@@ -30,7 +30,7 @@ export default function connectMux(reader: TinyReader<BothMsg>, writer: TinyWrit
   // If either writer closes, we'll close the whole tunnel.
   const localWriter: TinyWriter<N.SCMsg> = {
     write(msg) {
-      if (msg.a !== 'hello' && symmetry) msg.ref = inv(msg.ref)
+      if (msg.a !== N.Action.Hello && symmetry) msg.ref = inv(msg.ref)
       writer.write(msg)
     },
     close() { writer.close() },
@@ -46,7 +46,7 @@ export default function connectMux(reader: TinyReader<BothMsg>, writer: TinyWrit
   }
 
   reader.onmessage = msg => {
-    if (msg.a === 'hello') remoteReader.onmessage!(msg)
+    if (msg.a === N.Action.Hello) remoteReader.onmessage!(msg)
     else {
       const neg = msg.ref < 0
       if (neg) msg.ref = inv(msg.ref)

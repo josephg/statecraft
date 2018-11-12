@@ -41,7 +41,7 @@ const parseTxnsWithMeta = (type: T.Type<any, I.Txn>, data: N.NetTxnWithMeta[]): 
 type Callback<T> = (err: Error | null, results?: T) => void
 const awaitHello = (reader: TinyReader<N.SCMsg>, callback: Callback<N.HelloMsg>) => {
   reader.onmessage = (msg: N.SCMsg) => {
-    if (msg.a !== 'hello' || msg.p !== 'statecraft') return callback(Error('Invalid hello message'))
+    if (msg.a !== N.Action.Hello || msg.p !== 'statecraft') return callback(Error('Invalid hello message'))
     if (msg.pv !== 0) return callback(Error('Incompatible protocol versions'))
     callback(null, msg)
   }
@@ -81,7 +81,7 @@ export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: Ti
         // console.log('got SC data', msg)
 
         switch (msg.a) {
-          case 'fetch': {
+          case N.Action.Fetch: {
             const {ref, results, queryRun, versions} = <N.FetchResponse>msg
             const {resolve, type: qtype} = takeCallback(ref)
             const type = queryTypes[qtype]!
@@ -93,7 +93,7 @@ export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: Ti
             break
           }
 
-          case 'getops': {
+          case N.Action.GetOps: {
             const {ref, ops, v} = <N.GetOpsResponse>msg
             const {resolve, type: qtype} = takeCallback(ref)
             const type = queryTypes[qtype]!
@@ -104,21 +104,26 @@ export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: Ti
             break
           }
 
-          case 'mutate': {
+          case N.Action.Mutate: {
             const {ref, v} = <N.MutateResponse>msg
             const {resolve} = takeCallback(ref)
             resolve(v)
             break
           }
 
-          case 'err': {
+          case N.Action.Err: {
+            // This is used for both normal errors and subscription errors.
+            // We use the ref to disambiguate.
             const {ref, err} = <N.ResponseErr>msg
-            const {reject} = takeCallback(ref)
-            reject(errFromJSON(err))
+
+            const errObj = errFromJSON(err)
+            const sub = subByRef.get(ref)
+            if (sub) sub.stream.throw(errObj)
+            else takeCallback(ref).reject(errObj)
             break
           }
 
-          case 'sub update': {
+          case N.Action.SubUpdate: {
             const {ref, q, r, rv, txns, tv} = msg
             const sub = subByRef.get(ref)!
             assert(sub)
@@ -140,15 +145,7 @@ export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: Ti
             break
           }
 
-          case 'sub update err': {
-            const {ref, err} = msg
-
-            const sub = subByRef.get(ref)!
-            sub.stream.throw(errFromJSON(err))
-            break
-          }
-
-          case 'sub ret': {
+          case N.Action.SubClose: {
             const {ref} = msg
             const sub = subByRef.get(ref)!
             sub.stream.end()
@@ -174,7 +171,7 @@ export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: Ti
             // assert(type) // TODO.
 
             writer.write({
-              a: 'fetch', ref,
+              a: N.Action.Fetch, ref,
               query: queryToNet(query),
               opts: opts,
             })
@@ -193,7 +190,7 @@ export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: Ti
             detailsByRef.set(ref, {resolve, reject, type: mtype})
 
             writer.write({
-              a: 'mutate', ref, mtype,
+              a: N.Action.Mutate, ref, mtype,
               txn: opToJSON(type, txn),
               v: versions, opts
             })
@@ -211,7 +208,7 @@ export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: Ti
             // assert(type) // TODO.
 
             writer.write({
-              a: 'getops', ref,
+              a: N.Action.GetOps, ref,
               query: queryToNet(query),
               v: versions, opts
             })
@@ -221,7 +218,7 @@ export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: Ti
         subscribe(query, opts = {}) {
           const ref = nextRef++
           const stream = streamToIter<I.CatchupData>(() => {
-            writer.write({a:'sub close', ref})
+            writer.write({a:N.Action.SubClose, ref})
           })
 
           const sub: RemoteSub = {
@@ -242,7 +239,7 @@ export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: Ti
 
           // Advertise that the subscription has been created, but don't wait
           // for acknowledgement before returning it locally.
-          writer.write({a: 'sub create', ref, query: queryToNet(query), opts: netOpts})
+          writer.write({a: N.Action.SubCreate, ref, query: queryToNet(query), opts: netOpts})
 
           return stream.iter
         },

@@ -4,13 +4,16 @@ import serve from './server'
 import {Writable} from 'stream'
 import {TinyReader, TinyWriter, wrapWriter} from './tinystream'
 import WebSocket = require('ws')
+import {IncomingMessage} from 'http'
 
 const isProd = process.env.NODE_ENV === 'production'
 
-export const serveWS = (store: I.Store, wsOpts: WebSocket.ServerOptions) => {
+export const serveWS = (wsOpts: WebSocket.ServerOptions, store: I.Store | ((ws: WebSocket, msg: IncomingMessage) => I.Store)) => {
+  const getStore = typeof store === 'function' ? store : () => store
+
   const wss = new WebSocket.Server(wsOpts)
 
-  wss.on('connection', client => {
+  wss.on('connection', (client, req) => {
     const reader: TinyReader<N.CSMsg> = {isClosed: false}
 
     client.on("message", data => {
@@ -40,7 +43,7 @@ export const serveWS = (store: I.Store, wsOpts: WebSocket.ServerOptions) => {
       reader.onclose && reader.onclose()
     })
 
-    serve(reader, wrapWriter(writer), store)
+    serve(reader, wrapWriter(writer), getStore(client, req))
   })
 
   return wss

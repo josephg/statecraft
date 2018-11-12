@@ -45,7 +45,7 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
 
   const writeErr = (ref: N.Ref, err: Error) => {
     console.warn('Error processing client data', err)
-    write({a: 'err', ref, err: errToJSON(err)})
+    write({a: N.Action.Err, ref, err: errToJSON(err)})
   }
 
   // let closed = false
@@ -59,7 +59,7 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
 
   // First we send the capabilities
   write({
-    a: 'hello',
+    a: N.Action.Hello,
     p: 'statecraft',
     pv: 0,
     sources: store.storeInfo.sources,
@@ -69,7 +69,7 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
   reader.onmessage = (msg: N.CSMsg) => {
     // console.log('Got CS data', msg)
     switch (msg.a) {
-      case 'fetch': {
+      case N.Action.Fetch: {
         const {ref, query: netQuery, opts} = (msg as N.FetchRequest)
         const query = queryFromNet(netQuery)
         const qtype = query.type
@@ -78,11 +78,11 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
         }
 
         const type = queryTypes[qtype]
-        if (!type) return write({a: 'err', ref, err: errToJSON(new errs.InvalidDataError('Invalid query type'))})
+        if (!type) return write({a: N.Action.Err, ref, err: errToJSON(new errs.InvalidDataError('Invalid query type'))})
 
         store.fetch(query, opts).then(data => {
           write({
-            a: 'fetch',
+            a: N.Action.Fetch,
             ref,
             results: snapToJSON(type.r, data!.results),
             queryRun: queryToNet(data.queryRun),
@@ -94,7 +94,7 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
         break
       }
 
-      case 'getops': {
+      case N.Action.GetOps: {
         const {ref, query: netQuery, v, opts} = <N.GetOpsRequest>msg
         const query = queryFromNet(netQuery)
         const qtype = query.type
@@ -108,7 +108,7 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
 
         store.getOps(query, v, opts).then(data => {
           write({
-            a: 'getops',
+            a: N.Action.GetOps,
             ref,
             ops: txnsWithMetaToNet(type.r, data!.ops),
             v: data!.versions
@@ -120,7 +120,7 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
         break
       }
 
-      case 'mutate': {
+      case N.Action.Mutate: {
         const {ref, mtype, txn, v, opts} = <N.MutateRequest>msg
         if (!store.storeInfo.capabilities.mutationTypes.has(mtype)) {
           return writeErr(ref, new errs.UnsupportedTypeError(`mutation type ${mtype} not supported`))
@@ -130,14 +130,14 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
         assert(type)
 
         store.mutate(mtype, opFromJSON(type, txn), v, opts).then(v => {
-          write({a: 'mutate', ref, v:v!})
+          write({a: N.Action.Mutate, ref, v:v!})
         }, err => {
           writeErr(ref, err)
         })
         break
       }
 
-      case 'sub create': {
+      case N.Action.SubCreate: {
         const {ref, query: netQuery, opts} = msg
         const query = queryFromNet(netQuery)
         const innerOpts: I.SubscribeOpts = {
@@ -151,27 +151,30 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
         subForRef.set(ref, sub)
 
         ;(async () => {
-          for await (const update of sub) {
-
-            const msg: N.SCMsg = {
-              a: 'sub update', ref,
-              txns: txnsWithMetaToNet(type.r, update.txns),
-              tv: update.toVersion,
+          try {
+            for await (const update of sub) {
+              const msg: N.SCMsg = {
+                a: N.Action.SubUpdate, ref,
+                txns: txnsWithMetaToNet(type.r, update.txns),
+                tv: update.toVersion,
+              }
+              if (update.replace) {
+                msg.q = queryToNet(update.replace.q)
+                msg.r = snapToJSON(type.r, update.replace.with)
+                msg.rv = update.replace.versions
+              }
+              write(msg)
             }
-            if (update.replace) {
-              msg.q = queryToNet(update.replace.q)
-              msg.r = snapToJSON(type.r, update.replace.with)
-              msg.rv = update.replace.versions
-            }
-            write(msg)
+          } catch (e) {
+            writeErr(ref, e)
           }
-          write({a: 'sub ret', ref})
+          write({a: N.Action.SubClose, ref})
           subForRef.delete(ref)
         })()
         break
       }
 
-      case 'sub close': {
+      case N.Action.SubClose: {
         const {ref} = msg
         const sub = subForRef.get(ref)
         // TODO: What should we do for invalid refs? Right now we're silently ignoring them..?

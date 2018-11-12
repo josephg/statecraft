@@ -18,6 +18,7 @@ import augment from '../../lib/augment'
 import otStore from '../../lib/stores/ot'
 import mapStore from '../../lib/stores/map'
 import router, {ALL} from '../../lib/stores/router'
+import onekey from '../../lib/stores/onekey'
 import createWss from '../../lib/net/wsserver'
 import {register} from '../../lib/types/registry'
 
@@ -35,9 +36,15 @@ import fresh = require('fresh')
 
 process.on('unhandledRejection', err => { throw err })
 
-;(async () => {
-  register(ottext.type)
+register(ottext.type)
 
+const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
+  assert(k.startsWith(fromPrefix), `'${k}' does not start with ${fromPrefix}`)
+  return toPrefix + k.slice(fromPrefix.length)
+}
+
+
+;(async () => {
   // const backend = kvStore(undefined, {source: 'rootstore'})
 
   const pclient = await new Promise<PClient>((resolve, reject) => {
@@ -70,11 +77,6 @@ process.on('unhandledRejection', err => { throw err })
   interface HTMLDocData {
     headers: {[k: string]: string},
     data: string | Buffer,
-  }
-
-  const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string) => {
-    assert(k.startsWith(fromPrefix), `'${k}' does not start with ${fromPrefix}`)
-    return toPrefix + k.slice(fromPrefix.length)
   }
 
   const renderEditor = (value: string | null, key: I.Key, versions: I.FullVersion): HTMLDocData => (
@@ -200,7 +202,10 @@ process.on('unhandledRejection', err => { throw err })
 
   const server = http.createServer(app)
 
-  const wss = createWss(store, {server})
+  const wss = createWss({server}, (client, req) => {
+    const key = changePrefix(req.url!, '/ws/')
+    return onekey(store, key)
+  })
 
   const port = process.env.PORT || '2001'
   server.listen(+port)

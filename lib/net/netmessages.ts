@@ -8,17 +8,36 @@ export type NetTxn = I.SingleTxn | NetKVTxn
 
 export type NetQuery = 'single' | 'allkv' | [I.QueryType, any]
 
+export type SubscribeOpts = {
+  // TODO: Add all the rest!!!
+  st?: string[]
+  fv?: I.FullVersion | 'c', // known at versions
+}
+
+export const enum Action {
+  // Many of these are used by both the server and client.
+  Hello,
+  Err,
+  
+  Fetch,
+  GetOps,
+  Mutate,
+  SubCreate,
+  SubClose,
+  SubUpdate,
+}
+
 // **************** Client -> Server messages
 
 export interface FetchRequest {
-  a: 'fetch',
+  a: Action.Fetch,
   ref: Ref,
   query: NetQuery,
   opts: I.FetchOpts,
 }
 
 export interface GetOpsRequest {
-  a: 'getops',
+  a: Action.GetOps,
   ref: Ref,
   query: NetQuery,
   v: I.FullVersionRange,
@@ -26,7 +45,7 @@ export interface GetOpsRequest {
 }
 
 export interface MutateRequest {
-  a: 'mutate',
+  a: Action.Mutate,
   ref: Ref,
   mtype: I.ResultType,
   txn: any,
@@ -34,21 +53,15 @@ export interface MutateRequest {
   opts: I.MutateOptions,
 }
 
-export interface SubscribeOpts {
-  // TODO: Add all the rest!!!
-  st?: string[]
-  fv?: I.FullVersion | 'c', // known at versions
-}
-
 export interface SubCreate {
-  a: 'sub create',
+  a: Action.SubCreate,
   ref: Ref,
   query: NetQuery,
   opts: SubscribeOpts
 }
 
 export interface SubClose {
-  a: 'sub close',
+  a: Action.SubClose,
   ref: Ref, // Ref of subscription
 }
 
@@ -63,7 +76,7 @@ export type CSMsg =
 // **************** Server -> Client messages
 
 export interface HelloMsg {
-  a: 'hello',
+  a: Action.Hello,
   p: 'statecraft',
   pv: number,
   sources: I.Source[], // ??? TODO: Still not sure whether to allow unknown sources.
@@ -71,7 +84,7 @@ export interface HelloMsg {
 }
 
 export interface FetchResponse {
-  a: 'fetch',
+  a: Action.Fetch,
   ref: Ref,
   results: any, // Dependant on query.
 
@@ -83,26 +96,26 @@ export interface FetchResponse {
 export type NetTxnWithMeta = [any, I.FullVersion, any]
 
 export interface GetOpsResponse {
-  a: 'getops',
+  a: Action.GetOps,
   ref: Ref,
   ops: NetTxnWithMeta[],
   v: I.FullVersionRange
 }
 
 export interface MutateResponse {
-  a: 'mutate',
+  a: Action.Mutate,
   ref: Ref,
   v: I.FullVersion,
 }
 
 export interface ResponseErr { // Used for fetch, mutate and getops
-  a: 'err',
+  a: Action.Err,
   ref: Ref,
   err: ErrJson,
 }
 
 export interface SubUpdate {
-  a: 'sub update',
+  a: Action.SubUpdate,
   ref: Ref,
 
   // Replace data. If r exists, q must exist too.
@@ -115,15 +128,9 @@ export interface SubUpdate {
   tv: I.FullVersion, // version diff
 }
 
-export interface SubUpdateErr {
-  a: 'sub update err',
-  ref: Ref,
-  err: ErrJson,
-}
-
 // The subscription has closed
 export interface SubRet {
-  a: 'sub ret',
+  a: Action.SubClose,
   ref: Ref,
 }
 
@@ -135,7 +142,6 @@ export type SCMsg =
   | MutateResponse
   | ResponseErr
   | SubUpdate
-  | SubUpdateErr
   | SubRet
 
 // export const flatten1 = (data: any) => (data instanceof Map || data instanceof Set) ? Array.from(data) : data
