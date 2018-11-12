@@ -36,8 +36,8 @@ export interface MutateRequest {
 
 export interface SubscribeOpts {
   // TODO: Add all the rest!!!
-  kd?: boolean | I.Key[], // known docs
-  kv?: I.FullVersion, // known at versions
+  st?: string[]
+  fv?: I.FullVersion | 'c', // known at versions
 }
 
 export interface SubCreate {
@@ -47,14 +47,8 @@ export interface SubCreate {
   opts: SubscribeOpts
 }
 
-export interface SubNext {
-  a: 'sub next',
-  ref: Ref, // Ref of subscription
-  opts: any,
-}
-
-export interface SubCancel {
-  a: 'sub cancel',
+export interface SubClose {
+  a: 'sub close',
   ref: Ref, // Ref of subscription
 }
 
@@ -63,8 +57,7 @@ export type CSMsg =
   | MutateRequest
   | GetOpsRequest
   | SubCreate
-  | SubNext
-  | SubCancel
+  | SubClose
 
 
 // **************** Server -> Client messages
@@ -111,30 +104,27 @@ export interface ResponseErr { // Used for fetch, mutate and getops
 export interface SubUpdate {
   a: 'sub update',
   ref: Ref,
-  rv: I.FullVersionRange, // version diff
 
-  // if r exists, q must exist too.
+  // Replace data. If r exists, q must exist too.
   q?: NetQuery, // active query diff
   r?: any, // replacement
+  rv?: I.FullVersion,
 
   txns: NetTxnWithMeta[], // updates on top of replacement
+  
+  tv: I.FullVersion, // version diff
 }
 
-export interface SubNextCallback {
-  a: 'sub next',
-  ref: Ref,
-
-  // activeQuery and activeVersions
-  q: NetQuery,
-  v: I.FullVersionRange,
-
-  c: boolean, // is the subscription now complete?
-}
-
-export interface SubNextErr {
-  a: 'sub next err',
+export interface SubUpdateErr {
+  a: 'sub update err',
   ref: Ref,
   err: ErrJson,
+}
+
+// The subscription has closed
+export interface SubRet {
+  a: 'sub ret',
+  ref: Ref,
 }
 
 
@@ -145,7 +135,7 @@ export type SCMsg =
   | MutateResponse
   | ResponseErr
   | SubUpdate
-  | SubNextCallback
-  | SubNextErr
+  | SubUpdateErr
+  | SubRet
 
 // export const flatten1 = (data: any) => (data instanceof Map || data instanceof Set) ? Array.from(data) : data

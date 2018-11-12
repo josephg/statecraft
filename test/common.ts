@@ -58,36 +58,34 @@ const eachFetchMethod = async (store: I.Store, query: I.Query): Promise<SimpleRe
 
       const sub = store.subscribe(query, {supportedTypes: new Set()})
 
-      ;(async () => {
-        for await (const update of sub) {
-          // console.log('subscribe listener')
+      const versions: I.FullVersionRange = {}
 
-          if (update.replace) {
-            // Only supporting kv for now.
-            const q = update.replace.q
-            if (q == null) throw Error('Invalid update')
-            else if (q.type === 'allkv' || q.type === 'single') {
-              r = update.replace
-            } else if (q.type === 'kv') {
-              for (const k of q.q) {
-                const val = update.replace.with.get(k)
-                if (val == null) r.delete(k)
-                else r.set(k, val)
-              }
-
-            } //else throw Error('Not supported query replacement type ' + q.type)
+      // We'll just pull off the first update.
+      const update = (await sub.next()).value!
+      if (update.replace) {
+        // Only supporting kv for now.
+        const q = update.replace.q
+        if (q == null) throw Error('Invalid update')
+        else if (q.type === 'allkv' || q.type === 'single') {
+          r = update.replace
+        } else if (q.type === 'kv') {
+          for (const k of q.q) {
+            const val = update.replace.with.get(k)
+            if (val == null) r.delete(k)
+            else r.set(k, val)
           }
 
-          update.txns.forEach(txn => rtype.applyMut!(r, txn.txn))
+        } //else throw Error('Not supported query replacement type ' + q.type)
 
-          // TODO: And update the versions?
+        for (const s in update.replace.versions) {
+          versions[s] = {from: update.replace.versions[s], to: update.toVersion[s]}
         }
-      })()
+      }
 
-      const {activeQuery, activeVersions} = await sub.cursorAll()
-      assert.deepStrictEqual(activeQuery, query)
-      sub.iter.return()
-      return {results: r, versions: activeVersions}
+      update.txns.forEach(txn => rtype.applyMut!(r, txn.txn))
+
+      sub.return()
+      return {results: r, versions}
     })()
   ])
 

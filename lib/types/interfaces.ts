@@ -86,103 +86,15 @@ export type FetchOpts = {
   // Results already known at specified version. Return nothing in this case.
   // readonly knownAtVersions?: FullVersion,
   // TODO: knownDocs?
-}
-// export type FetchCallback = Callback<FetchResults>
 
-
-export type CatchupData = {
-  // This feels overcomplicated. The problem is that catchup isn't always
-  // possible, so sometimes you just gotta send a diff with new documents in it;
-  // and you have no idea how you got there.
-
-  // If supplied, the query
-  // queryChange: Query | null,
-
-  // resultingVersions stores the resulting range of versions at which the
-  // current aggregate snapshot is valid
-  resultingVersions: FullVersionRange, // This should be a diff as well. Maybe rename it?
-
-  // Replace the results in q with this result set, if it exists
-  replace?: {
-    // This is a bit of a hack. If the query here contains more keys / ranges
-    // than the original request, they should be added to the active known
-    // set.
-    // Queries are currently only expanded, so this works but a QueryDelta would
-    // be better.
-    q: Query,
-    with: Map<Key, Val> | any,
-  },
-
-  txns: TxnWithMeta[], // ... then apply txns.
+  // TODO. This is useful / important for changing a query.
+  // atLeastVersion: FullVersion
 }
 
-export interface SubscribeOpts {
-  // Supported client-side operation types. Also forwarded to getOps.
-  readonly supportedTypes?: Set<string>,
-  // Ignore supportedTypes, just send full received ops. (default false)
-  readonly raw?: boolean,
+export type FetchFn = (q: Query, opts?: FetchOpts) => Promise<FetchResults>
 
-  // Don't aggregate updates. Instead send full operation set.
-  readonly noAggregation?: boolean,
 
-  // bestEffort: if we can't get all the requested operations, don't error
-  // but return what we can. Passed through to getOps.
-  readonly bestEffort?: boolean,
 
-  // Always notify about version bumps even if the query results are empty?
-  // (default false)
-  readonly alwaysNotify?: boolean,
-
-  // The same as known: all from current version.
-  readonly noCatchup?: boolean,
-
-  // I'm not sure if I want knownDocs. knownAtVersions with no knownDocs
-  // should imply we know everything at that point, and will be used more in
-  // practice.
-  readonly knownDocs?: QueryData, // Query object of the appropriate type.
-  readonly knownAtVersions?: FullVersion,
-
-  // NYI:
-  // - What to do if there's no ops available from requested version (NYI)
-  // - Follow symlinks? (NYI)
-  // - When we poll, how much data should we fetch? (opts.limitDocs, opts.limitBytes)
-  // - Stop the query after a certain number of operations (opts.limitOps) (NYI)
-  // - Should we send updates for the cursor object itself? (opts.trackCursor)
-}
-
-export interface CatchupOpts {
-  // TODO: Probably more stuff needs to go in here.
-  readonly supportedTypes: Set<string>,
-  readonly raw: boolean,
-  readonly noAggregation?: boolean,
-  readonly bestEffort: boolean,
-  readonly knownAtVersions: FullVersion | null,
-
-  readonly limitDocs?: number,
-  readonly limitBytes?: number,
-}
-
-export type SubCursorResult = {
-  activeQuery: Query,
-  activeVersions: FullVersionRange,
-}
-
-export type AsyncIterableIteratorWithRet<T> = AsyncIterableIterator<T> & {
-  // AsyncIterableIterator declares the return function to be optional.
-  return(value?: any): Promise<IteratorResult<T>>
-}
-
-export interface Subscription extends AsyncIterable<CatchupData> {
-  // Having a return function is compulsory - its how the subscription is closed.
-  // The value passed to return is ignored.
-  iter: AsyncIterableIteratorWithRet<CatchupData>,
-
-  // modify(qop, newqv)
-
-  cursorNext(opts?: any): Promise<SubCursorResult>
-  cursorAll(opts?: any): Promise<SubCursorResult>
-  isComplete(): boolean
-}
 
 export interface GetOpsOptions {
   // Supported client-side operation types. Also forwarded to getOps.
@@ -214,21 +126,42 @@ export type GetOpsResult = {
   versions: FullVersionRange,
 }
 
-export interface MutateOptions {
-  conflictKeys?: Key[],
-  meta?: Metadata,
-}
-
-export type OpsSupport = 'none' | 'partial' | 'all'
-export interface Capabilities {
-  readonly queryTypes: Set<QueryType>,
-  readonly mutationTypes: Set<ResultType>,
-  // readonly ops:OpsSupport,
-}
-
-export type FetchFn = (q: Query, opts?: FetchOpts) => Promise<FetchResults>
 export type GetOpsFn = (q: Query, versions: FullVersionRange, opts?: GetOpsOptions) => Promise<GetOpsResult>
-export type CatchupFn = (q: Query, opts: CatchupOpts) => Promise<CatchupData>
+
+
+
+export type CatchupData = {
+  // This is more complicated than I'd like, but I'm reasonably happy with it.
+  // The problem is that catchup isn't always possible, so sometimes you just
+  // gotta send a diff with new documents in it; and you have no idea how you
+  // got there.
+
+  // Replace the results in q with this result set, if it exists
+  replace?: {
+    // This is a bit of a hack. If the query here contains more keys / ranges
+    // than the original request, they should be added to the active known
+    // set.
+    // Queries are currently only expanded, so this works but a QueryDelta would
+    // be better.
+    q: Query,
+    with: Map<Key, Val> | any, // Make a result set type for this
+
+    // This is the max version for each source of the replacement data. This
+    // becomes from:X if ingesting into a FullVersonRange.
+    versions: FullVersion,
+  },
+
+  txns: TxnWithMeta[], // ... then apply txns.
+
+  // This is the known upper end of the valid version range of the data
+  // returned by catchup. For subscriptions this is a diff from what has been
+  // reported previously, and usually it will just replay the max versions
+  // listen in txns. But when calling alwaysNotify, this will keep updating as
+  // the validity of the versions of the known data grows. This becomes to:X
+  // when ingesting into a FullVersionRange. All sources here must have either
+  // been passed in to subscribe / catchup or listed in a replace.
+  toVersion: FullVersion,
+}
 // The updates argument here could either work as
 //  {txn, v:fullrange}[]
 // or
@@ -236,23 +169,110 @@ export type CatchupFn = (q: Query, opts: CatchupOpts) => Promise<CatchupData>
 // Its inconsistent how it is now, but this also makes it much more convenient
 // to aggregate.
 
-// export type SubUpdate = {
-//   type: 'txns',
-//   txns: TxnWithMeta[], // Resulting version can be derived from this.
-// } | {
-//   type: 'aggregate',
-//   txn: Txn,
-//   versions: FullVersionRange,
-// }
-// export type SubListener = (updates: CatchupData, s: Subscription) => void
-export type SubscribeFn = (q: Query, opts?: SubscribeOpts) => Subscription
+
+export interface CatchupOpts {
+  // TODO: Probably more stuff needs to go in here.
+  readonly supportedTypes?: Set<string>,
+  readonly raw?: boolean,
+  readonly aggregate?: 'yes' | 'prefer no' | 'no',
+  readonly bestEffort?: boolean,
+
+  readonly limitDocs?: number,
+  readonly limitBytes?: number,
+}
+export type CatchupFn = (q: Query, fromVersion: FullVersion, opts: CatchupOpts) => Promise<CatchupData>
+
+
+export interface SubscribeOpts {
+  // Supported client-side operation types. Also forwarded to getOps.
+  readonly supportedTypes?: Set<string>,
+  // Ignore supportedTypes, just send full received ops. (default false)
+  readonly raw?: boolean,
+
+  // Can the store aggregate old updates into replacement data instead of
+  // sending the full operation set? This will not always be possible - for
+  // example, the backend server might have paged out / deleted old
+  // operations.
+  //
+  // If never is passed, the server should error if the full operation log is
+  // not available.
+  readonly aggregate?: 'yes' | 'prefer no' | 'no',
+
+  // bestEffort: if we can't get all the requested operations, don't error
+  // but return what we can. Passed through to catchup & getOps.
+  readonly bestEffort?: boolean,
+
+  // Always notify about version bumps even if the query results are empty?
+  // (default false)
+  readonly alwaysNotify?: boolean,
+
+  // Just subscribe to whatever's there, from the current version. If this is
+  // passed, fromVersion is ignored and you just get all operations as they're
+  // streamed live.
+  // Functionally equivalent to calling subscribe(q, (await fetch(q, {noDocs:true})).version)).
+  // readonly fromCurrent?: boolean,
+
+  // Subscribe from the specified version. If this is passed, we'll send ops / 
+  readonly fromVersion?: FullVersion | 'current',
+
+  // NYI:
+  // - Follow symlinks? (NYI)
+  // - When we poll, how much data should we fetch? (opts.limitDocs, opts.limitBytes)
+  // - Stop the query after a certain number of operations (opts.limitOps) (NYI)
+  // readonly limitBytes: number,
+}
+
+export type AsyncIterableIteratorWithRet<T> = AsyncIterableIterator<T> & {
+  // AsyncIterableIterator declares the return function to be optional.
+  // Having a return function is compulsory - its how the subscription is closed.
+  // The value passed to return is ignored.
+  return(value?: any): Promise<IteratorResult<T>>,
+}
+
+export type Subscription = AsyncIterableIteratorWithRet<CatchupData>
+
+
+// A subscription gives you a stream of operations. There's 3 modes a
+// subscription can run in:
+//
+// 1. Fetch and subscribe. This is the default if you don't pass any options.
+// The first update from the subscription will contain a replace: {} object
+// with all the results from fetching the query, and subsequent updates will
+// modify the query as needed.
+//
+// 2. Subscribe only. If you pass in fromVersion: {...} in the options, that
+// indicates that the caller already has a copy of the query results at the
+// specified version. We don't do any fetch, and instead just catch up from
+// the specified version onwards. Use opts.aggregate to control whether the
+// server is allowed to aggregate the initial catchup.
+//
+// 3. Raw subscribe. If you pass fromVersion: 'current', you get all
+// operations as they come in.
+export type SubscribeFn = (q: Query, opts?: SubscribeOpts) => AsyncIterableIteratorWithRet<CatchupData>
+
+
+
+
+
+export interface MutateOptions {
+  conflictKeys?: Key[],
+  meta?: Metadata,
+}
 
 // TODO: Consider wrapping ResultType + txn in an object like I did with Query.
 // Also the TxnWithMeta is made from txn, versions and opts.meta. Might be better to just pass a TxnWithMeta straight in.
 export type MutateFn = (type: ResultType, txn: Txn, versions?: FullVersion, opts?: MutateOptions) => Promise<FullVersion>
+// export type MutateFn2 = (type: ResultType, txn: Txn | TxnWithMeta, opts?: MutateOptions) => Promise<FullVersion>
 
-export type TxnListener = (source: Source, fromV: Version, toV: Version, type: ResultType, txn: Txn, meta: Metadata) => void
 
+
+
+export type OpsSupport = 'none' | 'partial' | 'all'
+export interface Capabilities {
+  readonly queryTypes: Set<QueryType>,
+  readonly mutationTypes: Set<ResultType>,
+  readonly ops?: OpsSupport,
+}
 
 export interface StoreInfo {
   // If there's one, and its available.
@@ -264,6 +284,9 @@ export interface StoreInfo {
   // And ideally, recursive querying support.
   [k: string]: any
 }
+
+export type TxnListener = (source: Source, fromV: Version, toV: Version, type: ResultType, txn: Txn, meta: Metadata) => void
+
 
 export interface SimpleStore {
   readonly storeInfo: StoreInfo, // TODO: Should this be a promise?

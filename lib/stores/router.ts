@@ -78,6 +78,92 @@ const mapSetKeysInto = (dest: Set<I.Key> | null, oldSet: Iterable<I.Key>, keyRou
 
 const flatMap = <X, Y>(arr: X[], f: (a: X) => Y[]): Y[] => [].concat.apply([], arr.map(f))
 
+const mergeVersionsInto = (dest: I.FullVersion, src: I.FullVersion) => {
+  for (const s in src) dest[s] = src[s]
+}
+
+// Consumes both. Returns a.
+const composeCatchupsMut = (a: I.CatchupData, b: I.CatchupData) => {
+  if (b.replace) {
+    if (b.replace.q.type !== 'kv') {
+      throw Error('Dont know how to merge non KV results')
+    }
+    if (a.replace) {
+      // I know its a kv query. Sadly I don't yet have a generic function for
+      // merging these.
+      if (a.replace.q.type !== 'kv') {
+        throw Error('Dont know how to merge non KV results')
+      }
+
+      for (const k of b.replace.q.q) a.replace.q.q.add(k)
+      for (const [k, val] of b.replace.with) {
+        a.replace.with.set(k, val)
+      }
+      mergeVersionsInto(a.replace.versions, b.replace.versions)
+    } else {
+      a.replace = b.replace
+    }
+
+    // Trim out any transaction data in a that has been replaced by b.
+    let i = 0
+    while (i < a.txns.length) {
+      const txn = (a.txns[i].txn as I.KVTxn)
+      for (const k in txn.values()) if (b.replace.q.q.has(k)) txn.delete(k)
+
+      if (txn.size == 0) a.txns.splice(i, 1)
+      else ++i
+    }
+  }
+
+  // Then merge all remaining transactions into a.
+  a.txns.push(...b.txns)
+  mergeVersionsInto(a.toVersion, b.toVersion)
+  return a
+}
+
+const emptyCatchup = (): I.CatchupData => ({txns: [], toVersion: {}})
+
+// Both consumed. This maps and merges.
+const mapCatchupInto = (dest: I.CatchupData | null, src: I.CatchupData, keyRoutes: Map<I.Key, Route>): I.CatchupData => {
+  if (dest == null) dest = emptyCatchup()
+
+  if (src.replace) {
+    if (!dest.replace) dest.replace = {
+      q: {type: 'kv', q: new Set()},
+      with: new Map<I.Key, I.Val>(),
+      versions: {},
+    }
+    mapSetKeysInto(dest.replace.q.q as Set<I.Key>, src.replace.q.q as Set<I.Key>, keyRoutes)
+    mapKeysInto(dest.replace.with, src.replace.with, keyRoutes)
+
+    // Ugh, so the replace versions might not match up. I'm not really sure
+    // what to do in that case - it shouldn't really matter; but its
+    // technically incorrect.
+    const drv = dest.replace.versions
+    const srv = src.replace.versions
+    for (const s in src.replace.versions) {
+      drv[s] = drv[s] == null ? srv[s] : Math.max(drv[s], srv[s])
+    }
+  }
+
+  for (let i = 0; i < src.txns.length; i++) {
+    src.txns[i].txn = mapKeysInto(null, src.txns[i].txn as I.KVTxn, keyRoutes)
+  }
+
+  // The downside of doing it this way is that the results won't
+  // be strictly ordered by version. They should still be
+  // correct if applied in sequence.. but its a lil' janky.
+  dest.txns.push(...src.txns)
+
+  for (const s in src.toVersion) {
+    const dv = dest.toVersion[s]
+    if (dv == null) dest.toVersion[s] = src.toVersion[s]
+    else if (dv !== src.toVersion[s]) throw Error('Subscription ops misaligned')
+  }
+
+  return dest
+}
+
 export default function router(): Router {
   const routes: Route[] = []
   const sources: string[] = []
@@ -113,6 +199,14 @@ export default function router(): Router {
   const splitQueryByStore = (q: I.Query) => {
     if (q.type !== 'kv') throw new err.UnsupportedTypeError('Router only supports kv queries')
     return splitKeysByStore(q.q)
+  }
+
+  const isBefore = (v: I.FullVersion, other: I.FullVersion) => {
+    for (const s in v) {
+      assert(other[s] != null)
+      if (v[s] < other[s]) return true
+    }
+    return false
   }
 
   return {
@@ -263,11 +357,12 @@ export default function router(): Router {
     subscribe(q, opts = {}) {
       if (q.type !== 'kv') throw new err.UnsupportedTypeError('Router only supports kv queries')
 
+      let {fromVersion} = opts
+      if (fromVersion === 'current') throw new Error('opts.fromVersion current not supported by router')
+
       // Subscribe here merges a view over a number of child subscriptions.
-      // 
-      // - For advancing the cursors, we do them one at a time
-      // - When advancing the catchup iterators, we have to group the
-      //   subscriptions by their sources and merge catchup data
+      // When advancing the catchup iterators, we have to group the
+      // subscriptions by their sources and merge catchup data
       
       // List of [store, Map<Key, Route>]
       const queryByStore = Array.from(splitQueryByStore(q))
@@ -275,207 +370,187 @@ export default function router(): Router {
 
       const childOpts = {
         ...opts,
-        knownAtVersions: opts.knownAtVersions,
         alwaysNotify: true
       }
-      const knownDocsByStore = opts.knownDocs ? splitKeysByStore(opts.knownDocs as Set<I.Key>) : null
-      const childSubs = queryByStore.map(([store, keyRoutes]) => {
-        const knownDocMap = knownDocsByStore && knownDocsByStore.get(store)
-        return {
-          store,
-          keyRoutes,
-          sub: store.subscribe({type:'kv', q:new Set(keyRoutes.keys())}, {
-            ...childOpts,
-            knownDocs: knownDocMap ? new Set(knownDocMap.keys()) : undefined,
-          }),
-        }
-      })
-
-      // console.log('subscribing to', queryByStore.map(([store, keyRoutes]) => (new Set(keyRoutes.keys()))))
-
-      let activeVersions: I.FullVersionRange = {}
-
-      // Subscriptions are grouped based on their source. This is needed
-      // because the subscription API produces an entire source's updates at
-      // once. So if there are two subs with the same source, we need to wait
-      // for both subs to tick before returning the merged catchup data to the
-      // consumer.
-      //
-      // And if there are three subs - one with source [a], one with source
-      // [a,b] and one with source [b], we'll need to put all of them into a
-      // group together.
-      //
-      // We should be able to have more granularity based on the actual query
-      // subscription, but this is fine for now.
-
-      const subGroups: {
-        store: I.Store,
-        keyRoutes: Map<string, Route>,
-        sub: I.Subscription
-      }[][] = []
-      // const groupForSource = new Map<I.Source, number>()
-
-      {
-        // I could convert this to a set, but it should be a really small list
-        // anyway. This is all kind of gross - we need childSubs for the
-        // cursor functions below, and this code was written to consume them
-        // into subGroups. Bleh. POC.
-        const subsCopy = childSubs.slice()
-
-        while (subsCopy.length) {
-          const groupSources = new Set<I.Source>() // local sources for this group
-          const group = [subsCopy.pop()!]
-          group[0]!.store.storeInfo.sources.forEach(s => groupSources.add(s))
-
-          let i = 0;
-          while (i < subsCopy.length) {
-            const store = subsCopy[i].store
-
-            let hasNew = false
-            let hasCommon = false
-            store.storeInfo.sources.forEach(s => {
-              if (groupSources.has(s)) hasCommon = true
-              else hasNew = true
-            })
-
-            if (hasCommon) {
-              // Put the sub+store in the group
-              group.push(subsCopy[i])
-              subsCopy[i] = subsCopy[subsCopy.length-1]
-              subsCopy.length--
-              
-              if (hasNew) {
-                store.storeInfo.sources.forEach(s => groupSources.add(s))
-                // Try again with all the new sources. This is potentially n^2
-                // with the number of routes / sources; but the number will
-                // usually be small so it shouldn't matter. This could be sped
-                // up; but its not important to do so yet.
-                i = 0
-              }
-            } else i++
-          }
-
-          subGroups.push(group)
-        }
-      }
-
-      // console.log('subgroups', subGroups.map(sg => sg.map(ss => ss.store.storeInfo.sources)))
-
-
-      // Unfortunately I don't have a way to cancel the Promise.all I'm using below.
-      // I'll just wait for the data to return then close it out.
-      let cancelled = false
+      const childSubs = queryByStore.map(([store, keyRoutes]) => ({
+        store,
+        keyRoutes,
+        sub: store.subscribe({type:'kv', q:new Set(keyRoutes.keys())}, childOpts),
+      }))
 
       const stream = streamToIter<I.CatchupData>(() => {
-        // self.allSubs.delete(sub)
-        cancelled = true
+        // We're done reading. Close parents.
+        for (const sub of childSubs) sub.sub.return()
       })
 
-      for (let i = 0; i < subGroups.length; i++) {
-        const iters = subGroups[i].map(ss => ss.sub.iter)
-        const keyRoutes = subGroups[i].map(ss => ss.keyRoutes)
-        ;(async () => {
-          while (true) {
-            // console.log('aa', iters.map(i => i.next()))
-            // iters[0].next().then(x => console.log('stream iter next', x))
-            const nexts = await Promise.all(iters.map(i => i.next()))
-            // console.log('nexts', nexts)
-            if (cancelled) break
+      ;(async () => {
+        let finished = false
 
-            const nextResult: I.CatchupData = {
-              // Versions merged into activeVersions.
-              resultingVersions: {}, // Acceptable version range for results post txns
-              txns: [],
+        // We have 2 modes we're operating in: Either opts.fromVersion is set,
+        // and we're going to subscribe to all stores from the same version.
+        // Or its not set (its null), and the underlying subscribe functions
+        // will do a whole catchup first.
+
+        if (fromVersion == null) {
+          // We need to read the first catchup operation from all child subs
+          // before doing anything else.
+          const innerCatchups = await Promise.all(childSubs.map(({sub}) => sub.next()))
+
+          // Figure out the starting version for subscriptions, which is the
+          // max version of everything that was returned.
+          fromVersion = {}
+
+          const catchups: I.CatchupData[] = []
+          for (let i = 0; i < innerCatchups.length; i++) {
+            const catchup = innerCatchups[i].value
+            if (catchup == null) {
+              // One of the child subscriptions ended before it started. Bubble up!
+              console.warn('In router child subscription ended before catchup!')
+              stream.end()
+              for (const sub of childSubs) sub.sub.return()
+              return
             }
 
-            for (let n = 0; n < nexts.length; n++) {
-              const {done, value} = nexts[n]
+            for (const s in catchup.toVersion) {
+              fromVersion[s] = Math.max(fromVersion[s], catchup.toVersion[s])
+            }
+            catchups.push(catchup)
+          }
 
-              // console.log('value', value)
-              // TODO To make this work we'll need to make the replace data
-              // also name the query around which we're replacing contents
-              if (value.replace && value.replace.with.size) {
-                // console.log('replace', value.replace)
+          // Ok, now we need to wait for everyone to catch up to fromVersion!
+          const waiting = []
+          for (let i = 0; i < catchups.length; i++) {
+            if (isBefore(catchups[i].toVersion, fromVersion)) waiting.push((async () => {
+              // I could use for-await here, but I want a while loop and its
+              // pretty twisty.
+              while (!finished && isBefore(catchups[i].toVersion, fromVersion)) {
+                const {value, done} = await childSubs[i].sub.next()
+                if (done) {
+                  finished = true;
+                  return
+                }
+                composeCatchupsMut(catchups[i], value)
 
-                let replace = nextResult.replace
-                if (replace == null) {
-                  replace = nextResult.replace = {
-                    q: {type: "kv", q: new Set()},
-                    with: new Map<I.Key, I.Val>(),
+                for (const s in catchups[i].toVersion) {
+                  if (catchups[i].toVersion[s] > fromVersion[s]) {
+                    throw new Error('Skipped target version. Handling this is NYI')
                   }
                 }
-
-                if (value.replace.q.type !== 'kv') throw Error('Unimplemented r type')
-                mapSetKeysInto((replace.q as any).q, value.replace.q.q, keyRoutes[n])
-                mapKeysInto(replace.with, value.replace.with, keyRoutes[n])
               }
+            })())
+          }
 
-              if (done || !value) throw new Error('Child subscription ended prematurely')
+          await Promise.all(waiting)
 
-              if (intersectVersionsMut(nextResult.resultingVersions, value.resultingVersions) == null) {
-                // TODO We should be able to handle this in a lot of cases.
-                console.log('xrp', nextResult.resultingVersions, value.resultingVersions)
-                throw new Error('Subscription ops misaligned')
-              }
+          // We'll send all initial catchups in one big first update. This is
+          // more consistent with the behaviour of other, more normal stores.
+          const initialCatchup = catchups.reduce((acc, upd, i) => (
+            mapCatchupInto(acc, upd, childSubs[i].keyRoutes)
+          ), emptyCatchup())
+          stream.append(initialCatchup)
+        }
 
-              value.txns.forEach(({versions, txn, meta}) => {
-                // The downside of doing it this way is that the results won't
-                // be strictly ordered by version. They should still be
-                // correct if applied in sequence though.
-                nextResult.txns.push({
-                  versions, meta,
-                  txn: mapKeysInto(null, txn as I.KVTxn, keyRoutes[n])
-                })
+        // ***** Ok we have our initial data and fromVersion is set now.
+
+        // Next up subscriptions are grouped based on their source. This is
+        // needed because the subscription API produces an entire source's
+        // updates at once. So if there are two subs with the same source,
+        // we need to wait for both subs to tick before returning the merged
+        // catchup data to the consumer.
+        //
+        // And if there are three subs - one with source [a], one with source
+        // [a,b] and one with source [b], we'll need to put all of them into a
+        // group together.
+        //
+        // We should be able to have more granularity based on the actual query
+        // subscription, but this is fine for now.
+        
+        const subGroups: {
+          store: I.Store,
+          keyRoutes: Map<string, Route>,
+          sub: I.Subscription,
+        }[][] = []
+
+        {
+          // I could convert this to a set, but it should be a really small list
+          // anyway. This is all kind of gross - we need childSubs for the
+          // cursor functions below, and this code was written to consume them
+          // into subGroups. Bleh. POC.
+          const subsCopy = childSubs.slice()
+
+          while (subsCopy.length) {
+            const groupSources = new Set<I.Source>() // local sources for this group
+            const group = [subsCopy.pop()!]
+            group[0]!.store.storeInfo.sources.forEach(s => groupSources.add(s))
+
+            let i = 0;
+            while (i < subsCopy.length) {
+              const store = subsCopy[i].store
+
+              let hasNew = false
+              let hasCommon = false
+              store.storeInfo.sources.forEach(s => {
+                if (groupSources.has(s)) hasCommon = true
+                else hasNew = true
               })
+
+              if (hasCommon) {
+                // Put the sub+store in the group
+                group.push(subsCopy[i])
+                subsCopy[i] = subsCopy[subsCopy.length-1]
+                subsCopy.length--
+                
+                if (hasNew) {
+                  store.storeInfo.sources.forEach(s => groupSources.add(s))
+                  // Try again with all the new sources. This is potentially n^2
+                  // with the number of routes / sources; but the number will
+                  // usually be small so it shouldn't matter. This could be sped
+                  // up; but its not important to do so yet.
+                  i = 0
+                }
+              } else i++
             }
 
-            for (let source in nextResult.resultingVersions) {
-              activeVersions[source] = nextResult.resultingVersions[source]
+            subGroups.push(group)
+          }
+        }
+
+        // Ok now we'll start streaming the subscriptions for real.
+        for (let i = 0; i < subGroups.length; i++) {
+          assert(subGroups[i].length > 0)
+
+          const subs = subGroups[i].map(ss => ss.sub)
+          const keyRoutes = subGroups[i].map(ss => ss.keyRoutes)
+
+          ;(async () => {
+            // First
+            while (true) {
+              const nexts = await Promise.all(subs.map(sub => sub.next()))
+
+              const updates = nexts.map(({value, done}) => {
+                if (done) finished = true
+                return value
+              })
+
+              // Locally or from another sub group.
+              if (finished) break
+
+              const update = updates.reduce((acc, upd, j) => (
+                mapCatchupInto(acc, upd, keyRoutes[j])
+              ), emptyCatchup())
+
+              // I could update fromVersions, but I don't need to. Its not
+              // used for anything at this point.
+              stream.append(update)
             }
-            stream.append(nextResult)
-          }
 
-          iters.forEach(iter => iter.return())
-        })() // Errors are passed to the global uncaught error handler.
-      }
+          })()
+        }
 
+        // This is a little inelegant, but we'll throw any errors up to the client.
+      })().catch(err => stream.throw(err))
 
-      let cursorNextSub = 0
-      let activeQuery = {type: ('kv' as 'kv'), q: new Set<I.Key>()}
-
-      return {
-        async cursorNext() {
-          // console.log('css', cursorNextSub, childSubs.length)
-          if (cursorNextSub < childSubs.length) {
-            const {sub, keyRoutes} = childSubs[cursorNextSub]
-            const next = await sub.cursorNext()
-            // console.log('cursorNext', next)
-            if (next.activeQuery.type !== 'kv') throw Error('Unsupported result type ' + next.activeQuery.type)
-            mapSetKeysInto(activeQuery.q, next.activeQuery.q, keyRoutes)
-            if (intersectVersionsMut(activeVersions, next.activeVersions) == null) {
-              throw Error('Non-intersecting subscription results - resolving this has not yet been implemented')
-            }
-
-            if (sub.isComplete()) cursorNextSub++
-          }
-          return {activeQuery, activeVersions}
-        },
-
-        async cursorAll() {
-          while (true) {
-            const result = await this.cursorNext(opts)
-            if (this.isComplete()) return result
-          }
-        },
-
-        isComplete() {
-          // True if all subs are complete.
-          return cursorNextSub >= childSubs.length
-        },
-
-        iter: stream.iter,
-        [Symbol.asyncIterator]() { return stream.iter },
-      }
+      return stream.iter
     },
 
     // Mutation can work through the router, but doing multi-store

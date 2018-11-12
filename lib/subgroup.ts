@@ -1,258 +1,183 @@
 import * as I from './types/interfaces'
+import streamToIter, {Stream} from './streamToIter'
+import err from './err'
 import {queryTypes, wrapQuery, getQueryData} from './types/queryops'
-import fieldOps from './types/fieldops'
-import {QueryOps} from './types/type'
-import {supportedTypes as localTypes} from './types/registry'
-// import {genCursorAll} from './util'
-import streamToIter from './streamToIter'
 
-import assert = require('assert')
 
-interface Sub extends I.Subscription {
-  _onOp(source: I.Source, version: I.Version, type: I.ResultType, txn: I.Txn, meta: I.Metadata): void
-  [prop: string]: any
+type BufferItem = {
+  source: I.Source, fromV: I.Version, toV: I.Version, txn: I.Txn, meta: I.Metadata
 }
 
-/* There's a few strategies we could use here to catch up:
- * - Re-fetch all the documents and return a new image. If known versions is
- *   null, we have to do this.
- * - Get historical operations and do catchup. If noFetch is true, we have to
- *   do this. (And error if bestEffort is false).
- */
-function catchupFnForStore(store: I.SimpleStore, getOps: I.GetOpsFn): I.CatchupFn {
-  if (store.catchup) return store.catchup
-
-  const runFetch: I.CatchupFn = async (query, opts) => {
-    const {queryRun, results, versions} = await store.fetch(query, {})
-    
-    return {
-      resultingVersions: versions,
-      replace: {q: queryRun, with: results},
-      txns: []
-    }
+const splitFullVersions = (v: I.FullVersionRange): [I.FullVersion, I.FullVersion] => {
+  const from: I.FullVersion = {}
+  const to: I.FullVersion = {}
+  for (const s in v) {
+    from[s] = v[s].from
+    to[s] = v[s].to
   }
-
-  const runGetOps: I.CatchupFn = async (query, opts) => {
-    const versions: I.FullVersionRange = {_other: {from:0, to: -1}}
-
-    const knownAtVersions = opts.knownAtVersions
-    if (knownAtVersions) for (const source in knownAtVersions) {
-      versions[source] = {from:knownAtVersions[source], to: -1}
-    }
-
-    const {ops, versions: opVersions} = await getOps(query, versions, {bestEffort: opts.bestEffort})
-    return {
-      resultingVersions: opVersions,
-      // queryChange: query,
-      txns: ops,
-    }
-  }
-
-  return (query, opts) => {
-    // console.log('running catchup', query, opts)
-    // This is pretty sparse right now. It might make sense to be a bit fancier
-    // and call getOps after fetching or something like that.
-    return (opts && opts.noAggregation) ? runGetOps(query, opts) : runFetch(query, opts)
-  }
+  return [from, to]
 }
 
+type Sub = {
+  qops: typeof queryTypes[''],
+
+  // iter: I.Subscription,
+
+  // When we get an operation, do we just send from the current version? Set
+  // if SubscribeOpts.fromCurrent is set.
+
+  // If fromCurrent is not set, this is the expected version for incoming operations.
+
+  // This drives the state of the subscription:
+  //
+  // - If its null, we're waiting on fetch() and all the operations we see go into the buffer.
+  // - If its 'current', we just pass all operations directly into the stream.
+  //   opsBuffer should be null.
+  // - If this is a version, we're either waiting for catchup (ops go into
+  //   buffer) or we're ready and the ops are put straight into the stream.
+  expectVersion: I.FullVersion | 'current' | null,
+  // When the subscription is first opened, we buffer operations until catchup returns.
+  opsBuffer: BufferItem[] | null,
+
+  // Stream attached to the returned subscription.
+  stream: Stream<I.CatchupData>,
+}
+
+const isVersion = (expectVersion: I.FullVersion | 'current' | null): expectVersion is I.FullVersion => (
+  expectVersion !== 'current' && expectVersion != null
+)
 
 export default class SubGroup {
   private readonly allSubs = new Set<Sub>()
-  private readonly catchup: I.CatchupFn
+  private readonly store: I.SimpleStore
+  private readonly getOps: I.GetOpsFn | null
 
-  constructor(store: I.SimpleStore, getOps: I.GetOpsFn = store.getOps!) {
-    this.catchup = catchupFnForStore(store, getOps)
+  async catchup(query: I.Query, opts: I.SubscribeOpts): Promise<I.CatchupData> {
+    // TODO: This should look at the aggregation options to decide if a fetch
+    // would be the right thing to do.
+    //
+    // TODO: We should also catch VersionTooOldError out of catchup / getOps
+    // and failover to calling fetch() directly.
+    const {fromVersion} = opts
+    if (fromVersion === 'current') {
+      throw Error('Invalid call to catchup')
+
+    } else if (fromVersion == null) {
+      // Initialize with a full fetch.
+      const {queryRun, results, versions} = await this.store.fetch(query)
+      const [from, to] = splitFullVersions(versions)
+      return {
+        replace: {
+          q: queryRun,
+          with: results,
+          versions: from,
+        },
+        txns: [],
+        toVersion: to,
+      }
+
+    } else if (this.store.catchup) {
+      // Use the provided catchup function to bring us up to date
+      return await this.store.catchup(query, fromVersion, {
+        supportedTypes: opts.supportedTypes,
+        raw: opts.raw,
+        aggregate: opts.aggregate,
+        bestEffort: opts.bestEffort,
+        // limitDocs, limitBytes.
+      })
+
+    } else {
+      // Fall back to getOps
+      const getOps = this.getOps!
+
+      // _other is used for any other sources we run into in getOps.
+      const versions: I.FullVersionRange = {_other: {from:0, to: -1}}
+
+      if (fromVersion) for (const source in fromVersion) {
+        versions[source] = {from:fromVersion[source], to: -1}
+      }
+      const {ops: txns, versions: opVersions} = await getOps(query, versions, {bestEffort: opts.bestEffort})
+      const toVersion = splitFullVersions(opVersions)[1]
+      return {txns, toVersion}
+    }
+  }
+
+  constructor(store: I.SimpleStore, getOps?: I.GetOpsFn) {
+    this.store = store
+    this.getOps = getOps ? getOps : store.getOps ? store.getOps.bind(store) : null
+
+    // Need at least one of these.
+    if (this.getOps == null && store.catchup == null) {
+      throw Error('Cannot attach subgroup to store without getOps or catchup function')
+    }
   }
 
   onOp(source: I.Source, fromV: I.Version, toV: I.Version, type: I.ResultType, txn: I.Txn, meta: I.Metadata) {
-    for (const sub of this.allSubs) sub._onOp(source, toV, type, txn, meta)
-  }
+    for (const sub of this.allSubs) {
+      // the previous subgroup implementation handled this using qops.r.from(), but I'm not sure why.
+      if (type !== sub.qops.r.name) throw new err.InvalidDataError(`Mismatched subscribe types ${type} != ${sub.qops.r.name}`)
 
-  create(query: I.Query, opts: I.SubscribeOpts): I.Subscription {
-    const self = this
-
-    const qtype = query.type
-    const qops = queryTypes[qtype]
-    assert(qops)
-
-    // TODO: Unused for now.
-    const supportedTypes = opts.supportedTypes || localTypes
-    const raw = opts.raw || false
-    const noAggregation = opts.noAggregation || false
-    const bestEffort = opts.bestEffort || false
-
-    // The state of the subscription is
-    // - the set of keys which the client knows about and
-    // - the set of keys it *wants* to know about.
-    let activeQuery = qops.q.create()
-    // We'll store the range for which the active query result set is valid.
-    // TODO: This is a lot of bookkeeping for individually keyed documents.
-    //
-    // Note that the range starts completely open - the results for an empty
-    // query are valid everywhere.
-    const activeVersions: I.FullVersionRange = {}
-
-    let pendingQuery = qops.q.create(getQueryData(query))
-    type BufferItem = {
-      source: I.Source, version: I.Version, txn: I.Txn, meta: I.Metadata
-    }
-    let opsBuffer: BufferItem[] | null = null
-
-    // This is the subset of pendingQuery that we already know about.
-    // Its a query because thats how we express a subset of documents.
-    let knownDocs = opts.knownDocs
-      ? qops.q.intersectDocs(opts.knownDocs, pendingQuery)
-      : qops.q.create()
-
-    let knownAtV: I.FullVersion = opts.knownAtVersions || {}
-
-    if (opts.noCatchup) {
-      throw Error('Not implemented')
-      // Something like this...
-      // [activeQuery, pendingQuery] = [pendingQuery, activeQuery]
-    }
-
-    let sub: Sub
-
-    const stream = streamToIter<I.CatchupData>(() => {
-      self.allSubs.delete(sub)
-    })
-
-    // let waitingFetch = false
-
-    sub = {
-      // cancelled: false,
-      _onOp(source, version, type, intxn, meta) {
-        const txn = qops.r.name === type ? intxn : qops.r.from(type, intxn)
-
-        if (opsBuffer) {
-          const pendingTxn = qops.filterTxn(txn, pendingQuery)
-          if (pendingTxn) opsBuffer.push({source, version, txn: pendingTxn, meta})
-        }
-
-        // TODO: Apply supportedTypes.
-        const activeTxn = qops.filterTxn(txn, activeQuery)
-
-        // Extend the known upper bound of the range no matter what.
-        let av = activeVersions[source]
-        if (av) av.to = version // null av = valid for whole source range.
-
-        // console.log(activeQuery, activeTxn)
-        if (opts.alwaysNotify || activeTxn != null) {
-          if (activeTxn != null) {
-            if (av == null) {
-              av = {from: version, to: version}
-              activeVersions[source] = av
-            } else av.from = version
+      if (sub.opsBuffer) sub.opsBuffer.push({source, fromV, toV, txn, meta})
+      else {
+        if (isVersion(sub.expectVersion)) {
+          if (sub.expectVersion![source] !== fromV) {
+            throw Error(`Invalid version from source: from/to versions mismatch: ${sub.expectVersion[source]} != ${fromV}`)
           }
 
-          // Its pretty awkward sending just a single item in an array like this.
-          // console.log('stream append')
-          stream.append({
-            resultingVersions: activeVersions,
-            txns:[
-              {versions: {[source]:version}, txn:activeTxn, meta}
-            ]
-          })
+          sub.expectVersion[source] = toV
         }
-      },
 
-      async cursorNext(opts = {}) {
-        // console.log('pqe', pendingQuery, qops.q.isEmpty(pendingQuery))
-        if (qops.q.isEmpty(pendingQuery)) return Promise.resolve({
-          activeQuery: wrapQuery(qtype, activeQuery),
-          activeVersions,
+        // This is pretty verbose. Might make sense at some point to do a few MS of aggregation on these.
+        sub.stream.append({
+          txns:[{versions: {[source]:toV}, txn, meta}],
+          toVersion: {[source]:toV},
         })
-
-        if (opsBuffer != null) return Promise.reject(Error('Already fetching'))
-
-        opsBuffer = []
-
-        let query, fromV
-        if (qops.q.isEmpty(knownDocs)) {
-          query = pendingQuery
-          fromV = null // We have no knowledge.
-        } else {
-          query = knownDocs
-          fromV = knownAtV
-        }
-
-        // console.log('qq', query, pendingQuery, knownDocs, qops.q.isNoop(knownDocs))
-        const result = await self.catchup(wrapQuery(qtype, query), {
-          supportedTypes,
-          raw,
-          noAggregation,
-          bestEffort,
-          knownAtVersions: fromV,
-          limitDocs: opts.limitDocs,
-          limitBytes: opts.limitBytes,
-        }).catch(err => {
-          opsBuffer = null
-          throw err
-        })
-
-        const {replace, resultingVersions} = result
-
-        // Things we need to do here:
-        // - Update the returned snapshots based on opsBuffer
-        // - Move the query run to the working result set
-        // - Update activeQuery, pendingQuery and activeVersions.
-        // - Emit returned data via listener
-
-        opsBuffer!.forEach(({source, version, txn: opTxn, meta}) => {
-          const resultV = resultingVersions[source]
-          if (resultV == null || version <= resultV.to) return
-
-          result.txns.push({versions: {[source]: version}, txn: opTxn, meta})
-          resultingVersions[source] = {from:version, to:version}
-        })
-
-        opsBuffer = null
-
-        if (replace != null) {
-          pendingQuery = qops.q.subtract(activeQuery, getQueryData(replace.q))
-          if (opts.knownDocs) knownDocs = qops.q.intersectDocs(knownDocs, pendingQuery)
-          activeQuery = qops.q.add(activeQuery, getQueryData(replace.q))
-        }
-
-        // resultingVersions should just contain the versions that have changed,
-        // so I think this is correct O_o
-        for (const source in resultingVersions) {
-          activeVersions[source] = resultingVersions[source]
-        }
-
-        stream.append(result)
-
-        return({
-          activeQuery: wrapQuery(qtype, activeQuery),
-          activeVersions,
-        })
-      },
-
-      async cursorAll(opts) {
-        while (true) {
-          const result = await this.cursorNext(opts)
-          if (this.isComplete()) return result
-        }
-      },
-
-      isComplete() {
-        return qops.q.isEmpty(pendingQuery)
-      },
-
-      // cursorAll: null as any,
-
-      iter: stream.iter,
-
-      [Symbol.asyncIterator]() { return stream.iter }
+      }
     }
-
-    // sub.cursorAll = genCursorAll(sub)
-
-    this.allSubs.add(sub)
-    return sub
   }
 
-}
+  create(query: I.Query, opts: I.SubscribeOpts = {}): I.Subscription {
+    const fromCurrent = opts.fromVersion === 'current'
+    const qtype = query.type
+    const qops = queryTypes[qtype]
 
+    const stream = streamToIter<I.CatchupData>(() => {
+      this.allSubs.delete(sub)
+    })
+
+    var sub: Sub = {
+      qops,
+      expectVersion: opts.fromVersion || null,
+      opsBuffer: fromCurrent ? null : [],
+      stream,
+    }
+    this.allSubs.add(sub)
+
+    if (!fromCurrent) this.catchup(query, opts).then(catchup => {
+      const catchupVersion = catchup.toVersion
+      sub.expectVersion = catchupVersion
+      
+      if (sub.opsBuffer == null) throw Error('Invalid internal state in subgroup')
+
+      // Replay the operation buffer into the catchup txn
+      for (let i = 0; i < sub.opsBuffer.length; i++) {
+        const {source, fromV, toV, txn, meta} = sub.opsBuffer[i]
+        const v = catchupVersion[source]
+        if (v === fromV) {
+          catchup.txns.push({versions:{[source]: toV}, txn, meta})
+          catchupVersion[source] = toV
+        } else if (v != null && v > toV) {
+          throw Error('Invalid operation data - version span incoherent')
+        }
+      }
+      sub.opsBuffer = null
+
+      stream.append(catchup)
+    }).catch(err => {
+      // Bubble up to create an exception in the client.
+      sub.stream.throw(err)
+    })
+
+    return stream.iter
+  }
+}

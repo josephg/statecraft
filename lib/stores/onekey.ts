@@ -36,12 +36,13 @@ const onekey = (innerStore: I.Store, key: I.Key): I.Store => {
     }
 
     return {
-      resultingVersions: data.resultingVersions,
       replace: hasReplace ? {
         q: {type: 'single', q: true},
         with: data.replace!.with.get(key),
+        versions: data.replace!.versions,
       } : undefined,
       txns: unwrapTxns(data.txns),
+      toVersion: data.toVersion,
     }
   }
 
@@ -94,50 +95,28 @@ const onekey = (innerStore: I.Store, key: I.Key): I.Store => {
       }
     },
 
-    catchup: innerStore.catchup ? async (query, opts) => (
-      unwrapCatchupData(await innerStore.catchup!(innerQuery, opts))
+    catchup: innerStore.catchup ? async (query, fromVersion, opts) => (
+      unwrapCatchupData(await innerStore.catchup!(innerQuery, fromVersion, opts))
     ) : undefined,
 
     // TODO: Map catchup if it exists in the underlying store.
 
-    subscribe(query, outerOps = {}) {
+    subscribe(query, opts = {}) {
       if (query.type !== 'single') throw new err.UnsupportedTypeError()
 
-      const opts = {...outerOps}
-      if (opts.knownDocs) opts.knownDocs = new Set([key])
       const innerSub = innerStore.subscribe(innerQuery, opts)
-
-      const unwrapResult = (result: I.SubCursorResult): I.SubCursorResult => {
-        if (result.activeQuery.type !== 'kv') throw new err.InvalidDataError()
-        return {
-          ...result,
-          activeQuery: {type: 'single', q: result.activeQuery.q.has(key)},
-        }
-      }
-
-      const iter = (async function*() {
-        for await (const innerUpdates of innerSub.iter) {
-          yield unwrapCatchupData(innerUpdates)
-        }
-      })() as I.AsyncIterableIteratorWithRet<I.CatchupData>
 
       // TODO: It'd be great to have a SubscriptionMap thing that lets you map
       // the resulting data you get back from a subscription. That'd be useful
       // in a few places and this is really wordy.
-      return {
-        iter,
-        [Symbol.asyncIterator]() { return iter },
-
-        async cursorNext(opts) {
-          return unwrapResult(await innerSub.cursorNext(opts))
-        },
-        async cursorAll(opts) {
-          return unwrapResult(await innerSub.cursorAll(opts))
-        },
-        isComplete() { return innerSub.isComplete() },
-      }
-
+      return (async function*() {
+        for await (const innerUpdates of innerSub) {
+          yield unwrapCatchupData(innerUpdates)
+        }
+        // TODO: Does this pass through return() correctly?
+      })() as I.AsyncIterableIteratorWithRet<I.CatchupData>
     },
+
   }
 }
 

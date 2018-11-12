@@ -14,7 +14,7 @@ import {
   wrapQuery
 } from '../types/queryops'
 import {TinyReader, TinyWriter} from './tinystream'
-import streamToIter from '../streamToIter'
+import streamToIter, {Stream} from '../streamToIter'
 import {Readable, Writable, Duplex} from 'stream'
 // import assert = require('assert')
 
@@ -46,13 +46,9 @@ const awaitHello = (reader: TinyReader<N.SCMsg>, callback: Callback<N.HelloMsg>)
   }
 }
 
-interface RemoteSub extends I.Subscription {
-  _nextPromise: [any, any] | null,
-  _isComplete: boolean,
-  _qtype: I.QueryType,
-
-  _append: (data: I.CatchupData) => void,
-  // [k: string]: any
+interface RemoteSub {
+  qtype: I.QueryType,
+  stream: Stream<I.CatchupData>,
 }
 
 export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: TinyWriter<N.CSMsg>): Promise<I.Store> {
@@ -79,13 +75,6 @@ export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: Ti
         return dets!
       }
       const subByRef = new Map<N.Ref, RemoteSub>()
-      const takeSubPromise = (sub: RemoteSub): [any, any] => {
-        assert(sub)
-        assert(sub._nextPromise)
-        const resolvereject = sub._nextPromise!
-        sub._nextPromise = null
-        return resolvereject
-      }
 
       reader.onmessage = msg => {
         // console.log('got SC data', msg)
@@ -129,46 +118,40 @@ export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: Ti
           }
 
           case 'sub update': {
-            const {ref, rv, q, r, txns} = msg
+            const {ref, q, r, rv, txns, tv} = msg
             const sub = subByRef.get(ref)!
             assert(sub)
-            const type = queryTypes[sub._qtype]
+            const type = queryTypes[sub.qtype]
 
             const update: I.CatchupData = {
-              resultingVersions: rv,
-
               replace: r == null ? undefined : {
                 q: queryFromNet(q!),
-                with: snapFromJSON(type.r, r)
+                with: snapFromJSON(type.r, r),
+                versions: rv!,
               },
 
               txns: parseTxnsWithMeta(type.r, txns),
+
+              toVersion: tv,
             }
 
-            sub._append(update)
+            sub.stream.append(update)
             break
           }
 
-          case 'sub next': {
-            const {ref, q: activeQuery, v: activeVersions, c: isComplete} = msg
-            const sub = subByRef.get(ref)!
-            const [resolve] = takeSubPromise(sub)
-            sub._isComplete = isComplete
-
-            const type = queryTypes[sub._qtype]
-
-            resolve({
-              activeQuery: queryFromNet(activeQuery),
-              activeVersions
-            })
-            break
-          }
-          case 'sub next err': {
+          case 'sub update err': {
             const {ref, err} = msg
 
             const sub = subByRef.get(ref)!
-            const [_, reject] = takeSubPromise(sub)
-            reject(errFromJSON(err))
+            sub.stream.throw(errFromJSON(err))
+            break
+          }
+
+          case 'sub ret': {
+            const {ref} = msg
+            const sub = subByRef.get(ref)!
+            sub.stream.end()
+            subByRef.delete(ref)
             break
           }
 
@@ -237,36 +220,12 @@ export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: Ti
         subscribe(query, opts = {}) {
           const ref = nextRef++
           const stream = streamToIter<I.CatchupData>(() => {
-            writer.write({a:'sub cancel', ref})
+            writer.write({a:'sub close', ref})
           })
 
           const sub: RemoteSub = {
-            _isComplete: false,
-            _nextPromise: null,
-            _qtype: query.type,
-            _append: stream.append,
-            iter: stream.iter,
-            [Symbol.asyncIterator]: () => stream.iter,
-
-            cursorNext(opts) {
-              // The client should really only have one next call in flight at a time
-              if (this._nextPromise !== null) throw Error('Invalid internal state')
-
-              return new Promise((resolve, reject) => {
-                this._nextPromise = [resolve, reject]
-
-                writer.write({a: 'sub next', opts, ref})
-              })
-            },
-
-            async cursorAll(opts) {
-              while (true) {
-                const result = await this.cursorNext(opts)
-                if (this.isComplete()) return result
-              }
-            },
-
-            isComplete() { return this._isComplete },
+            qtype: query.type,
+            stream,
           }
 
           subByRef.set(ref, sub)
@@ -275,16 +234,16 @@ export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: Ti
           // assert(type) // TODO.
 
           const netOpts: N.SubscribeOpts = {
-            kd: typeof opts.knownDocs === 'object' ? Array.from(opts.knownDocs)
-              : opts.knownDocs,
-            kv: opts.knownAtVersions,
+            // TODO more here.
+            st: opts.supportedTypes ? Array.from(opts.supportedTypes) : undefined,
+            fv: opts.fromVersion === 'current' ? 'c' : opts.fromVersion,
           }
 
           // Advertise that the subscription has been created, but don't wait
           // for acknowledgement before returning it locally.
           writer.write({a: 'sub create', ref, query: queryToNet(query), opts: netOpts})
 
-          return sub
+          return stream.iter
         },
 
         close() {

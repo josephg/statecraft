@@ -19,13 +19,15 @@ import router, {ALL} from './stores/router'
 const testSingle = async () => {
   const store = augment(singleStore())
   const sub = store.subscribe({type: 'single', q: true}, {})
+
+  const results = await sub.next()
+  console.log('sub initial', results.value)
+
   ;(async () => {
     for await (const data of sub) {
       console.log('subscribe data', inspect(data, false, 10, true))
     }
   })()
-  const results = await sub.cursorAll()
-  console.log('cursor next', results)
 
   const v = await store.mutate('single', {type:'set', data: {x: 10}})
   console.log('mutate run', v)
@@ -37,13 +39,15 @@ const testSingle = async () => {
 const testResultMap = async () => {
   const store = augment(kvStore())
   const sub = store.subscribe({type: 'allkv', q: true}, {})
+
+  const results = await sub.next()
+  console.log('sub initial', results.value)
+
   ;(async () => {
     for await (const data of sub) {
       console.log('subscribe data', inspect(data, false, 10, true))
     }
   })()
-  const results = await sub.cursorAll()
-  console.log('cursor next', results)
 
   const txn = new Map([['x', {type:'set', data: {x: 10}}]])
   const v = await store.mutate('resultmap', txn)
@@ -86,7 +90,6 @@ const testLmdb = async () => {
       console.log('subscribe data', inspect(data, false, 10, true))
     }
   })()
-  sub.cursorAll()
 
   // store.onTxn = (source, from, to, type, txn) => {
   //   console.log('ontxn', source, from, to, type, txn)
@@ -126,7 +129,7 @@ const testRouter = async () => {
 
   const sub = store.subscribe({type: 'kv', q:new Set(['a/x', 'b/y'])}, {})
   // const sub = a.subscribe({type: 'kv', q:new Set(['x'])}, {})
-  await sub.cursorAll()
+  console.log('initial', (await sub.next()).value)
   ;(async () => {
     for await (const data of sub) {
       console.log('subscribe data', inspect(data, false, 10, true))

@@ -96,6 +96,8 @@ const map = (inner: I.Store, mapfn: MapFn): I.Store => {
       }
     },
 
+    // TODO: catchup.
+
     subscribe(q, opts) {
       const qtype = queryTypes[q.type]
 
@@ -106,30 +108,28 @@ const map = (inner: I.Store, mapfn: MapFn): I.Store => {
 
       const version: I.FullVersion = {}
 
-      return {
-        ...innerSub,
-        iter: (async function*() {
-          for await (const innerUpdates of innerSub.iter) {
-            // This is not completely correct - the replacement might be
-            // replacing an earlier version of the document. Its possible the
-            // map function will be called with a newer version than the
-            // version the data actually is, if there's replace data *and*
-            // txns.
-            for (const s in innerUpdates.resultingVersions) {
-              version[s] = innerUpdates.resultingVersions[s].to
-            }
-
-            yield {
-              ...innerUpdates,
-              replace: innerUpdates.replace ? {
-                q: innerUpdates.replace.q,
-                with: qtype.r.map(innerUpdates.replace.with, (v, k) => mapfn(v, k, version))
-              } : undefined,
-              txns: mapTxnWithMetas(innerUpdates.txns, mapfn)
-            }
+      return (async function*() {
+        for await (const innerUpdates of innerSub) {
+          // Note that version contains the version *after* the whole catchup
+          // is applied. I'm updating it here, but note that it is not used by
+          // txns.
+          for (const s in innerUpdates.toVersion) {
+            version[s] = innerUpdates.toVersion[s]
           }
-        })() as I.AsyncIterableIteratorWithRet<I.CatchupData>
-      }
+
+          // TODO: It'd be better to avoid calling the map function so often
+          // here. We should really only call it at most once per object per
+          // iteration.
+          yield {
+            ...innerUpdates,
+            txns: mapTxnWithMetas(innerUpdates.txns, mapfn),
+            replace: innerUpdates.replace ? {
+              q: innerUpdates.replace.q,
+              with: qtype.r.map(innerUpdates.replace.with, (v, k) => mapfn(v, k, version))
+            } : undefined,
+          }
+        }
+      })() as I.AsyncIterableIteratorWithRet<I.CatchupData>
     },
 
     close() {},
