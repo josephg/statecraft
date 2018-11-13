@@ -1,8 +1,11 @@
-// I'm not using proper streams because they add about 150k of crap to the browser
+// I'm not using node streams because they add about 150k of crap to the browser
 // bundle.
 
 // This is the simplest possible API around a stream that we can use in server
 // & client code.
+
+// TODO: Consider using streamToIter here, which we're already pulling in to
+// the client anyway.
 import {Readable, Writable} from 'stream'
 
 export interface TinyReader<Msg> {

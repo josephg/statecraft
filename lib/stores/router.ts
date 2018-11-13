@@ -8,7 +8,7 @@
 import * as I from '../types/interfaces'
 import err from '../err'
 import {queryTypes} from '../types/queryops'
-import assert = require('assert')
+import assert from 'assert'
 import streamToIter from '../streamToIter'
 
 export type Router = I.Store & {

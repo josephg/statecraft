@@ -2,7 +2,7 @@ import * as I from '../types/interfaces'
 import * as N from '../net/netmessages'
 import storeFromStreams from '../net/client'
 import {TinyReader, TinyWriter} from '../net/tinystream'
-import WebSocket = require('isomorphic-ws')
+import WebSocket from 'isomorphic-ws'
 
 // const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws`
 

@@ -2,8 +2,8 @@ import * as I from './types/interfaces'
 import * as err from './err'
 import {queryTypes, getQueryData} from './types/queryops'
 
-import binsearch = require('binary-search')
-import assert = require('assert')
+import binsearch from 'binary-search'
+import assert from 'assert'
 
 export interface OpCacheOpts {
   readonly qtype?: I.QueryType,

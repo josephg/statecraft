@@ -1,9 +1,9 @@
 // Common API for interacting with queries
+import * as I from './interfaces'
 import kvQuery from './kvqueryops'
 import {Type, QueryOps, ResultOps} from './type'
 import {allkvQueryOps, contentQueryOps, singleDocResult} from './simplequery'
 import resultMap from './resultmap'
-import * as I from './interfaces'
 
 type SetOrMap<T> = Map<T, any> | Set<T>
 function eachIntersect<T>(c1: SetOrMap<T>, c2: SetOrMap<T>, fn: (v:T) => void) {

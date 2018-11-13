@@ -1,5 +1,5 @@
 import * as I from '../types/interfaces'
-import http = require('http')
+import http from 'http'
 
 const id = <T>(x: T) => x
 

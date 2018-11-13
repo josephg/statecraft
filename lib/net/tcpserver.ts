@@ -2,8 +2,8 @@ import * as I from '../types/interfaces'
 import serve from './server'
 import {wrapReader, wrapWriter} from './tinystream'
 
-import net = require('net')
-import msgpack = require('msgpack-lite')
+import net from 'net'
+import msgpack from 'msgpack-lite'
 
 export default (store: I.Store) => {
   // console.log('made store')

@@ -1,9 +1,9 @@
 // I'm not sure the best way to structure this. This is some utility functions for interacting
 // with prozess stores.
 
-import {Event, PClient, SubCbData} from 'prozess-client'
 import * as I from './types/interfaces'
-import msgpack = require('msgpack-lite')
+import {Event, PClient, SubCbData} from 'prozess-client'
+import msgpack from 'msgpack-lite'
 
 export const encodeTxn = (txn: I.KVTxn, meta: I.Metadata) => msgpack.encode([Array.from(txn), meta])
 export const decodeTxn = (data: Buffer): [I.KVTxn, I.Metadata] => {

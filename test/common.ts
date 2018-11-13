@@ -1,6 +1,6 @@
 import * as I from '../lib/types/interfaces'
 import 'mocha'
-import assert = require('assert')
+import assert from 'assert'
 import {queryTypes, getQueryData} from '../lib/types/queryops'
 
 const assertThrows = async (block: () => Promise<void>, errType?: string) => {

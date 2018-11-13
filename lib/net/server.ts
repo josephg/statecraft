@@ -13,7 +13,7 @@ import {TinyReader, TinyWriter} from './tinystream'
 import errs, {errToJSON, errFromJSON} from '../err'
 
 // import {Readable, Writable} from 'stream'
-import assert = require('assert')
+import assert from 'assert'
 
 const capabilitiesToJSON = (c: I.Capabilities): any[] => {
   return [

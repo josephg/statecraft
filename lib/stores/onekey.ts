@@ -3,7 +3,7 @@
 
 import * as I from '../types/interfaces'
 import err from '../err'
-import assert = require('assert')
+import assert from 'assert'
 
 const capabilities = {
   queryTypes: new Set<I.QueryType>(['single']),

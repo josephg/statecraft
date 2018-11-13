@@ -17,7 +17,7 @@ import {TinyReader, TinyWriter} from './tinystream'
 import streamToIter, {Stream} from '../streamToIter'
 import {Readable, Writable, Duplex} from 'stream'
 import {supportedTypes} from '../types/registry'
-// import assert = require('assert')
+// import assert from 'assert'
 
 const assert = (a: any) => { if (!a) throw Error('Assertion error: ' + a) }
 

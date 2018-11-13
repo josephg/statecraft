@@ -4,7 +4,7 @@ import augment from '../lib/augment'
 import runTests from './common'
 import map from '../lib/stores/map'
 import splitWrites from '../lib/stores/splitwrites'
-import assert = require('assert')
+import assert from 'assert'
 
 describe('map', () => {
   it('maps simple values', async () => {

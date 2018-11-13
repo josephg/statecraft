@@ -1,4 +1,4 @@
-import create = require('errno/custom')
+import create from 'errno/custom'
 
 const SCError = create('StatecraftError')
 const constructors = {

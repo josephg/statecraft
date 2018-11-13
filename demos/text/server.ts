@@ -22,21 +22,20 @@ import onekey from '../../lib/stores/onekey'
 import createWss from '../../lib/net/wsserver'
 import {register} from '../../lib/types/registry'
 
-import http = require('http')
+import http from 'http'
 
-import express = require('express')
-import jsesc = require('jsesc')
+import express from 'express'
+import jsesc from 'jsesc'
 
-import assert = require('assert')
-import commonmark = require('commonmark')
-// import commonmark from 'commonmark'
+import assert from 'assert'
+import commonmark from 'commonmark'
 
-import ottext = require('ot-text')
-import fresh = require('fresh')
+import {type as texttype} from 'ot-text'
+import fresh from 'fresh'
 
 process.on('unhandledRejection', err => { throw err })
 
-register(ottext.type)
+register(texttype)
 
 const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
   assert(k.startsWith(fromPrefix), `'${k}' does not start with ${fromPrefix}`)

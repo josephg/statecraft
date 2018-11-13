@@ -19,28 +19,28 @@ const singleStore = (initialValue: any = null, source: I.Source = genSource(), i
       capabilities,
       sources: [source]
     },
-    fetch(query, opts) {
-      if (query.type !== 'single') return Promise.reject(new err.UnsupportedTypeError())
+    async fetch(query, opts) {
+      if (query.type !== 'single') throw new err.UnsupportedTypeError()
 
-      return Promise.resolve({
+      return {
         results: data,
         queryRun: query,
         versions: {[source]: {from:version, to:version}},
-      })
+      }
     },
 
-    mutate(type, txn, versions, opts = {}) {
-      if (type !== 'single') return Promise.reject(new err.UnsupportedTypeError())
+    async mutate(type, txn, versions, opts = {}) {
+      if (type !== 'single') throw new err.UnsupportedTypeError()
       const op = txn as I.Op
 
       const expectv = versions && versions[source]
-      if (expectv != null && expectv < version) return Promise.reject(new err.VersionTooOldError())
+      if (expectv != null && expectv < version) throw new err.VersionTooOldError()
 
       if (op) data = fieldType.apply(data, op)
       const opv = ++version
 
       store.onTxn && store.onTxn(source, opv - 1, opv, type, op, opts.meta || {})
-      return Promise.resolve({[source]: opv})
+      return {[source]: opv}
     },
 
     close() {},

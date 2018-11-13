@@ -6,13 +6,11 @@ import html from 'nanohtml'
 import * as I from '../../lib/types/interfaces'
 import connect from '../../lib/stores/wsclient'
 import fieldOps from '../../lib/types/fieldops'
-import ottext = require('ot-text')
+import {type as texttype, TextOp} from 'ot-text'
 import otDoc from './otdoc'
 import {register} from '../../lib/types/registry'
 
-const texttype = ottext.type
-
-register(ottext.type)
+register(texttype)
 
 declare const config: {
   key: string,
@@ -108,7 +106,7 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
     await store.mutate('single', {type: 'set', data: ''})
   }
 
-  const otdoc = await otDoc<ottext.TextOp>(store, 'text', {
+  const otdoc = await otDoc<TextOp>(store, 'text', {
     initial: { val: config.initialValue, version: config.initialVersions }
     // knownAtVersions: config.initialVersions,
   }, (txn, val) => {
@@ -120,7 +118,7 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
         break
       case 'text': {
         let pos = 0
-        const op = txn.data as ottext.TextOp
+        const op = txn.data as TextOp
         for (let i = 0; i < op.length; i++) {
           const c = op[i]
           if (typeof c === 'number') pos += c // skip

@@ -8,16 +8,16 @@ import createWss from '../../lib/net/wsserver'
 
 import render from './browserclient/render'
 // import createHttp from '../net/httpserver'
-import http = require('http')
+import http from 'http'
 
-import fs = require('fs')
-import url = require('url')
+import fs from 'fs'
+import url from 'url'
 
-import express = require('express')
-import bodyParser = require('body-parser')
-import jsesc = require('jsesc')
+import express from 'express'
+import bodyParser from 'body-parser'
+import jsesc from 'jsesc'
 
-import mod = require('./rustpng')
+import mod from './rustpng'
 
 process.on('unhandledRejection', err => { throw err })
 

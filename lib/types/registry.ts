@@ -5,7 +5,6 @@
 //
 // It implements set and remove, and forwards the actual changes to
 // child op types, which can be registered using the register function below.
-import {SingleOp, Op} from './interfaces'
 import {Type, AnyOTType} from './type'
 
 export const typeRegistry: {[name: string]: AnyOTType} = {}

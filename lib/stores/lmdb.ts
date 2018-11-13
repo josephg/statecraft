@@ -2,11 +2,11 @@
 //
 // For now it bootstraps by replaying the event log.
 
-import assert = require('assert')
-import lmdb = require('node-lmdb')
-import fs = require('fs')
-import msgpack = require('msgpack-lite')
-import debugLib = require('debug')
+import assert from 'assert'
+import lmdb from 'node-lmdb'
+import fs from 'fs'
+import msgpack from 'msgpack-lite'
+import debugLib from 'debug'
 
 // Its very sad that this has a direct dependancy on prozess client.
 // It'd be way better to abstract this out, but its too early for that.

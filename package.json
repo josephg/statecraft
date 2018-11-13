@@ -9,6 +9,9 @@
     "test": "mocha -r ts-node/register test/*.ts",
     "build": "tsc"
   },
+  "browser": {
+    "./lib/gensource.ts": "./lib/gensource.web.ts"
+  },
   "author": "Joseph Gentle <me@josephg.com>",
   "license": "ISC",
   "dependencies": {

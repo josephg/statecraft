@@ -2,7 +2,7 @@ import 'mocha'
 import kvmem from '../lib/stores/kvmem'
 import augment from '../lib/augment'
 import runTests from './common'
-import assert = require('assert')
+import assert from 'assert'
 
 // describe('maths', () => {
 //   it.only('Everest test', () => {

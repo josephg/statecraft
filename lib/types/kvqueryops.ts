@@ -4,7 +4,6 @@
 // contain lists of items to add and remove.
 
 import {QueryOps} from './type'
-import * as assert from 'assert'
 import resultMapOps from './resultmap'
 
 // type Doc = any

@@ -3,8 +3,8 @@ import * as N from '../net/netmessages'
 import storeFromStreams from '../net/client'
 import {TinyReader, TinyWriter, wrapReader, wrapWriter} from '../net/tinystream'
 
-import net = require('net')
-import msgpack = require('msgpack-lite')
+import net from 'net'
+import msgpack from 'msgpack-lite'
 
 export default function(port: number, host: string): Promise<I.Store> {
   const socket = net.createConnection(port, host)

@@ -1,5 +1,5 @@
-import {ResultOps} from './type'
 import * as I from './interfaces'
+import {ResultOps} from './type'
 import fieldOps from './fieldops'
 
 // This is interesting because there's sort of 3 levels going on here:

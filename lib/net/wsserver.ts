@@ -3,7 +3,7 @@ import * as N from './netmessages'
 import serve from './server'
 import {Writable} from 'stream'
 import {TinyReader, TinyWriter, wrapWriter} from './tinystream'
-import WebSocket = require('ws')
+import WebSocket from 'ws'
 import {IncomingMessage} from 'http'
 
 const isProd = process.env.NODE_ENV === 'production'

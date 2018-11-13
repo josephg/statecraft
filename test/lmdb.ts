@@ -1,8 +1,9 @@
 import 'mocha'
-import fs = require('fs')
-import assert = require('assert')
-
 import * as I from '../lib/types/interfaces'
+
+import fs from 'fs'
+import assert from 'assert'
+
 import createMock from './prozess-mock'
 import {PClient} from 'prozess-client'
 import lmdb from '../lib/stores/lmdb'

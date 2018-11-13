@@ -4,7 +4,7 @@
 // query anything.
 
 import {reconnecter, Event, SubCbData} from 'prozess-client'
-import assert = require('assert')
+import assert from 'assert'
 
 import * as I from '../types/interfaces'
 import err from '../err'
