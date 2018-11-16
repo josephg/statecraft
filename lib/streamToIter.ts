@@ -14,8 +14,8 @@ export interface Stream<T> {
   iter: AsyncIterableIteratorWithRet<T>,
 }
 
-// Note: onCancel is not called if the producer calls .end().
-export default function<T>(onCancel?: () => void): Stream<T> {
+// Note: onDone is not called if the producer calls .end().
+export default function<T>(onDone?: () => void): Stream<T> {
   // At least one of these lists is empty at all times.
   const buffer: T[] = []
   const resolvers: ([(v: IteratorResult<T>) => void, (err: any) => void])[] = []
@@ -24,7 +24,7 @@ export default function<T>(onCancel?: () => void): Stream<T> {
   // buffer runs dry.
   let done = false
   // Err signifies that something went wrong in the producer. Any subsequent
-  // reads after the buffer will hit a promise rejection.
+  // reads after the buffer will immediately return a promise rejection.
   let err: any | null = null
 
   const iter: AsyncIterableIteratorWithRet<T> = {
@@ -52,8 +52,8 @@ export default function<T>(onCancel?: () => void): Stream<T> {
       }
 
       buffer.length = resolvers.length = 0
-      onCancel && onCancel()
-      onCancel = undefined // Avoid calling it again if we're called twice.
+      onDone && onDone()
+      onDone = undefined // Avoid calling it again if we're called twice.
       return Promise.resolve({done} as any as IteratorResult<T>)
     },
     [Symbol.asyncIterator]() { return iter }
@@ -73,7 +73,7 @@ export default function<T>(onCancel?: () => void): Stream<T> {
     },
 
     end() {
-      // NOTE: This does *NOT* call onCancel, since its triggered by the producer.
+      // NOTE: This does *NOT* call onDone, since its triggered by the producer.
       // You should clean up yourself if you call this.
       done = true
       while (resolvers.length) {
@@ -85,8 +85,8 @@ export default function<T>(onCancel?: () => void): Stream<T> {
       // Put an error at the end of the stream. Any further reads will see it.
       // Note that this is for the *producer*
       err = _err
-      onCancel && onCancel()
-      onCancel = undefined
+      onDone && onDone()
+      onDone = undefined
     },
 
     iter,

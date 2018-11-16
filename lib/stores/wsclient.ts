@@ -33,6 +33,9 @@ export default function(wsurl: string): Promise<I.Store> {
         console.log('sending', data)
         ws.send(JSON.stringify(data))
       } else {
+        // This looks bad, but its ok in practice here because the first
+        // message sent is server -> client. So we can't send anything until
+        // the connection is open anyway.
         console.log('websocket message discarded because ws closed')
       }
     },

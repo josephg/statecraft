@@ -45,11 +45,10 @@
     "fresh": "^0.5.2",
     "memdown": "^1.2.0",
     "mocha": "^5.2.0",
+    "tinyify": "^2.5.0",
     "ts-node": "^7.0.1",
     "tsify": "^4.0.0",
     "typescript": "^3.1.6",
-    "uglifyify": "^4.0.5",
-    "unassertify": "^2.1.0",
     "watchify": "^3.11.0"
   }
 }

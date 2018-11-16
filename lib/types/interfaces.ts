@@ -212,8 +212,10 @@ export interface SubscribeOpts {
   // Functionally equivalent to calling subscribe(q, (await fetch(q, {noDocs:true})).version)).
   // readonly fromCurrent?: boolean,
 
-  // Subscribe from the specified version. If this is passed, we'll send ops / 
-  readonly fromVersion?: FullVersion | 'current',
+  // Subscribe from the specified version. If this is passed, we'll send ops
+
+  // TODO: Maybe rename current -> 'raw' ?
+  fromVersion?: FullVersion | 'current',
 
   // NYI:
   // - Follow symlinks? (NYI)

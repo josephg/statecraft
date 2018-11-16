@@ -48,26 +48,71 @@ const awaitHello = (reader: TinyReader<N.SCMsg>, callback: Callback<N.HelloMsg>)
 }
 
 interface RemoteSub {
-  qtype: I.QueryType,
+  query: I.Query,
+  // This is needed to reestablish the subscription later
+  opts: I.SubscribeOpts,
+
+  // The stream that the client is reading over
   stream: Stream<I.CatchupData>,
+
+  // We really need to reuse the stream object between reconnection sessions,
+  // but it'd be a huge hack to make the stream done function externally
+  // editable. So instead done calls sub.cleanup(), which is (re-)assigned to
+  // the current connection.
+  cleanup: () => void,
 }
 
-export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: TinyWriter<N.CSMsg>): Promise<I.Store> {
+type Details = {
+  resolve: any,//((_: I.FetchResults | I.GetOpsResult | I.FullVersion) => void),
+  reject: ((e: Error) => void),
+  type: I.QueryType | I.ResultType
+}
+
+// When we reconnect, a ReconnectionData object is passed to the caller. This
+// contains everything needed to reestablish the connection. This is an opaque
+// structure from the outside. Just pass it back into the next client's
+// reconnect opt field.
+interface ReconnectionData {
+  subs: IterableIterator<RemoteSub>
+}
+
+export interface ClientOpts {
+  preserveOnClose?: (data: ReconnectionData) => void,
+  reconnect?: ReconnectionData,
+}
+
+export default function storeFromStreams(
+    reader: TinyReader<N.SCMsg>,
+    writer: TinyWriter<N.CSMsg>,
+    opts: ClientOpts = {}): Promise<I.Store> {
   return new Promise((resolve, reject) => {
+    const subByRef = new Map<N.Ref, RemoteSub>()
+
+    reader.onclose = () => {
+      if (opts.preserveOnClose) opts.preserveOnClose({
+        subs: subByRef.values()
+      }); else {
+        for (const {stream} of subByRef.values()) {
+          // Tell the receiver they won't get any more messages.
+          stream.end()
+        }
+      }
+
+      delete reader.onmessage
+    }
+
     // It'd be nice to rewrite this using promises. The problem is that we
     // have to onmessage() syncronously with the hello message being
     // processed, so awaitHello can't return a promise. It'd be better to have
     // a way to `await stream.read()` method and do it that way.
     awaitHello(reader, (err, _msg?: N.HelloMsg) => {
       if (err) return reject(err)
+
+      // TODO: check reader.isClosed and .. what??
+
       const hello = _msg!
 
       let nextRef = 1
-      type Details = {
-        resolve: any,//((_: I.FetchResults | I.GetOpsResult | I.FullVersion) => void),
-        reject: ((e: Error) => void),
-        type: I.QueryType | I.ResultType
-      }
       const detailsByRef = new Map<N.Ref, Details>()
       const takeCallback = (ref: N.Ref): Details => {
         const dets = detailsByRef.get(ref)
@@ -75,7 +120,6 @@ export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: Ti
         assert(dets) // ?? TODO: What should I do in this case?
         return dets!
       }
-      const subByRef = new Map<N.Ref, RemoteSub>()
 
       reader.onmessage = msg => {
         // console.log('got SC data', msg)
@@ -125,9 +169,13 @@ export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: Ti
 
           case N.Action.SubUpdate: {
             const {ref, q, r, rv, txns, tv} = msg
-            const sub = subByRef.get(ref)!
-            assert(sub)
-            const type = queryTypes[sub.qtype]
+            const sub = subByRef.get(ref)
+
+            // Will happen if the client closes the sub and the server has
+            // messages in flight
+            if (!sub) break
+
+            const type = queryTypes[sub.query.type]
 
             const update: I.CatchupData = {
               replace: r == null ? undefined : {
@@ -141,20 +189,53 @@ export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: Ti
               toVersion: tv,
             }
 
+            // Update fromVersion so if we need to resubscribe we'll request
+            // the right version from the server. Note that I'm not updating
+            // the version if its specified as 'current'. In that mode you
+            // might miss operations! I have no idea if this is the right
+            // thing to do.
+            const fv = sub.opts.fromVersion
+            if (fv == null) sub.opts.fromVersion = update.toVersion
+            else if (fv !== 'current') for (const s in tv) fv[s] = tv[s]
+
             sub.stream.append(update)
             break
           }
 
           case N.Action.SubClose: {
             const {ref} = msg
-            const sub = subByRef.get(ref)!
-            sub.stream.end()
-            subByRef.delete(ref)
+            const sub = subByRef.get(ref)
+            if (sub != null) {
+              sub.stream.end()
+              subByRef.delete(ref)
+            }
             break
           }
 
           default: console.error('Invalid or unknown server->client message', msg)
         }
+      }
+
+      const registerSub = (sub: RemoteSub) => {
+        const ref = nextRef++
+
+        sub.cleanup = () => {
+          writer.write({a:N.Action.SubClose, ref})
+          subByRef.delete(ref)
+        }
+
+        subByRef.set(ref, sub)
+
+        const {opts} = sub
+        const netOpts: N.SubscribeOpts = {
+          // TODO more here.
+          st: Array.from(opts.supportedTypes || supportedTypes),
+          fv: opts.fromVersion === 'current' ? 'c' : opts.fromVersion,
+        }
+
+        // Advertise that the subscription has been created, but don't wait
+        // for acknowledgement before returning it locally.
+        writer.write({a: N.Action.SubCreate, ref, query: queryToNet(sub.query), opts: netOpts})
       }
 
       const store: I.Store = {
@@ -216,38 +297,25 @@ export default function storeFromStreams(reader: TinyReader<N.SCMsg>, writer: Ti
         },
 
         subscribe(query, opts = {}) {
-          const ref = nextRef++
-          const stream = streamToIter<I.CatchupData>(() => {
-            writer.write({a:N.Action.SubClose, ref})
-          })
+          const sub = {
+            query, opts,
+          } as RemoteSub
 
-          const sub: RemoteSub = {
-            qtype: query.type,
-            stream,
-          }
+          sub.stream = streamToIter<I.CatchupData>(() => sub.cleanup())
 
-          subByRef.set(ref, sub)
-
-          // const type = queryTypes[qtype]
-          // assert(type) // TODO.
-
-          const netOpts: N.SubscribeOpts = {
-            // TODO more here.
-            st: Array.from(opts.supportedTypes || supportedTypes),
-            fv: opts.fromVersion === 'current' ? 'c' : opts.fromVersion,
-          }
-
-          // Advertise that the subscription has been created, but don't wait
-          // for acknowledgement before returning it locally.
-          writer.write({a: N.Action.SubCreate, ref, query: queryToNet(query), opts: netOpts})
-
-          return stream.iter
+          registerSub(sub)
+          return sub.stream.iter
         },
 
         close() {
           // TODO: And terminate all pending callbacks and stuff.
           writer.close()
         }
+      }
+
+      if (opts.reconnect) {
+        // Wire the listed subscriptions back up to the server
+        for (const sub of opts.reconnect.subs) registerSub(sub)
       }
 
       resolve(store)
