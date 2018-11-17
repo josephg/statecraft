@@ -1,5 +1,5 @@
 // This module turns a simple store into a real, usable store.
-import * as I from './types/interfaces'
+import * as I from './interfaces'
 
 import makeOpCache from './opcache'
 import SubGroup from './subgroup'
@@ -25,10 +25,10 @@ const augment = (innerStore: I.SimpleStore, opts?: any): I.Store => {
     subscribe: innerStore.subscribe || subscriptions!.create.bind(subscriptions)
   }
 
-  if (innerStore.storeInfo.capabilities.mutationTypes.has('resultmap')) {
+  if (innerStore.storeInfo.capabilities.mutationTypes.has('kv')) {
     outerStore.set = (key: I.Key, val: I.Val) => {
       const txn = new Map([[key, {type:'set', data: val}]])
-      return innerStore.mutate('resultmap', txn, {}, {})
+      return innerStore.mutate('kv', txn, {}, {})
     }
   }
 

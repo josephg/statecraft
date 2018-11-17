@@ -6,7 +6,7 @@
 import {reconnecter, Event, SubCbData} from 'prozess-client'
 import assert from 'assert'
 
-import * as I from '../types/interfaces'
+import * as I from '../interfaces'
 import err from '../err'
 import {encodeTxn, decodeTxn, decodeEvent, sendTxn} from '../prozess'
 
@@ -16,7 +16,7 @@ const doNothing = () => {}
 
 const capabilities = {
   queryTypes: new Set<I.QueryType>(['allkv']),
-  mutationTypes: new Set<I.ResultType>(['resultmap']),
+  mutationTypes: new Set<I.ResultType>(['kv']),
 }
 
 // TODO: pick a better port.
@@ -37,7 +37,7 @@ const prozessStore = (port: number = 9999, hostname: string = 'localhost'): Prom
         },
 
         async mutate(type, _txn, versions, opts = {}) {
-          if (type !== 'resultmap') throw new err.UnsupportedTypeError()
+          if (type !== 'kv') throw new err.UnsupportedTypeError()
           const txn = _txn as I.KVTxn
 
           const version = await sendTxn(conn, txn, opts.meta || {}, (versions && versions[source]) || -1, {})
@@ -79,7 +79,7 @@ const prozessStore = (port: number = 9999, hostname: string = 'localhost'): Prom
           subdata!.events.forEach(event => {
             // TODO: Pack & unpack batches.
             const [txn, meta] = decodeTxn(event.data)
-            store.onTxn!(source, event.version, event.version + 1, 'resultmap', txn, meta)
+            store.onTxn!(source, event.version, event.version + 1, 'kv', txn, meta)
           })
         }
       })

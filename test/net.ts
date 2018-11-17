@@ -4,7 +4,7 @@ import augment from '../lib/augment'
 import createServer from '../lib/net/tcpserver'
 import connectStore from '../lib/stores/tcpclient'
 import runTests from './common'
-import * as I from '../lib/types/interfaces'
+import * as I from '../lib/interfaces'
 import {AddressInfo} from 'net'
 
 describe('net', () => {

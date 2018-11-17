@@ -1,4 +1,4 @@
-import * as I from '../types/interfaces'
+import * as I from '../interfaces'
 import serve from './server'
 import {wrapReader, wrapWriter} from './tinystream'
 

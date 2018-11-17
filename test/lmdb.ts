@@ -1,5 +1,5 @@
 import 'mocha'
-import * as I from '../lib/types/interfaces'
+import * as I from '../lib/interfaces'
 
 import fs from 'fs'
 import assert from 'assert'

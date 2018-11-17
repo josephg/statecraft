@@ -6,8 +6,8 @@
 // It'd be great to make a KV wrap for this which re-exposes it out as a kv
 // store. Basically the inverse of onekey.
 
-import * as I from '../types/interfaces'
-import fieldType from '../types/fieldops'
+import * as I from '../interfaces'
+import fieldOps from '../types/field'
 import err from '../err'
 
 import fs from 'fs'
@@ -113,7 +113,7 @@ const fileStore = (filename: string, sourceIn?: string): I.SimpleStore => {
       const expectv = versions && versions[source]
       if (expectv != null && expectv < version) return Promise.reject(new err.VersionTooOldError())
 
-      if (op) data = fieldType.apply(data, op)
+      if (op) data = fieldOps.apply(data, op)
       // console.log('fs.writefilesync')
       return new Promise((resolve, reject) => {
         resolveFns.push(resolve)

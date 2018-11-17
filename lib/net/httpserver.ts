@@ -1,4 +1,4 @@
-import * as I from '../types/interfaces'
+import * as I from '../interfaces'
 import http from 'http'
 
 const id = <T>(x: T) => x

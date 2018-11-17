@@ -1,7 +1,7 @@
 // This is a simple store that re-exposes a single key from the underlying
 // store as a single value.
 
-import * as I from '../types/interfaces'
+import * as I from '../interfaces'
 import err from '../err'
 import assert from 'assert'
 
@@ -12,7 +12,7 @@ const capabilities = {
 }
 
 const onekey = (innerStore: I.Store, key: I.Key): I.Store => {
-  const canMutate = innerStore.storeInfo.capabilities.mutationTypes.has('resultmap')
+  const canMutate = innerStore.storeInfo.capabilities.mutationTypes.has('kv')
 
   const innerQuery: I.Query = {type: 'kv', q: new Set([key])}
   if (!innerStore.storeInfo.capabilities.queryTypes.has('kv')) throw new err.UnsupportedTypeError('Inner store must support KV queries')
@@ -59,7 +59,7 @@ const onekey = (innerStore: I.Store, key: I.Key): I.Store => {
       if (query.type !== 'single') throw new err.UnsupportedTypeError()
 
       const results = await innerStore.fetch(innerQuery, opts)
-      // if (results.type !== 'resultmap') throw new err.InvalidDataError()
+      // if (results.type !== 'kv') throw new err.InvalidDataError()
 
       return {
         results: results.results.get(key),
@@ -73,7 +73,7 @@ const onekey = (innerStore: I.Store, key: I.Key): I.Store => {
       if (type !== 'single') throw new err.UnsupportedTypeError()
 
       const innerTxn = new Map([[key, txn as I.Op]])
-      return await innerStore.mutate('resultmap', innerTxn, versions, {
+      return await innerStore.mutate('kv', innerTxn, versions, {
         ...opts,
         conflictKeys: opts.conflictKeys && opts.conflictKeys.includes(key) ? [''] : undefined,
       })

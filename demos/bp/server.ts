@@ -1,4 +1,4 @@
-import * as I from '../../lib/types/interfaces'
+import * as I from '../../lib/interfaces'
 import lmdbStore from '../../lib/stores/lmdb'
 import augment from '../../lib/augment'
 import kvStore from '../../lib/stores/kvmem'
@@ -124,7 +124,7 @@ app.get('/:user/:key.json', async (req, res, next) => {
 app.put('/:user/:key.json', async (req, res, next) => {
   const {user, key} = req.params
   const txn = new Map([[`world/${user}/${key}`, {type:'set', data: req.body.data}]])
-  const result = await store.mutate('resultmap', txn)
+  const result = await store.mutate('kv', txn)
   console.log(result)
   res.end()
 })

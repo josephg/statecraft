@@ -1,12 +1,25 @@
-import * as I from './interfaces'
-import {ResultOps} from './type'
-import fieldOps from './fieldops'
+import * as I from '../interfaces'
+import fieldOps from './field'
 
-// This is interesting because there's sort of 3 levels going on here:
-//
-// - A result snapshot is a kv store, and an operation is a transaction
-// -
-const type: ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
+const mapMap = <T, R>(input: Map<I.Key, T>, fn: (val: T, key: I.Key) => R) => {
+  const result = new Map<I.Key, R>()
+  for (const [k, val] of input) result.set(k, fn(val, k))
+  return result
+}
+
+const mapAsync = <T, R>(input: Map<I.Key, T>, fn: (val: T, key: I.Key) => Promise<R>) => {
+  const entries = Array.from(input.entries())
+  const mapped = entries.map(([k, v]) => fn(v, k))
+  return Promise.all(entries).then((results) => {
+    const result = new Map<I.Key, I.Val>()
+    for (let i = 0; i < entries.length; i++) {
+      result.set(entries[i][0], results[i])
+    }
+    return result
+  })
+}
+
+const type: I.ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
   name: 'resultmap',
 
   create(data) {
@@ -55,34 +68,22 @@ const type: ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
     return result
   },
 
-  from(type, data) {
-    switch(type) {
-      case 'single': return new Map<I.Key, I.Val>([['content', data]])
-      case 'resultmap': return data
-    }
-  },
+  // from(type, data) {
+  //   switch(type) {
+  //     case 'single': return new Map<I.Key, I.Val>([['content', data]])
+  //     case 'resultmap': return data
+  //   }
+  // },
 
   snapToJSON(snap) { return Array.from(snap) },
+  snapFromJSON(data) { return new Map(data) },
   opToJSON(op) { return Array.from(op) },
   opFromJSON(data) { return new Map(data) },
 
-  map(snap, fn) {
-    const result = new Map<I.Key, I.Val>()
-    for (const [k, val] of snap) result.set(k, fn(val, k))
-    return result
-  },
-
-  mapAsync(snap, fn) {
-    const entries = Array.from(snap.entries())
-    const mapped = entries.map(([k, v]) => fn(v, k))
-    return Promise.all(entries).then((results) => {
-      const result = new Map<I.Key, I.Val>()
-      for (let i = 0; i < entries.length; i++) {
-        result.set(entries[i][0], results[i])
-      }
-      return result
-    })
-  },
+  map: mapMap,
+  mapAsync,
+  mapTxn: mapMap,
+  mapTxnAsync: mapAsync,
 
   getCorrespondingQuery(snap) {
     return {type: 'kv', q: new Set(snap.keys())}

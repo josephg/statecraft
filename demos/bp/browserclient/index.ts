@@ -4,9 +4,9 @@ import html from 'nanohtml'
 import render from './render'
 
 // Should be able to use an alias here, but its broken in tsify for some reason.
-import * as I from '../../../lib/types/interfaces'
+import * as I from '../../../lib/interfaces'
 import connect from '../../../lib/stores/wsclient'
-import fieldOps from '../../../lib/types/fieldops'
+import fieldOps from '../../../lib/types/field'
 import onekey from '../../../lib/stores/onekey'
 
 

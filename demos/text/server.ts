@@ -8,7 +8,7 @@
 // - Collaborative editing
 // - Security around the editing capability
 
-import * as I from '../../lib/types/interfaces'
+import * as I from '../../lib/interfaces'
 import lmdbStore from '../../lib/stores/lmdb'
 
 import {reconnecter, PClient} from 'prozess-client'
@@ -20,7 +20,7 @@ import mapStore from '../../lib/stores/map'
 import router, {ALL} from '../../lib/stores/router'
 import onekey from '../../lib/stores/onekey'
 import createWss from '../../lib/net/wsserver'
-import {register} from '../../lib/types/registry'
+import {register} from '../../lib/typeregistry'
 
 import http from 'http'
 

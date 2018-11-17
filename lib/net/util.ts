@@ -1,25 +1,19 @@
-import * as I from '../types/interfaces'
+import * as I from '../interfaces'
 import * as N from './netmessages'
-import {
-  queryTypes, snapToJSON, snapFromJSON, getQueryData
-} from '../types/queryops'
+import {queryTypes} from '../querytypes'
 
 export const queryToNet = (q: I.Query): N.NetQuery => {
   if (q.type === 'single' || q.type === 'allkv') return q.type
-  else {
-    const qtype = queryTypes[q.type].q
-    return [q.type, snapToJSON(qtype, getQueryData(q))]
-  }
+  else return [q.type, queryTypes[q.type].toJSON(q.q)]
 }
 
 export const queryFromNet = (nq: N.NetQuery): I.Query => {
   if (typeof nq === 'string') return ({type: nq} as I.Query)
   else {
     const [qtype, data] = nq
-    const type = queryTypes[qtype]
     return {
       type: qtype,
-      q: snapFromJSON(type.q, data)
+      q: queryTypes[qtype].fromJSON(data)
     } as I.Query
   }
 }

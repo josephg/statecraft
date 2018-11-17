@@ -5,9 +5,9 @@
 // This is a genuinely hard & interesting space, and this code is very much a
 // first pass solution.
 
-import * as I from '../types/interfaces'
+import * as I from '../interfaces'
 import err from '../err'
-import {queryTypes} from '../types/queryops'
+// import {queryTypes} from '../types/queryops'
 import assert from 'assert'
 import streamToIter from '../streamToIter'
 
@@ -83,6 +83,7 @@ const mergeVersionsInto = (dest: I.FullVersion, src: I.FullVersion) => {
 }
 
 // Consumes both. Returns a.
+// TODO: Rewrite this to use query result types.
 const composeCatchupsMut = (a: I.CatchupData, b: I.CatchupData) => {
   if (b.replace) {
     if (b.replace.q.type !== 'kv') {
@@ -238,7 +239,7 @@ export default function router(): Router {
       sources,
       capabilities: {
         queryTypes: new Set<I.QueryType>(['kv']),
-        mutationTypes: new Set<I.ResultType>(['resultmap']),
+        mutationTypes: new Set<I.ResultType>(['kv']),
       }
     },
 
@@ -557,7 +558,7 @@ export default function router(): Router {
     // transactions is too hard / impossible with the current architecture.
     // We'll only allow transactions which hit one store.
     async mutate(type, fTxn, versions, opts) {
-      if (type !== 'resultmap') throw new err.UnsupportedTypeError('Only resultmap mutations supported')
+      if (type !== 'kv') throw new err.UnsupportedTypeError('Only kv mutations supported')
       fTxn = fTxn as I.KVTxn
 
       let store = null
@@ -578,7 +579,7 @@ export default function router(): Router {
       }
 
       if (store == null) return {}
-      else return store.mutate('resultmap', bTxn, versions, opts)
+      else return store.mutate('kv', bTxn, versions, opts)
     },
     
     close() {

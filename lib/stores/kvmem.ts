@@ -1,8 +1,8 @@
 // This is a simple single value in-memory store.
-import * as I from '../types/interfaces'
+import * as I from '../interfaces'
 import genSource from '../gensource'
 import err from '../err'
-import resultMap from '../types/resultmap'
+import resultMap from '../types/map'
 
 // const mapValueMap = <K,X,Y>(map: Map<K, X>, f: (X, K) => Y): Map<K, Y> => {
 //   const result = new Map
@@ -14,7 +14,7 @@ const mapValueMapMut = <K>(map: Map<K, any>, f: (v: any, k: K) => any): Map<K, a
 
 const capabilities = {
   queryTypes: new Set<I.QueryType>(['allkv', 'kv']),
-  mutationTypes: new Set<I.ResultType>(['resultmap']),
+  mutationTypes: new Set<I.ResultType>(['kv']),
   // ops: <I.OpsSupport>'none',
 }
 
@@ -87,12 +87,12 @@ export default function singleStore(
       for (const [k, op] of txn) lastModVersion.set(k, opv)
       if (!preapplied) resultMap.applyMut!(data, txn)
 
-      if (this.onTxn != null) this.onTxn(source, fromv, opv, 'resultmap', txn, meta)
+      if (this.onTxn != null) this.onTxn(source, fromv, opv, 'kv', txn, meta)
       return opv
     },
 
     mutate(type, _txn, versions, opts = {}) {
-      if (type !== 'resultmap') return Promise.reject(new err.UnsupportedTypeError())
+      if (type !== 'kv') return Promise.reject(new err.UnsupportedTypeError())
       if (storeOpts.readonly) return Promise.reject(new err.AccessDeniedError())
 
       const txn = _txn as I.KVTxn

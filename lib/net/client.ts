@@ -1,22 +1,19 @@
 // This is designed to be used from both TCP clients over msgpack (+ framing)
 // and via a browser through JSON-over-websockets
 
-import * as I from '../types/interfaces'
-import * as T from '../types/type'
+import * as I from '../interfaces'
 import * as N from './netmessages'
 import {errToJSON, errFromJSON} from '../err'
 
 import {queryToNet, queryFromNet} from './util'
 import {
   queryTypes, resultTypes,
-  snapToJSON, snapFromJSON,
-  opToJSON, opFromJSON,
   wrapQuery
-} from '../types/queryops'
+} from '../querytypes'
 import {TinyReader, TinyWriter} from './tinystream'
 import streamToIter, {Stream} from '../streamToIter'
 import {Readable, Writable, Duplex} from 'stream'
-import {supportedTypes} from '../types/registry'
+import {supportedTypes} from '../typeregistry'
 // import assert from 'assert'
 
 const assert = (a: any) => { if (!a) throw Error('Assertion error: ' + a) }
@@ -30,9 +27,9 @@ const parseStoreInfo = (helloMsg: N.HelloMsg): I.StoreInfo => ({
   },
 })
 
-const parseTxnsWithMeta = (type: T.Type<any, I.Txn>, data: N.NetTxnWithMeta[]): I.TxnWithMeta[] => (
+const parseTxnsWithMeta = (type: I.ResultOps<any, I.Txn>, data: N.NetTxnWithMeta[]): I.TxnWithMeta[] => (
   data.map(([op, v, meta]) => (<I.TxnWithMeta>{
-    txn: opFromJSON(type, op),
+    txn: type.opFromJSON(op),
     versions: v,
     meta
   }))
@@ -130,7 +127,7 @@ export default function storeFromStreams(
             const {resolve, type: qtype} = takeCallback(ref)
             const type = queryTypes[qtype]!
             resolve(<I.FetchResults>{
-              results: snapFromJSON(type.r, results),
+              results: type.resultType.snapFromJSON(results),
               queryRun: queryFromNet(queryRun),
               versions
             })
@@ -142,7 +139,7 @@ export default function storeFromStreams(
             const {resolve, type: qtype} = takeCallback(ref)
             const type = queryTypes[qtype]!
             resolve(<I.GetOpsResult>{
-              ops: parseTxnsWithMeta(type.r, ops),
+              ops: parseTxnsWithMeta(type.resultType, ops),
               versions: v,
             })
             break
@@ -180,11 +177,11 @@ export default function storeFromStreams(
             const update: I.CatchupData = {
               replace: r == null ? undefined : {
                 q: queryFromNet(q!),
-                with: snapFromJSON(type.r, r),
+                with: type.resultType.snapFromJSON(r),
                 versions: rv!,
               },
 
-              txns: parseTxnsWithMeta(type.r, txns),
+              txns: parseTxnsWithMeta(type.resultType, txns),
 
               toVersion: tv,
             }
@@ -272,7 +269,7 @@ export default function storeFromStreams(
 
             writer.write({
               a: N.Action.Mutate, ref, mtype,
-              txn: opToJSON(type, txn),
+              txn: type.opToJSON(txn),
               v: versions, opts
             })
             // }, 5000)

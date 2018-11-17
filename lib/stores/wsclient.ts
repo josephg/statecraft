@@ -1,4 +1,4 @@
-import * as I from '../types/interfaces'
+import * as I from '../interfaces'
 import * as N from '../net/netmessages'
 import storeFromStreams from '../net/client'
 import {TinyReader, TinyWriter} from '../net/tinystream'

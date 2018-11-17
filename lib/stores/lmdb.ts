@@ -13,10 +13,10 @@ import debugLib from 'debug'
 import {PClient} from 'prozess-client'
 import {encodeTxn, decodeTxn, decodeEvent, sendTxn} from '../prozess'
 
-import fieldOps from '../types/fieldops'
-import {queryTypes, getQueryData} from '../types/queryops'
+import fieldOps from '../types/field'
+import {queryTypes} from '../querytypes'
 
-import * as I from '../types/interfaces'
+import * as I from '../interfaces'
 import err from '../err'
 
 const debug = debugLib('statecraft')
@@ -84,7 +84,7 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
   // TODO: Generate these based on the opstore.
   const capabilities = {
     queryTypes: new Set<I.QueryType>(['allkv', 'kv']),
-    mutationTypes: new Set<I.ResultType>(['resultmap']),
+    mutationTypes: new Set<I.ResultType>(['kv']),
   }
 
   const ready = new Promise((resolve, reject) => {
@@ -164,7 +164,7 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
     },
 
     async mutate(type, _txn, versions, opts = {}) {
-      if (type !== 'resultmap') throw new err.UnsupportedTypeError()
+      if (type !== 'kv') throw new err.UnsupportedTypeError()
       const txn = _txn as I.KVTxn
 
       await ready
@@ -219,7 +219,7 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
       // Filter events by query.
       let ops = data!.events.map(event => decodeEvent(event, source))
       .filter((data) => {
-        const txn = qops.filterTxn(data.txn, getQueryData(query))
+        const txn = qops.filterTxn(data.txn, query.q)
         if (txn == null) return false
         else {
           data.txn = txn
@@ -287,7 +287,7 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
     dbTxn.commit()
 
     if (store.onTxn) txnsOut.forEach(({txn, from, to, meta}) =>
-      store.onTxn!(source, from, to, 'resultmap', txn, meta)
+      store.onTxn!(source, from, to, 'kv', txn, meta)
     )
   }
 

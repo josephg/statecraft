@@ -1,4 +1,4 @@
-import * as I from '../types/interfaces'
+import * as I from '../interfaces'
 
 // This store simply sends all reads to one store, and all writes to another.
 export default function splitWrites(readStore: I.Store, writeStore: I.Store): I.Store {

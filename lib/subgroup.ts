@@ -1,7 +1,6 @@
-import * as I from './types/interfaces'
+import * as I from './interfaces'
 import streamToIter, {Stream} from './streamToIter'
 import err from './err'
-import {queryTypes, wrapQuery, getQueryData} from './types/queryops'
 
 
 type BufferItem = {
@@ -19,8 +18,6 @@ const splitFullVersions = (v: I.FullVersionRange): [I.FullVersion, I.FullVersion
 }
 
 type Sub = {
-  qops: typeof queryTypes[''],
-
   // iter: I.Subscription,
 
   // When we get an operation, do we just send from the current version? Set
@@ -114,9 +111,6 @@ export default class SubGroup {
 
   onOp(source: I.Source, fromV: I.Version, toV: I.Version, type: I.ResultType, txn: I.Txn, meta: I.Metadata) {
     for (const sub of this.allSubs) {
-      // the previous subgroup implementation handled this using qops.r.from(), but I'm not sure why.
-      if (type !== sub.qops.r.name) throw new err.InvalidDataError(`Mismatched subscribe types ${type} != ${sub.qops.r.name}`)
-
       if (sub.opsBuffer) sub.opsBuffer.push({source, fromV, toV, txn, meta})
       else {
         if (isVersion(sub.expectVersion)) {
@@ -139,14 +133,12 @@ export default class SubGroup {
   create(query: I.Query, opts: I.SubscribeOpts = {}): I.Subscription {
     const fromCurrent = opts.fromVersion === 'current'
     const qtype = query.type
-    const qops = queryTypes[qtype]
 
     const stream = streamToIter<I.CatchupData>(() => {
       this.allSubs.delete(sub)
     })
 
     var sub: Sub = {
-      qops,
       expectVersion: opts.fromVersion || null,
       opsBuffer: fromCurrent ? null : [],
       stream,

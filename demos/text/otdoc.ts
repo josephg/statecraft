@@ -4,10 +4,9 @@
 // This code is based on ShareJS's doc type here:
 // https://github.com/josephg/ShareJS/blob/master/lib/client/doc.js
 
-import * as I from '../../lib/types/interfaces'
-import * as T from '../../lib/types/type'
-import fieldOps from '../../lib/types/fieldops'
-import {typeOrThrow} from '../../lib/types/registry'
+import * as I from '../../lib/interfaces'
+import fieldOps from '../../lib/types/field'
+import {typeOrThrow} from '../../lib/typeregistry'
 
 const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 const genIdStem = () => {
@@ -17,7 +16,7 @@ const genIdStem = () => {
 }
 
 
-const xf = <Op>(type: T.AnyOTType, client: Op | null, server: I.SingleOp | null): [Op | null, I.SingleOp | null] => {
+const xf = <Op>(type: I.AnyOTType, client: Op | null, server: I.SingleOp | null): [Op | null, I.SingleOp | null] => {
   if (client == null || server == null) return [client, server]
 
   // In this case, we're in for some fun. There are some local operations

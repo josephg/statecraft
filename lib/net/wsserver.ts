@@ -1,4 +1,4 @@
-import * as I from '../types/interfaces'
+import * as I from '../interfaces'
 import * as N from './netmessages'
 import serve from './server'
 import {Writable} from 'stream'

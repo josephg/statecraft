@@ -1,6 +1,6 @@
 // This is a simple single value in-memory store.
-import * as I from '../types/interfaces'
-import fieldType from '../types/fieldops'
+import * as I from '../interfaces'
+import fieldOps from '../types/field'
 import genSource from '../gensource'
 import err from '../err'
 
@@ -36,7 +36,7 @@ const singleStore = (initialValue: any = null, source: I.Source = genSource(), i
       const expectv = versions && versions[source]
       if (expectv != null && expectv < version) throw new err.VersionTooOldError()
 
-      if (op) data = fieldType.apply(data, op)
+      if (op) data = fieldOps.apply(data, op)
       const opv = ++version
 
       store.onTxn && store.onTxn(source, opv - 1, opv, type, op, opts.meta || {})

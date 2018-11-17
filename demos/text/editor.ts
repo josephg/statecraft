@@ -3,12 +3,12 @@
 import html from 'nanohtml'
 
 // Should be able to use an alias here... but alas.
-import * as I from '../../lib/types/interfaces'
+import * as I from '../../lib/interfaces'
 import connect from '../../lib/stores/wsclient'
-import fieldOps from '../../lib/types/fieldops'
+import fieldOps from '../../lib/types/field'
 import {type as texttype, TextOp} from 'ot-text'
 import otDoc from './otdoc'
-import {register} from '../../lib/types/registry'
+import {register} from '../../lib/typeregistry'
 
 register(texttype)
 

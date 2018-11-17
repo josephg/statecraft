@@ -1,14 +1,8 @@
-import * as I from '../types/interfaces'
-import * as T from '../types/type'
+import * as I from '../interfaces'
 import * as N from './netmessages'
 
 import {queryToNet, queryFromNet} from './util'
-import {
-  queryTypes, resultTypes,
-  snapToJSON, snapFromJSON,
-  opToJSON, opFromJSON,
-  getQueryData
-} from '../types/queryops'
+import {queryTypes, resultTypes} from '../querytypes'
 import {TinyReader, TinyWriter} from './tinystream'
 import errs, {errToJSON, errFromJSON} from '../err'
 
@@ -22,9 +16,9 @@ const capabilitiesToJSON = (c: I.Capabilities): any[] => {
   ]
 }
 
-const txnsWithMetaToNet = (type: T.Type<any, I.Txn>, txns: I.TxnWithMeta[]): N.NetTxnWithMeta[] => (
+const txnsWithMetaToNet = (type: I.ResultOps<any, I.Txn>, txns: I.TxnWithMeta[]): N.NetTxnWithMeta[] => (
   txns.map(txn => (<N.NetTxnWithMeta>[
-    opToJSON(type, txn.txn),
+    type.opToJSON(txn.txn),
     txn.versions,
     txn.meta,
   ]))
@@ -84,7 +78,7 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
           write({
             a: N.Action.Fetch,
             ref,
-            results: snapToJSON(type.r, data!.results),
+            results: type.resultType.snapToJSON(data!.results),
             queryRun: queryToNet(data.queryRun),
             versions: data!.versions
           })
@@ -110,7 +104,7 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
           write({
             a: N.Action.GetOps,
             ref,
-            ops: txnsWithMetaToNet(type.r, data!.ops),
+            ops: txnsWithMetaToNet(type.resultType, data!.ops),
             v: data!.versions
           })
         }, err => {
@@ -129,7 +123,7 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
         const type = resultTypes[mtype]
         assert(type)
 
-        store.mutate(mtype, opFromJSON(type, txn), v, opts).then(v => {
+        store.mutate(mtype, type.opFromJSON(txn), v, opts).then(v => {
           write({a: N.Action.Mutate, ref, v:v!})
         }, err => {
           writeErr(ref, err)
@@ -155,12 +149,12 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
             for await (const update of sub) {
               const msg: N.SCMsg = {
                 a: N.Action.SubUpdate, ref,
-                txns: txnsWithMetaToNet(type.r, update.txns),
+                txns: txnsWithMetaToNet(type.resultType, update.txns),
                 tv: update.toVersion,
               }
               if (update.replace) {
                 msg.q = queryToNet(update.replace.q)
-                msg.r = snapToJSON(type.r, update.replace.with)
+                msg.r = type.resultType.snapToJSON(update.replace.with)
                 msg.rv = update.replace.versions
               }
               write(msg)

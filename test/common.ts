@@ -1,7 +1,7 @@
-import * as I from '../lib/types/interfaces'
+import * as I from '../lib/interfaces'
 import 'mocha'
 import assert from 'assert'
-import {queryTypes, getQueryData} from '../lib/types/queryops'
+import {queryTypes} from '../lib/querytypes'
 
 const assertThrows = async (block: () => Promise<void>, errType?: string) => {
   try {
@@ -53,7 +53,7 @@ const eachFetchMethod = async (store: I.Store, query: I.Query): Promise<SimpleRe
     store.fetch(query).then(({results, versions}) => ({results, versions})),
     // new Promise<SimpleResult>((resolve, reject) => {
     (async () => {
-      const rtype = queryTypes[qtype].r
+      const rtype = queryTypes[qtype].resultType
       let r: any = rtype.create()
 
       const sub = store.subscribe(query, {supportedTypes: new Set()})
@@ -105,10 +105,16 @@ async function runBothKVQueries<T>(
 
   // TODO: Reintroduce sorted kv ranges. For now we'll just do a KV query.
 
-  const promises = (['kv'] as I.QueryType[])
+  const promises = (['kv', 'range'] as ('kv' | 'range')[])
   .filter(qtype => store.storeInfo.capabilities.queryTypes.has(qtype))
   .map((qtype) => {
-    const query = queryTypes[qtype].q.fromKVQuery!(keys)
+    const query = qtype === 'range'
+      ? Array.from(keys).map(k => ({
+          from: {k, isAfter: false, offset: 0},
+          to: {k, isAfter: true, offset: 0},
+        }))
+      : keys
+
     return fn({type: qtype, q: query} as I.Query)
   }).filter(x => x != null)
 
@@ -166,14 +172,14 @@ function splitSingleVersions(versions: I.FullVersion | I.FullVersionRange): Sing
 const setSingle = async (store: I.Store, key: I.Key, value: I.Val, versions: I.FullVersion = {}): Promise<SingleVersion> => {
   // if (typeof versions === 'function') [versions, callback] = [{}, versions]
   const txn = new Map([[key, {type:'set', data:value}]])
-  const vs = await store.mutate('resultmap', txn, versions, {})
+  const vs = await store.mutate('kv', txn, versions, {})
   return splitSingleVersions(vs)
 }
 
 const delSingle = async (store: I.Store, key: I.Key): Promise<SingleVersion> => {
   // if (typeof versions === 'function') [versions, callback] = [{}, versions]
   const txn = new Map([[key, {type:'rm'}]])
-  const vs = await store.mutate('resultmap', txn, {}, {})
+  const vs = await store.mutate('kv', txn, {}, {})
   return splitSingleVersions(vs)
 }
 

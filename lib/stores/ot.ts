@@ -1,11 +1,11 @@
 // This is a simple passthrough store which catches write conflicts and tries
 // to do operational tranformation to recover them.
-import * as I from '../types/interfaces'
+import * as I from '../interfaces'
 import err from '../err'
-import {resultTypes} from '../types/queryops'
-import {typeOrThrow} from '../types/registry'
+import {queryTypes, resultTypes} from '../querytypes'
+import {typeOrThrow} from '../typeregistry'
 
-const mapTxnWithPair = (a: I.Txn, b: I.Txn, fn: (a: I.SingleTxn, b: I.SingleTxn) => I.SingleTxn) => {
+const mapTxnWithPair = (type: I.ResultType, a: I.Txn, b: I.Txn, fn: (a: I.SingleTxn, b: I.SingleTxn) => I.SingleTxn) => {
   if (a instanceof Map) {
     const result = new Map<I.Key, I.Op>()
     if (!(b instanceof Map)) throw new err.InvalidDataError('Transactions are different types')
@@ -15,9 +15,11 @@ const mapTxnWithPair = (a: I.Txn, b: I.Txn, fn: (a: I.SingleTxn, b: I.SingleTxn)
       else result.set(k, av)
     }
     return result
+  } else if (type === 'single') {
+    return fn(a as I.Op, b as I.Op)
   } else {
-    if (b instanceof Map) throw new err.InvalidDataError('Transactions are different types')
-    return fn(a, b)
+    throw new err.UnsupportedTypeError('Type ' + type + ' not supported by ot store')
+    // throw new err.InvalidDataError('Transactions are different types')
   }
 }
 
@@ -48,6 +50,13 @@ const otStore = (inner: I.Store /*, filter: (key: I.Key) => boolean */): I.Store
           // We don't know what conflicted, and the transaction could have a
           // lot of stuff in it.
           const q = resultTypes[type].getCorrespondingQuery(txn)
+
+          // This is a terrible error message for a complex error. Should be
+          // pretty rare in practice - basically the mutation type has to
+          // match the type of the corresponding query. Which will basically
+          // always be kv or single.
+          if (queryTypes[q.type].resultType.name !== type) throw Error('Mismatched query types unsupported')
+
           const catchupVersions: I.FullVersionRange = {}
           for (const s in versions) { catchupVersions[s] = {from: versions[s], to: -1}}
           const {ops} = await inner.getOps(q, catchupVersions)
@@ -55,7 +64,7 @@ const otStore = (inner: I.Store /*, filter: (key: I.Key) => boolean */): I.Store
 
           let madeProgress = false
           for (let i = 0; i < ops.length; i++) {
-            txn = mapTxnWithPair(txn, ops[i].txn, (a, b) => {
+            txn = mapTxnWithPair(type, txn, ops[i].txn, (a, b) => {
               // The mutation we recieved has not been collapsed together.
               // This requires an M*N transform, which is not implemented.
               if (Array.isArray(a)) throw e

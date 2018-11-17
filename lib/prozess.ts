@@ -1,7 +1,7 @@
 // I'm not sure the best way to structure this. This is some utility functions for interacting
 // with prozess stores.
 
-import * as I from './types/interfaces'
+import * as I from './interfaces'
 import {Event, PClient, SubCbData} from 'prozess-client'
 import msgpack from 'msgpack-lite'
 

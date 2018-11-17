@@ -2,9 +2,8 @@
 // allkv: Query all key-values in a kv database. Similar to single, but enforces kv.
 // kv: Query with a set of keys, return corresponding values.
 // sortedkv: Query set of ranges. return kv map with contained values
-export type QueryType = 'single' | 'allkv' | 'kv' //| 'kvranges'
-// TODO: consider renaming resultmap to kv.
-export type ResultType = 'single' | 'resultmap'
+export type QueryType = 'single' | 'allkv' | 'kv' | 'range'
+export type ResultType = 'single' | 'kv' | 'range'
 
 export type Version = number
 export type Source = string
@@ -24,26 +23,43 @@ export type FullVersionRange = {
   [s: string]: VersionRange
 }
 
+// Key, isAfter, offset.
+export type KeySelector = {
+  k: Key,
+  isAfter: boolean,
+  offset: number,
+}
+export type Range = {
+  from: KeySelector,
+  to: KeySelector,
+  limit?: number, // default no limit
+  reverse?: boolean, // default false
+}
+export type RangeQuery = Range[]
+export type RangeResult = [Key, Val][][]
+
 // Wrapping single and allkv like this is sort of dumb, but it works better
 // with TS type checks.
 export type Query = {type: 'single' | 'allkv', q: boolean} | {
   type: 'kv',
   q: KVQuery,
-} /*| {
-  type: 'kvranges',
-  q: void // TODO
-}*/
+} | {
+  type: 'range',
+  q: RangeQuery,
+}
 
 // This is an internal type. Its sort of gross that it exists. I think
 // eventually I'd like to move to using a single "empty" query type that
 // completed queries end up at.
-export type QueryData = KVQuery | boolean
+export type QueryData = boolean | KVQuery | RangeQuery
+
+export type ResultData = any | Map<Key, Val> | RangeResult
 
 // export type Result = {
 //   type: 'single',
 //   d: any
 // } | {
-//   type: 'resultmap',
+//   type: 'kv',
 //   d: Map<Key, Val>
 // }
 
@@ -64,7 +80,9 @@ export type Metadata = {
 export type Op = SingleOp | SingleOp[]
 export type SingleTxn = Op
 export type KVTxn = Map<Key, Op>
-export type Txn = SingleTxn | KVTxn // SingleTxn for 'single', KVTxn for 'resultmap'.
+// Ideally this would be a sparse list. Not a big deal in practice though.
+export type RangeTxn = [Key, Op][][]
+export type Txn = SingleTxn | KVTxn | RangeTxn
 export type TxnWithMeta = {
   versions: FullVersion,
   txn: Txn,
@@ -72,9 +90,8 @@ export type TxnWithMeta = {
 }
 
 export type FetchResults = {
-  // results: Map<Key, Val>,
-  results: any, // Dependant on query.
   queryRun: Query,
+  results: ResultData,
   versions: FullVersionRange, // Range across which version is valid.
 }
 
@@ -355,3 +372,58 @@ export interface Store extends SimpleStore {
   [k: string]: any
 }
 
+
+// This is a pretty standard OT type.
+export interface Type<Snap, Op> {
+  name: string,
+  create(data?: any): Snap
+  apply(snapshot: Snap, op: Op): Snap
+  applyMut?(snapshot: Snap, op: Op): void
+  checkOp?(op: Op, snapshot: Snap): void // Check the op is valid and can apply to the given snapshot
+
+  // For core OT types:
+  // Not sure if transform should be optional. TODO.
+  transform?(op1: Op, op2: Op, side: 'left' | 'right'): Op,
+  // And transform cursor and stuff.
+  compose?(op1: Op, op2: Op): Op,
+
+  snapToJSON?(data: Snap): any,
+  snapFromJSON?(data: any): Snap,
+  opToJSON?(data: Op): any,
+  opFromJSON?(data: any): Op,
+
+  [p: string]: any
+}
+
+export type AnyOTType = Type<any, any>
+
+// This would be nicer with Rust's associated types.
+export interface ResultOps<R, Txn> extends Type<R, Txn> {
+  // name: ResultType
+  compose(op1: Txn, op2: Txn): Txn
+  composeMut?(op1: Txn, op2: Txn): void
+
+  map(snap: R, fn: (v: any, k: any) => any): R
+  mapAsync(snap: R, fn: (v: any, k: any) => Promise<any>): Promise<R>
+
+  mapTxn(op: Txn, fn: (v: Op, k: any) => any): Txn
+  mapTxnAsync(op: Txn, fn: (v: Op, k: any) => Promise<Op>): Promise<Txn>
+
+  // These are compulsory.
+  snapToJSON(data: R): any,
+  snapFromJSON(data: any): R,
+  opToJSON(data: Txn): any,
+  opFromJSON(data: any): Txn,
+
+  // from(type: ResultType, snap: ResultData): R
+  getCorrespondingQuery(snap: R): Query
+}
+
+export interface QueryOps<Q> {
+  name: QueryType,
+  toJSON(q: Q): any,
+  fromJSON(data: any): Q,
+  filterTxn(txn: Txn, query: QueryData): any | null,
+
+  resultType: ResultOps<any, Txn>,
+}

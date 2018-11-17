@@ -1,4 +1,4 @@
-import * as I from '../../lib/types/interfaces'
+import * as I from '../../lib/interfaces'
 import * as N from '../../lib/net/netmessages'
 import singleStore from '../../lib/stores/singlemem'
 import augment from '../../lib/augment'

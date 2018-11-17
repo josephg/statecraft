@@ -1,6 +1,5 @@
-import {SingleOp, Op} from './interfaces'
-import {ResultOps} from './type'
-import {typeOrThrow, supportedTypes, typeRegistry} from './registry'
+import {SingleOp, Op, ResultOps} from '../interfaces'
+import {typeOrThrow, supportedTypes, typeRegistry} from '../typeregistry'
 
 function appendMut(a: Op, b: SingleOp) {
   const {type} = b
@@ -29,6 +28,9 @@ function appendMut(a: Op, b: SingleOp) {
     return a
   } else return [a, b]
 }
+
+const id = <T>(x: T) => x
+const apply2 = <T, R>(x: T, fn: (x: T, y: null) => R) => fn(x, null)
 
 const type: ResultOps<any, Op> = {
   name: 'single',
@@ -80,19 +82,26 @@ const type: ResultOps<any, Op> = {
     return (snap == null) ? {type:'rm'} : {type:'set', data:snap}
   },
 
-  from(type, data) {
-    switch(type) {
-      case 'single': return data
-      case 'resultmap': return data.get('content')
-    }
-  },
+  // from(type, data) {
+  //   switch(type) {
+  //     case 'single': return data
+  //     case 'kv': return data.get('content')
+  //   }
+  // },
 
   checkOp(op, snap) {
     type.apply(snap, op) // this will throw if invalid. TODO: use check on subtype if available.
   },
 
-  map(data, fn) { return fn(data, null) },
-  mapAsync(data, fn) { return fn(data, null) },
+  map: apply2,
+  mapAsync: apply2,
+  mapTxn: apply2,
+  mapTxnAsync: apply2,
+
+  snapToJSON: id,
+  snapFromJSON: id,
+  opToJSON: id,
+  opFromJSON: id,
 
   getCorrespondingQuery(data) { return {type: 'single', q: true} },
 }

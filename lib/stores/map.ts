@@ -1,6 +1,6 @@
-import * as I from '../types/interfaces'
+import * as I from '../interfaces'
 import err from '../err'
-import {queryTypes} from '../types/queryops'
+import {queryTypes} from '../querytypes'
 
 const supportedOpTypes = new Set(['rm', 'set'])
 
@@ -22,21 +22,13 @@ const mapSingleOp = (op: I.SingleOp, key: I.Key | null, version: I.FullVersion, 
   }
 }
 
-const mapOp = (op: I.Op, key: I.Key | null, version: I.FullVersion, fn: MapFn) => (
-  Array.isArray(op)
-    ? op.map(singleOp => mapSingleOp(singleOp, key, version, fn))
-    : mapSingleOp(op, key, version, fn)
-)
-
-const mapTxn = (txn: I.Txn, version: I.FullVersion, fn: MapFn) => {
-  return (txn instanceof Map)
-    ? mapValues(txn, (op, key) => mapOp(op, key, version, fn))
-    : mapOp(txn, null, version, fn)
-}
-
-const mapTxnWithMetas = (txn: I.TxnWithMeta[], fn: MapFn) => (
+const mapTxnWithMetas = (type: I.ResultOps<any, I.Txn>, txn: I.TxnWithMeta[], fn: MapFn) => (
   txn.map(({versions, txn, meta}) => ({
-    txn: mapTxn(txn, versions, fn),
+    txn: type.mapTxn(txn, (op, k) => (
+      Array.isArray(op)
+        ? op.map(singleOp => mapSingleOp(singleOp, k, versions, fn))
+        : mapSingleOp(op, k, versions, fn)
+    )),
     versions,
     meta,
   }))
@@ -72,7 +64,7 @@ const map = (inner: I.Store, mapfn: MapFn): I.Store => {
         // In the noDocs case, inner.fetch will have already stripped the documents.
         results: (opts && opts.noDocs)
           ? innerResults.results
-          : qtype.r.map(innerResults.results, (v, k) => mapfn(v, k, version)),
+          : qtype.resultType.map(innerResults.results, (v, k) => mapfn(v, k, version)),
         queryRun: innerResults.queryRun,
         versions: innerResults.versions,
       }
@@ -91,7 +83,7 @@ const map = (inner: I.Store, mapfn: MapFn): I.Store => {
       })
 
       return {
-        ops: mapTxnWithMetas(r.ops, mapfn),
+        ops: mapTxnWithMetas(queryTypes[query.type].resultType, r.ops, mapfn),
         versions: r.versions,
       }
     },
@@ -122,10 +114,10 @@ const map = (inner: I.Store, mapfn: MapFn): I.Store => {
           // iteration.
           yield {
             ...innerUpdates,
-            txns: mapTxnWithMetas(innerUpdates.txns, mapfn),
+            txns: mapTxnWithMetas(qtype.resultType, innerUpdates.txns, mapfn),
             replace: innerUpdates.replace ? {
               q: innerUpdates.replace.q,
-              with: qtype.r.map(innerUpdates.replace.with, (v, k) => mapfn(v, k, version))
+              with: qtype.resultType.map(innerUpdates.replace.with, (v, k) => mapfn(v, k, version))
             } : undefined,
           }
         }
