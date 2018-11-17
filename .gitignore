@@ -6,3 +6,4 @@ rust/target
 rust/Cargo.lock
 dist
 bundle.js
+*.tmp-browserify*
