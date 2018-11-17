@@ -1,13 +1,12 @@
-import create from 'errno/custom'
+import ExtendableError from 'es6-error'
 
-const SCError = create('StatecraftError')
-const constructors = {
-  VersionTooOldError: create('VersionTooOldError', SCError),
-  WriteConflictError: create('WriteConflictError', SCError),
-  UnsupportedTypeError: create('UnsupportedTypeError', SCError),
-  AccessDeniedError: create('AccessDeniedError', SCError),
-  InvalidDataError: create('InvalidDataError', SCError),
-}
+class VersionTooOldError extends ExtendableError {}
+class WriteConflictError extends ExtendableError {}
+class UnsupportedTypeError extends ExtendableError {}
+class AccessDeniedError extends ExtendableError {}
+class InvalidDataError extends ExtendableError {}
+
+const constructors = {VersionTooOldError, WriteConflictError, UnsupportedTypeError, AccessDeniedError, InvalidDataError}
 export default constructors
 
 export interface ErrJson {msg: string, name: string}
@@ -17,7 +16,7 @@ export const errToJSON = (err: Error): ErrJson => {
   return {msg: err.message, name: err.name}
 }
 export const errFromJSON = (obj: ErrJson) => {
-  const Con = (constructors as {[k: string]: ErrorConstructor})[obj.name]
+  const Con = (constructors as {[k: string]: typeof ExtendableError})[obj.name]
   if (Con) return new Con(obj.msg)
   else {
     const err = new Error(obj.msg)

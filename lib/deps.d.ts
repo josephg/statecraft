@@ -1,15 +1,4 @@
 
-declare module 'errno' {
-  let custom: {
-    createError(name: string, parent?: ErrorConstructor): ErrorConstructor
-  }
-}
-
-declare module 'errno/custom' {
-  function create(name: string, parent?: ErrorConstructor): ErrorConstructor
-  export = create
-}
-
 declare module 'msgpack-lite' {
   import {Duplex} from 'stream'
 

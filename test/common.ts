@@ -7,7 +7,7 @@ const assertThrows = async (block: () => Promise<void>, errType?: string) => {
   try {
     await block()
   } catch (e) {
-    if (errType) assert.strictEqual(e.type, errType)
+    if (errType) assert.strictEqual(e.name, errType)
     return
   }
   throw Error('Block did not throw')
@@ -232,7 +232,7 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
 
     it('can store things and return them', async function() {
       const txn = new Map([['a', {type:'set', data:'hi there'}]])
-      const vs = await this.store.mutate('resultmap', txn, {}, {})
+      const vs = await this.store.mutate('kv', txn, {}, {})
 
       // The version we get back here should contain exactly 1 source with a
       // single integer version.
