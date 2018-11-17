@@ -39,7 +39,7 @@ const singleStore = (initialValue: any = null, source: I.Source = genSource(), i
       if (op) data = fieldOps.apply(data, op)
       const opv = ++version
 
-      store.onTxn && store.onTxn(source, opv - 1, opv, type, op, opts.meta || {})
+      store.onTxn && store.onTxn(source, opv - 1, opv, type, op, data, opts.meta || {})
       return {[source]: opv}
     },
 

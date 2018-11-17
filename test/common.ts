@@ -138,11 +138,12 @@ async function assertKVResults(
     assertEqualResults
   )
 
-  // console.log('akv', result)
-
   expectedVals.forEach(([k, v]) => {
     assert.deepStrictEqual(result.results.get(k), v)
   })
+
+  // TODO: Then take the queryRun and pass it back into the store & check we
+  // get the same thing.
 
   if (expectedVers != null) assert(fullVersionSatisfies(expectedVers, result.versions))
 }

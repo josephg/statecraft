@@ -67,7 +67,9 @@ registerQuery('range', range, {
       // We have no idea where the limit bounds are. One solution here would
       // be to just ignore the limit. This is used in getOps, where the query
       // should be baked to a static query before being passed through.
-      if (q.limit || q.from.offset || q.to.offset) throw Error('filterTxn on range query with limit not supported')
+      if (q.limit || q.from.offset || q.to.offset) {
+        throw Error('filterTxn on range query with limit not supported')
+      }
 
       for (const entry of txn) {
         const [k, v] = entry
@@ -79,7 +81,7 @@ registerQuery('range', range, {
         }
       }
     }
-    return empty ? result : null
+    return empty ? null : result
   }
 })
 

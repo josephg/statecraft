@@ -37,7 +37,7 @@ const fileStore = (filename: string, sourceIn?: string): I.SimpleStore => {
     version = v
     resolveFns.forEach(cb => cb({[source]: version}))
     resolveFns.length = 0
-    store.onTxn && store.onTxn(source, oldVersion, version, 'single', {type: 'set', data}, {})
+    store.onTxn && store.onTxn(source, oldVersion, version, 'single', {type: 'set', data}, data, {})
   }
 
   const tryReadFile = (create: boolean) => {

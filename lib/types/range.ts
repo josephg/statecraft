@@ -98,6 +98,12 @@ const type: I.ResultOps<I.RangeResult, I.RangeTxn> = {
 
     return {type: 'kv', q: keys}
   },
+
+  filterSupportedOps(op, view: Map<I.Key, I.Val>, supportedTypes) {
+    return mapRange(op, (o, k) => (
+      fieldOps.filterSupportedOps(o, view.get(k), supportedTypes))
+    )
+  }
 }
 
 export default type

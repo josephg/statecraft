@@ -251,13 +251,21 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
 
     let newVersion = version
 
-    const txnsOut: {txn: I.KVTxn, from: I.Version, to: I.Version, meta: I.Metadata}[] = []
+    const txnsOut: {
+      txn: I.KVTxn,
+      from: I.Version,
+      to: I.Version,
+      view: Map<I.Key, I.Val>,
+      meta: I.Metadata,
+    }[] = []
 
     events.forEach(event => {
       // This is kind of a big assertion.
       assert(newVersion === event.version - 1,
         'Error: Version consistency violation. This needs debugging'
       )
+
+      const view = new Map<I.Key, I.Val>()
 
       // TODO: Batches.
       const [txn, meta] = decodeTxn(event.data)
@@ -276,9 +284,11 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
         // This can be stripped with a periodically updating baseVersion if
         // thats useful.
         dbTxn.putBinary(dbi, k, msgpack.encode([nextVersion, newData]))
+
+        view.set(k, newData)
       }
 
-      txnsOut.push({txn, from: version, to: nextVersion, meta})
+      txnsOut.push({txn, from: version, to: nextVersion, view, meta})
       newVersion = nextVersion
     })
 
@@ -286,8 +296,8 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
     setVersion(dbTxn, newVersion)
     dbTxn.commit()
 
-    if (store.onTxn) txnsOut.forEach(({txn, from, to, meta}) =>
-      store.onTxn!(source, from, to, 'kv', txn, meta)
+    if (store.onTxn) txnsOut.forEach(({txn, from, to, view, meta}) =>
+      store.onTxn!(source, from, to, 'kv', txn, view, meta)
     )
   }
 

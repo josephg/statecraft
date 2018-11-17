@@ -88,5 +88,11 @@ const type: I.ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
   getCorrespondingQuery(snap) {
     return {type: 'kv', q: new Set(snap.keys())}
   },
+
+  filterSupportedOps(op, view: Map<I.Key, I.Val>, supportedTypes) {
+    return mapMap(op, (o, k) => (
+      fieldOps.filterSupportedOps(o, view.get(k), supportedTypes))
+    )
+  },
 }
 export default type

@@ -1,11 +1,7 @@
 import * as I from './interfaces'
 import streamToIter, {Stream} from './streamToIter'
 import err from './err'
-
-
-type BufferItem = {
-  source: I.Source, fromV: I.Version, toV: I.Version, txn: I.Txn, meta: I.Metadata
-}
+import {queryTypes, resultTypes} from './querytypes'
 
 const splitFullVersions = (v: I.FullVersionRange): [I.FullVersion, I.FullVersion] => {
   const from: I.FullVersion = {}
@@ -17,7 +13,12 @@ const splitFullVersions = (v: I.FullVersionRange): [I.FullVersion, I.FullVersion
   return [from, to]
 }
 
+type BufferItem = {
+  source: I.Source, fromV: I.Version, toV: I.Version, txn: I.Txn, meta: I.Metadata
+}
+
 type Sub = {
+  q: I.Query
   // iter: I.Subscription,
 
   // When we get an operation, do we just send from the current version? Set
@@ -35,6 +36,11 @@ type Sub = {
   expectVersion: I.FullVersion | 'current' | null,
   // When the subscription is first opened, we buffer operations until catchup returns.
   opsBuffer: BufferItem[] | null,
+
+  // Should the subscription be notified on every change, or just the ones
+  // we're paying attention to?
+  alwaysNotify: boolean,
+  supportedTypes: Set<string> | null,
 
   // Stream attached to the returned subscription.
   stream: Stream<I.CatchupData>,
@@ -109,9 +115,17 @@ export default class SubGroup {
     }
   }
 
-  onOp(source: I.Source, fromV: I.Version, toV: I.Version, type: I.ResultType, txn: I.Txn, meta: I.Metadata) {
+  onOp(source: I.Source,
+      fromV: I.Version, toV: I.Version,
+      type: I.ResultType, txn: I.Txn, resultingView: any,
+      meta: I.Metadata) {
     for (const sub of this.allSubs) {
-      if (sub.opsBuffer) sub.opsBuffer.push({source, fromV, toV, txn, meta})
+      // First filter out any op types we don't know about here
+      let _txn = sub.supportedTypes
+        ? resultTypes[type].filterSupportedOps(txn, resultingView, sub.supportedTypes)
+        : txn
+
+      if (sub.opsBuffer) sub.opsBuffer.push({source, fromV, toV, txn: _txn, meta})
       else {
         if (isVersion(sub.expectVersion)) {
           if (sub.expectVersion![source] !== fromV) {
@@ -121,9 +135,13 @@ export default class SubGroup {
           sub.expectVersion[source] = toV
         }
 
+        const qtype = queryTypes[sub.q.type]
+        const localTxn = qtype.filterTxn(_txn, sub.q.q)
+        console.log('onop', txn, localTxn)
+
         // This is pretty verbose. Might make sense at some point to do a few MS of aggregation on these.
-        sub.stream.append({
-          txns:[{versions: {[source]:toV}, txn, meta}],
+        if (localTxn != null || sub.alwaysNotify) sub.stream.append({
+          txns: localTxn != null ? [{versions: {[source]:toV}, txn: localTxn, meta}] : [],
           toVersion: {[source]:toV},
         })
       }
@@ -132,13 +150,21 @@ export default class SubGroup {
 
   create(query: I.Query, opts: I.SubscribeOpts = {}): I.Subscription {
     const fromCurrent = opts.fromVersion === 'current'
-    const qtype = query.type
+    const qtype = queryTypes[query.type]
 
     const stream = streamToIter<I.CatchupData>(() => {
       this.allSubs.delete(sub)
     })
 
     var sub: Sub = {
+      // Ugh this is twisty. We need the query to filter transactions as they
+      // come in. But also, for range queries we want to use the baked version
+      // of the query instead of the raw query. If catchup gives us
+      // replacement data, we'll use the query that came along there -
+      // although thats not quite accurate either.
+      q: query,
+      alwaysNotify: opts.alwaysNotify || false,
+      supportedTypes: opts.supportedTypes || null,
       expectVersion: opts.fromVersion || null,
       opsBuffer: fromCurrent ? null : [],
       stream,
@@ -154,6 +180,7 @@ export default class SubGroup {
 
       const catchupVersion = catchup.toVersion
       sub.expectVersion = catchupVersion
+      if (catchup.replace) sub.q = catchup.replace.q
       
       if (sub.opsBuffer == null) throw Error('Invalid internal state in subgroup')
 
@@ -161,15 +188,17 @@ export default class SubGroup {
       for (let i = 0; i < sub.opsBuffer.length; i++) {
         const {source, fromV, toV, txn, meta} = sub.opsBuffer[i]
         const v = catchupVersion[source]
+        const filteredTxn = qtype.filterTxn(txn, sub.q.q)
         if (v === fromV) {
-          catchup.txns.push({versions:{[source]: toV}, txn, meta})
+          if (filteredTxn != null) catchup.txns.push({versions:{[source]: toV}, txn: filteredTxn, meta})
           catchupVersion[source] = toV
         } else if (v != null && v > toV) {
           throw Error('Invalid operation data - version span incoherent')
         }
       }
       sub.opsBuffer = null
-      console.log('catchup', catchup)
+
+      // console.log('catchup', catchup)
       stream.append(catchup)
     }).catch(err => {
       // Bubble up to create an exception in the client.

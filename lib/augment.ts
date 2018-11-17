@@ -10,9 +10,9 @@ const augment = (innerStore: I.SimpleStore, opts?: any): I.Store => {
 
   const subscriptions = innerStore.subscribe ? null : new SubGroup(innerStore, getOps)
 
-  innerStore.onTxn = (source, fromV, toV, type, txn, meta) => {
+  innerStore.onTxn = (source, fromV, toV, type, txn, view, meta) => {
     opcache && opcache.onOp(source, fromV, toV, type, txn, meta)
-    subscriptions && subscriptions.onOp(source, fromV, toV, type, txn, meta)
+    subscriptions && subscriptions.onOp(source, fromV, toV, type, txn, view, meta)
   }
   const outerStore: I.Store = {
     storeInfo: innerStore.storeInfo,

@@ -9,6 +9,7 @@ export type Version = number
 export type Source = string
 export type Key = string // TODO: Relax this restriction.
 export type Val = any
+export type KVPair = [Key, Val]
 
 export type KVQuery = Set<Key>
 
@@ -65,10 +66,12 @@ export type ResultData = any | Map<Key, Val> | RangeResult
 
 export interface SingleOp {
   readonly type: string,
-  readonly data?: any
+  readonly data?: any,
   // source: Source,
   // v: Version,
   // meta: any,
+
+  readonly newval?: any,
 }
 
 export type Metadata = {
@@ -304,7 +307,11 @@ export interface StoreInfo {
   [k: string]: any
 }
 
-export type TxnListener = (source: Source, fromV: Version, toV: Version, type: ResultType, txn: Txn, meta: Metadata) => void
+export type TxnListener = (
+  source: Source,
+  fromV: Version, toV: Version,
+  type: ResultType, txn: Txn, resultingView: any,
+  meta: Metadata) => void
 
 
 export interface SimpleStore {
@@ -416,14 +423,17 @@ export interface ResultOps<R, Txn> extends Type<R, Txn> {
   opFromJSON(data: any): Txn,
 
   // from(type: ResultType, snap: ResultData): R
-  getCorrespondingQuery(snap: R): Query
+  getCorrespondingQuery(snap: R): Query,
+
+  // Replace fancy types with {set} if they're not supported.
+  filterSupportedOps(txn: Txn, view: any, supportedTypes: Set<string>): Txn,
 }
 
 export interface QueryOps<Q> {
   name: QueryType,
   toJSON(q: Q): any,
   fromJSON(data: any): Q,
-  filterTxn(txn: Txn, query: QueryData): any | null,
+  filterTxn(txn: Txn, query: QueryData): Txn | null,
 
   resultType: ResultOps<any, Txn>,
 }

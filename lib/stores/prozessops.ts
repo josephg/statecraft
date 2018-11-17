@@ -79,7 +79,7 @@ const prozessStore = (port: number = 9999, hostname: string = 'localhost'): Prom
           subdata!.events.forEach(event => {
             // TODO: Pack & unpack batches.
             const [txn, meta] = decodeTxn(event.data)
-            store.onTxn!(source, event.version, event.version + 1, 'kv', txn, meta)
+            store.onTxn!(source, event.version, event.version + 1, 'kv', txn, null, meta)
           })
         }
       })

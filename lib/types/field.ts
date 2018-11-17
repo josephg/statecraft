@@ -104,5 +104,18 @@ const type: ResultOps<any, Op> = {
   opFromJSON: id,
 
   getCorrespondingQuery(data) { return {type: 'single', q: true} },
+
+  filterSupportedOps(txn, view, supportedTypes) {
+    if (Array.isArray(txn)) {
+      let hasAll = true
+      for (let i = 0; i < txn.length; i++) {
+        if (!supportedTypes.has(txn[i].type)) hasAll = false
+      }
+      return hasAll ? txn : type.asOp(view)
+    } else {
+      return supportedTypes.has(txn.type) ? txn : type.asOp(view)
+    }
+  }
 }
+
 export default type
