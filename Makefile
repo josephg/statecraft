@@ -5,7 +5,7 @@ clean:
 	rm demos/*/public/bundle.js
 
 
-demos/text/public/bundle.js:
+demos/text/public/bundle.js: demos/text/*.ts lib/*.ts lib/*/*.ts
 	npx browserify -p tsify -p tinyify demos/text/editor.ts -o $@
 
 watch-bp:
