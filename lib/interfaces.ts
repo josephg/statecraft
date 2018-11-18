@@ -441,11 +441,15 @@ export interface ResultOps<R, Txn> extends Type<R, Txn> {
   compose(op1: Txn, op2: Txn): Txn
   composeMut?(op1: Txn, op2: Txn): void
 
-  map(snap: R, fn: (v: any, k: any) => any): R
-  mapAsync(snap: R, fn: (v: any, k: any) => Promise<any>): Promise<R>
+  // Ughhhh the order of arguments here is so awkward.
+  mapEntries(snap: R, fn: (k: Key | null, v: Val) => [Key | null, Val]): R
+  mapEntriesAsync(snap: R, fn: (k: Key | null, v: Val) => Promise<[Key | null, Val]>): Promise<R>
 
-  mapTxn(op: Txn, fn: (v: Op, k: any) => any): Txn
-  mapTxnAsync(op: Txn, fn: (v: Op, k: any) => Promise<Op>): Promise<Txn>
+  map(snap: R, fn: (v: Val, k: Key | null) => Val): R
+  mapAsync(snap: R, fn: (v: Val, k: Key | null) => Promise<Val>): Promise<R>
+
+  mapTxn(op: Txn, fn: (v: Op, k: Key | null) => Val): Txn
+  mapTxnAsync(op: Txn, fn: (v: Op, k: Key | null) => Promise<Op>): Promise<Txn>
 
   // These are compulsory.
   snapToJSON(data: R): any,

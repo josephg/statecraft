@@ -18,21 +18,29 @@ import fieldOps from './field'
 
 type KVPair = [I.Key, I.Val]
 
+const mapRangeEntry = <T, R>(input: [I.Key, T][][], fn: (key: I.Key, val: T) => [I.Key, R]) => (
+  input.map(inner =>
+    inner.map(([key, val]) => fn(key, val))
+  )
+)
+
+// Could be implemented in terms of the above.
 const mapRange = <T, R>(input: [I.Key, T][][], fn: (x: T, k: I.Key) => R) => (
   input.map(inner =>
     inner.map(([key, val]) => [key, fn(val, key)] as [I.Key, R])
   )
 )
 
-const mapRangeAsync = async <T, R>(input: [I.Key, T][][], fn: (x: T, k: I.Key) => Promise<R>) => {
+const mapRangeEntryAsync = async <T, R>(input: [I.Key, T][][], fn: (key: I.Key, val: T) => Promise<[I.Key, R]>) => {
   let result: I.RangeResult = []
   for (let i = 0; i < input.length; i++) {
-    result.push(await Promise.all(input[i].map(async ([k, v]) => (
-      [k, await fn(v, k)] as [I.Key, R]
-    ))))
+    result.push(await Promise.all(input[i].map(([k, v]) => fn(k, v))))
   }
   return result
 }
+const mapRangeAsync = <T, R>(input: [I.Key, T][][], fn: (val: T, key: I.Key) => Promise<R>) => (
+  mapRangeEntryAsync(input, (k, v) => fn(v, k).then(v2 => ([k, v2] as [I.Key, R])))
+)
 
 const id = <T>(x: T) => x
 
@@ -75,6 +83,8 @@ const type: I.ResultOps<I.RangeResult, I.RangeTxn> = {
 
   compose(op1, op2) { throw Error('not implemented') },
   
+  mapEntries: mapRangeEntry,
+  mapEntriesAsync: mapRangeEntryAsync,
   map: mapRange,
   mapAsync: mapRangeAsync,
   mapTxn: mapRange,

@@ -1,23 +1,31 @@
 import * as I from '../interfaces'
 import fieldOps from './field'
 
-const mapMap = <T, R>(input: Map<I.Key, T>, fn: (val: T, key: I.Key) => R) => {
+const mapMapEntry = <T, R>(input: Map<I.Key, T>, fn: (key: I.Key, val: T) => [I.Key, R]) => {
+  const result = new Map<I.Key, R>()
+  for (const [k, val] of input) {
+    const [k2, val2] = fn(k, val)
+    result.set(k2, val2)
+  }
+  return result
+}
+
+// Could just write this in terms of mapMapEntry above.
+const mapMapVal = <T, R>(input: Map<I.Key, T>, fn: (val: T, key: I.Key) => R) => {
   const result = new Map<I.Key, R>()
   for (const [k, val] of input) result.set(k, fn(val, k))
   return result
 }
 
-const mapAsync = <T, R>(input: Map<I.Key, T>, fn: (val: T, key: I.Key) => Promise<R>) => {
+const mapEntryAsync = <T, R>(input: Map<I.Key, T>, fn: (key: I.Key, val: T) => Promise<[I.Key, R]>) => {
   const entries = Array.from(input.entries())
-  const mapped = entries.map(([k, v]) => fn(v, k))
-  return Promise.all(entries).then((results) => {
-    const result = new Map<I.Key, I.Val>()
-    for (let i = 0; i < entries.length; i++) {
-      result.set(entries[i][0], results[i])
-    }
-    return result
-  })
+  const mapped = entries.map(([k, v]) => fn(k, v))
+  return Promise.all(entries).then((results) => new Map(results))
 }
+
+const mapAsync = <T, R>(input: Map<I.Key, T>, fn: (val: T, key: I.Key) => Promise<R>) => (
+  mapEntryAsync(input, (k, v) => fn(v, k).then(v2 => ([k, v2] as [I.Key, R])))
+)
 
 const type: I.ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
   name: 'resultmap',
@@ -80,9 +88,11 @@ const type: I.ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
   opToJSON(op) { return Array.from(op) },
   opFromJSON(data) { return new Map(data) },
 
-  map: mapMap,
+  mapEntries: mapMapEntry,
+  mapEntriesAsync: mapEntryAsync,
+  map: mapMapVal,
   mapAsync,
-  mapTxn: mapMap,
+  mapTxn: mapMapVal,
   mapTxnAsync: mapAsync,
 
   getCorrespondingQuery(snap) {
@@ -90,7 +100,7 @@ const type: I.ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
   },
 
   filterSupportedOps(op, view: Map<I.Key, I.Val>, supportedTypes) {
-    return mapMap(op, (o, k) => (
+    return mapMapVal(op, (o, k) => (
       fieldOps.filterSupportedOps(o, view.get(k), supportedTypes))
     )
   },
