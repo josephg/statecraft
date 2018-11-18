@@ -88,7 +88,7 @@ export interface FetchResponse {
   ref: Ref,
   results: any, // Dependant on query.
 
-  queryRun: NetQuery,
+  bakedQuery?: NetQuery,
   versions: I.FullVersionRange, // Range across which version is valid.
 }
 

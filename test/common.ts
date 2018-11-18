@@ -1,7 +1,7 @@
 import * as I from '../lib/interfaces'
 import 'mocha'
 import assert from 'assert'
-import {queryTypes} from '../lib/querytypes'
+import {queryTypes} from '../lib/qrtypes'
 
 const assertThrows = async (block: () => Promise<void>, errType?: string) => {
   try {

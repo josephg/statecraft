@@ -2,7 +2,7 @@ import * as I from '../interfaces'
 import * as N from './netmessages'
 
 import {queryToNet, queryFromNet} from './util'
-import {queryTypes, resultTypes} from '../querytypes'
+import {queryTypes, resultTypes} from '../qrtypes'
 import {TinyReader, TinyWriter} from './tinystream'
 import errs, {errToJSON, errFromJSON} from '../err'
 
@@ -79,7 +79,7 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
             a: N.Action.Fetch,
             ref,
             results: type.resultType.snapToJSON(data!.results),
-            queryRun: queryToNet(data.queryRun),
+            bakedQuery: data.bakedQuery ? queryToNet(data.bakedQuery) : undefined,
             versions: data!.versions
           })
         }, err => {

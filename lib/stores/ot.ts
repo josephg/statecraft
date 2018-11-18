@@ -2,7 +2,7 @@
 // to do operational tranformation to recover them.
 import * as I from '../interfaces'
 import err from '../err'
-import {queryTypes, resultTypes} from '../querytypes'
+import {queryTypes, resultTypes} from '../qrtypes'
 import {typeOrThrow} from '../typeregistry'
 
 const mapTxnWithPair = (type: I.ResultType, a: I.Txn, b: I.Txn, fn: (a: I.SingleTxn, b: I.SingleTxn) => I.SingleTxn) => {

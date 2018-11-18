@@ -9,7 +9,7 @@ import {queryToNet, queryFromNet} from './util'
 import {
   queryTypes, resultTypes,
   wrapQuery
-} from '../querytypes'
+} from '../qrtypes'
 import {TinyReader, TinyWriter} from './tinystream'
 import streamToIter, {Stream} from '../streamToIter'
 import {Readable, Writable, Duplex} from 'stream'
@@ -123,12 +123,12 @@ export default function storeFromStreams(
 
         switch (msg.a) {
           case N.Action.Fetch: {
-            const {ref, results, queryRun, versions} = <N.FetchResponse>msg
+            const {ref, results, bakedQuery, versions} = <N.FetchResponse>msg
             const {resolve, type: qtype} = takeCallback(ref)
             const type = queryTypes[qtype]!
             resolve(<I.FetchResults>{
               results: type.resultType.snapFromJSON(results),
-              queryRun: queryFromNet(queryRun),
+              bakedQuery: bakedQuery ? queryFromNet(bakedQuery) : undefined,
               versions
             })
             break

@@ -3,7 +3,7 @@ import * as I from '../interfaces'
 import genSource from '../gensource'
 import err from '../err'
 import resultMap from '../types/map'
-import {queryTypes} from '../querytypes'
+import {queryTypes} from '../qrtypes'
 import binsearch from 'binary-search'
 
 
@@ -13,45 +13,80 @@ import binsearch from 'binary-search'
 // }
 
 const cmp = <T>(a: T, b: T) => a < b ? -1 : a > b ? 1 : 0
-const findRange = (range: I.Range, keys: ArrayLike<I.Key>): [number, number] | null => {
-  // This is expensive, but ... kvmem was never designed for large
-  // data sets. Could refactor kvmem to use a btree or something
-  // internally if it becomes a legitimate issue for anyone. Or just
-  // make a fancier in memory store.
 
-  // Figure out the index of the start of the range we want
-  let pos = binsearch(keys, range.from.k, cmp)
+// This whole bit is sort of really awkward. Typescript makes it safe, but the
+// way I'd write this in javascript is way more terse.
+// const isRange = (r: I.Range | I.StaticRange): r is I.Range => (
+//   (r as I.Range).limit != null || (r as I.Range).from.offset != 0 || (r as I.Range).to.offset != 0
+// )
+// const splitRange = (r: I.Range | I.StaticRange): [number, number, number] => (
+//   isRange(r) ? [r.limit || 0, r.from.offset, r.to.offset] : [0, 0, 0]
+// )
 
-  let startIdx = Math.max(0, (pos < 0
+const max = (a: number, b: number) => a > b ? a : b
+const clamp = (x: number, a: number, b: number) => (x < a ? a : x > b ? b : x)
+// const nullRange = (): I.StaticRange => ({
+//   from: {k: '', isAfter: false},
+//   to: {k: '', isAfter: false},
+// })
+
+const findRaw = (sel: I.KeySelector | I.StaticKeySelector, keys: ArrayLike<I.Key>): number => {
+  const pos = binsearch(keys, sel.k, cmp)
+
+  return clamp((pos < 0
     ? -pos-1
-    : range.from.isAfter ? pos+1 : pos
-  ) + range.from.offset)
+    : sel.isAfter ? pos+1 : pos
+  ), 0, keys.length)
+}
 
-  if (startIdx >= keys.length) return null
-  
-  // Now the end of the range
-  pos = binsearch(keys, range.to.k, cmp, startIdx)
+const findRangeStatic = (range: I.StaticRange, keys: ArrayLike<I.Key>) => {
+  const spos = findRaw(range.from, keys)
+  const epos = findRaw(range.to, keys)
+  // The semantics of the way we're using .slice() below means we don't need
+  // to clamp these positions at the top end.
+  // return [max(spos, 0), max(epos, 0)]
+  return [spos, epos]
+}
 
-  // This is the index of the next element past the desired range
-  let endIdx = Math.min(keys.length, (pos < 0
-    ? -pos-1
-    : range.to.isAfter ? pos+1 : pos
-  ) + range.to.offset)
-  if (endIdx < 0) return null
+const bakeSel = (sel: I.KeySelector, rawpos: number, resultpos: number, keys: ArrayLike<I.Key>) => {
+  const {k, offset, isAfter} = sel
+  const keylen = keys.length
 
-  if (range.limit != null) {
-    if (range.reverse) {
-      startIdx = Math.max(startIdx, endIdx - range.limit)
+  if (rawpos === resultpos) {
+    // We can keep the selector as-is.
+    return {k, isAfter}
+  } else {
+    return resultpos >= keylen ? {k: keys[keylen - 1], isAfter: true}
+      : {k: keys[resultpos], isAfter: false}
+  }
+}
+
+const findRangeAndBake = (range: I.Range, keys: ArrayLike<I.Key>): [number, number, I.StaticRange] => {
+  const {from, to, limit, reverse} = range
+
+  const [sposraw, eposraw] = findRangeStatic(range as I.StaticRange, keys)
+
+  let spos = sposraw + range.from.offset
+  let epos = eposraw + range.to.offset
+
+  const l = limit || 0
+  if (l > 0) {
+    if (reverse) {
+      spos = Math.max(spos, epos - l)
     } else {
-      endIdx = Math.min(endIdx, startIdx + range.limit)
+      epos = Math.min(epos, spos + l)
     }
   }
 
-  return [startIdx, endIdx]
+  return [spos, epos, {
+    from: bakeSel(from, sposraw, spos, keys),
+    to: bakeSel(to, eposraw, epos, keys),
+    reverse,
+  }]
 }
 
 const capabilities = {
-  queryTypes: new Set<I.QueryType>(['allkv', 'kv', 'range']),
+  queryTypes: new Set<I.QueryType>(['allkv', 'kv', 'static range', 'range']),
   mutationTypes: new Set<I.ResultType>(['kv']),
   // ops: <I.OpsSupport>'none',
 }
@@ -96,7 +131,7 @@ export default function singleStore(
 
       let results: Map<I.Key, I.Val> | I.RangeResult
       let lowerRange: I.Version = initialVersion
-      let queryRun = query
+      let bakedQuery: I.Query | undefined
 
       switch (query.type) {
         case 'kv':
@@ -111,13 +146,14 @@ export default function singleStore(
           results = new Map(data)
           break
 
+        case 'static range':
         case 'range': {
           const q = query.q as I.RangeQuery
           results = [] as I.RangeResult
 
           // We're going to modify this to the baked range info.
           // Baked range info has no limit and no key offsets.
-          queryRun = {type: 'range', q: q.slice()}
+          if (query.type === 'range') bakedQuery = {type: 'static range', q: q.slice()}
 
           // This is expensive, but ... kvmem was never designed for large
           // data sets. Could refactor kvmem to use a btree or something
@@ -127,29 +163,16 @@ export default function singleStore(
 
           for (let i = 0; i < q.length; i++) {
             const qc = q[i]
-            const qrc = queryRun.q[i] = {...qc, limit: 0}
-
-            const r = findRange(qc, keys)
-            if (r == null) {
-              results.push([])
-              qrc.from = qrc.to = {k: '', isAfter: false, offset: 0}
+            let from: number, to: number
+            if (query.type === 'range') {
+              [from, to, (bakedQuery!.q as I.StaticRangeQuery)[i]] = findRangeAndBake(qc, keys)
             } else {
-              const vals = keys.slice(r[0], r[1]).map(
-                k => ([k, data.get(k)] as I.KVPair)
-              )
-              results.push(qc.reverse ? vals.reverse() : vals)
-
-              // I'm really unhappy with this. At the very least I could relax
-              // the bounds a little so it'll only chomp in if the limit was
-              // actually hit.
-              if ((qc.limit && qc.reverse) || qc.from.offset) {
-                qrc.from = {k: keys[r[0]], isAfter: false, offset: 0}
-              }
-              if ((qc.limit && !qc.reverse) || qc.to.offset) {
-                qrc.to = {k: keys[r[1]-1], isAfter: true, offset: 0}
-              }
+              [from, to] = findRangeStatic(qc, keys)
             }
-
+            const vals = keys.slice(from, to).map(
+              k => ([k, data.get(k)] as I.KVPair)
+            )
+            results.push(qc.reverse ? vals.reverse() : vals)
           }
           break
         }
@@ -161,8 +184,8 @@ export default function singleStore(
 
       return Promise.resolve({
         // this is a bit inefficient.... ehhhh
+        bakedQuery,
         results: opts.noDocs ? queryTypes[query.type].resultType.map(results, () => true) : results,
-        queryRun,
         versions: {[source]: {from:lowerRange, to:version}},
       })
     },

@@ -1,6 +1,6 @@
 import * as I from '../interfaces'
 import err from '../err'
-import {queryTypes} from '../querytypes'
+import {queryTypes} from '../qrtypes'
 
 const supportedOpTypes = new Set(['rm', 'set'])
 
@@ -65,7 +65,7 @@ const map = (inner: I.Store, mapfn: MapFn): I.Store => {
         results: (opts && opts.noDocs)
           ? innerResults.results
           : qtype.resultType.map(innerResults.results, (v, k) => mapfn(v, k, version)),
-        queryRun: innerResults.queryRun,
+        bakedQuery: innerResults.bakedQuery,
         versions: innerResults.versions,
       }
 

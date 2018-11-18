@@ -1,7 +1,7 @@
 import * as I from './interfaces'
 import streamToIter, {Stream} from './streamToIter'
 import err from './err'
-import {queryTypes, resultTypes} from './querytypes'
+import {queryTypes, resultTypes} from './qrtypes'
 
 const splitFullVersions = (v: I.FullVersionRange): [I.FullVersion, I.FullVersion] => {
   const from: I.FullVersion = {}
@@ -67,11 +67,11 @@ export default class SubGroup {
 
     } else if (fromVersion == null) {
       // Initialize with a full fetch.
-      const {queryRun, results, versions} = await this.store.fetch(query)
+      const {bakedQuery, results, versions} = await this.store.fetch(query)
       const [from, to] = splitFullVersions(versions)
       return {
         replace: {
-          q: queryRun,
+          q: bakedQuery || query,
           with: results,
           versions: from,
         },
@@ -136,7 +136,7 @@ export default class SubGroup {
         }
 
         const qtype = queryTypes[sub.q.type]
-        const localTxn = qtype.filterTxn(_txn, sub.q.q)
+        const localTxn = qtype.adaptTxn(_txn, sub.q.q)
         console.log('onop', txn, localTxn)
 
         // This is pretty verbose. Might make sense at some point to do a few MS of aggregation on these.
@@ -188,7 +188,7 @@ export default class SubGroup {
       for (let i = 0; i < sub.opsBuffer.length; i++) {
         const {source, fromV, toV, txn, meta} = sub.opsBuffer[i]
         const v = catchupVersion[source]
-        const filteredTxn = qtype.filterTxn(txn, sub.q.q)
+        const filteredTxn = qtype.adaptTxn(txn, sub.q.q)
         if (v === fromV) {
           if (filteredTxn != null) catchup.txns.push({versions:{[source]: toV}, txn: filteredTxn, meta})
           catchupVersion[source] = toV

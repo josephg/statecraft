@@ -1,6 +1,6 @@
 import * as I from './interfaces'
 import * as err from './err'
-import {queryTypes} from './querytypes'
+import {queryTypes} from './qrtypes'
 
 import binsearch from 'binary-search'
 import assert from 'assert'
@@ -80,7 +80,7 @@ const opcache = (opts: OpCacheOpts): {
 
           // The transaction will be null if the operation doesn't match
           // the supplied query.
-          const txn = qops.filterTxn(item.txn, query.q)
+          const txn = qops.adaptTxn(item.txn, query.q)
           if (txn != null) result.push({versions:{[source]: item.toV}, txn, meta: item.meta})
 
           vTo = item.toV

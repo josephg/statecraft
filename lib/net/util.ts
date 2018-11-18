@@ -1,6 +1,6 @@
 import * as I from '../interfaces'
 import * as N from './netmessages'
-import {queryTypes} from '../querytypes'
+import {queryTypes} from '../qrtypes'
 
 export const queryToNet = (q: I.Query): N.NetQuery => {
   if (q.type === 'single' || q.type === 'allkv') return q.type

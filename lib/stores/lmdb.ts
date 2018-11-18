@@ -14,7 +14,7 @@ import {PClient} from 'prozess-client'
 import {encodeTxn, decodeTxn, decodeEvent, sendTxn} from '../prozess'
 
 import fieldOps from '../types/field'
-import {queryTypes} from '../querytypes'
+import {queryTypes} from '../qrtypes'
 
 import * as I from '../interfaces'
 import err from '../err'
@@ -136,12 +136,12 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
   const store: I.SimpleStore = {
     storeInfo: {
       sources: [source],
-      capabilities: capabilities,
+      capabilities,
     },
 
     fetch(query, opts = {}) {
       // TODO: Allow range queries too.
-      if (query.type !== 'allkv' && query.type !== 'kv') return Promise.reject(new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`))
+      if (!capabilities.queryTypes.has(query.type)) return Promise.reject(new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`))
       const qops = queryTypes[query.type]
 
       return ready.then(() => {
@@ -219,7 +219,7 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
       // Filter events by query.
       let ops = data!.events.map(event => decodeEvent(event, source))
       .filter((data) => {
-        const txn = qops.filterTxn(data.txn, query.q)
+        const txn = qops.adaptTxn(data.txn, query.q)
         if (txn == null) return false
         else {
           data.txn = txn

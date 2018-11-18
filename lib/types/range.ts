@@ -103,7 +103,11 @@ const type: I.ResultOps<I.RangeResult, I.RangeTxn> = {
     return mapRange(op, (o, k) => (
       fieldOps.filterSupportedOps(o, view.get(k), supportedTypes))
     )
-  }
+  },
+
+  // isStaticRange(q: StaticRange | Range): q is StaticRange {
+  //   if ((q as Range).limit) return false
+  // },
 }
 
 export default type
