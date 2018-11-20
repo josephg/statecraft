@@ -26,30 +26,26 @@ export type FullVersionRange = {
 
 export type StaticKeySelector = {
   k: Key,
-  isAfter: boolean,
-}
-export type KeySelector = {
-  k: Key,
   isAfter: boolean, // is the key itself included
+}
+export type KeySelector = StaticKeySelector & {
   offset: number, // walk + or - from the specified key
 }
 
 export type StaticRange = {
   from: StaticKeySelector,
   to: StaticKeySelector,
-  reverse?: boolean, // Doesn't really do much here.
+  // If true, results will be returned in reverse lexicographical
+  // order beginning with range.to.
+  reverse?: boolean, // default false.
 }
 export type Range = {
   from: KeySelector,
   to: KeySelector,
-
+  reverse?: boolean, // default false.
   // If non-zero, limits the number of documents returned. TODO: Add marker in
   // results somehow showing that there are more results after the limit.
   limit?: number, // default 0.
-
-  // If true, results will be returned in reverse lexicographical
-  // order beginning with range.to.
-  reverse?: boolean, // default false.
 }
 export type RangeQuery = Range[]
 export type StaticRangeQuery = StaticRange[]
@@ -437,13 +433,17 @@ export type AnyOTType = Type<any, any>
 
 // This would be nicer with Rust's associated types.
 export interface ResultOps<R, Txn> extends Type<R, Txn> {
+
   // name: ResultType
   compose(op1: Txn, op2: Txn): Txn
   composeMut?(op1: Txn, op2: Txn): void
 
+  // Copy all items from src into dest. Returns dest.
+  copyInto?(dest: R, src: R): R
+
   // Ughhhh the order of arguments here is so awkward.
-  mapEntries(snap: R, fn: (k: Key | null, v: Val) => [Key | null, Val]): R
-  mapEntriesAsync(snap: R, fn: (k: Key | null, v: Val) => Promise<[Key | null, Val]>): Promise<R>
+  mapEntries(snap: R, fn: (k: Key | null, v: Val) => [Key | null, Val] | null): R
+  mapEntriesAsync(snap: R, fn: (k: Key | null, v: Val) => Promise<[Key | null, Val] | null>): Promise<R>
 
   map(snap: R, fn: (v: Val, k: Key | null) => Val): R
   mapAsync(snap: R, fn: (v: Val, k: Key | null) => Promise<Val>): Promise<R>
@@ -468,6 +468,8 @@ export interface QueryOps<Q> {
   name: QueryType,
   toJSON(q: Q): any,
   fromJSON(data: any): Q,
+
+  mapKeys?(q: Q, fn: (k: Key) => Key | null): Q,
 
   // Adapt the specified transaction (of the expected type) to the passed in
   // query. If the transaction doesn't match any part of the query, return

@@ -149,6 +149,10 @@ export default class SubGroup {
   }
 
   create(query: I.Query, opts: I.SubscribeOpts = {}): I.Subscription {
+    if (query.type === 'range' && opts.fromVersion != null) {
+      throw new err.UnsupportedTypeError('Can only subscribe to full range queries with no version specified')
+    }
+
     const fromCurrent = opts.fromVersion === 'current'
     const qtype = queryTypes[query.type]
 

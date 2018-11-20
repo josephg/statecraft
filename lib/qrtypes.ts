@@ -16,6 +16,10 @@ type PartialQueryOPs = {
   [P in keyof I.QueryOps<any>]?: I.QueryOps<any>[P]
 }
 
+const mapSetKeys = <T, R>(q: Set<T>, fn: (k: T) => R | null): Set<R> => (
+  new Set(Array.from(q.keys()).map(fn).filter(k => k != null) as R[])
+)
+
 export const queryTypes: {[name: string]: I.QueryOps<any>} = {}
 const registerQuery = (name: I.QueryType, resultType: I.ResultOps<any, I.Txn>, fields: PartialQueryOPs = {}) => {
   queryTypes[name] = {
@@ -32,12 +36,15 @@ const registerQuery = (name: I.QueryType, resultType: I.ResultOps<any, I.Txn>, f
 registerQuery('single', field)
 
 // The query is a placeholder and the resulting value is a KV map of key -> value.
-registerQuery('allkv', resultmap)
+registerQuery('allkv', resultmap, {
+  mapKeys: mapSetKeys,
+})
 
 // The query is a set of keys. The results are a KV map from key -> value.
 registerQuery('kv', resultmap, {
   toJSON(s) { return Array.from(s) },
   fromJSON(data) { return new Set(data) },
+  mapKeys: mapSetKeys,
   adaptTxn(txn: I.KVTxn, query: I.KVQuery) {
     let result: I.KVTxn | null = null
     eachIntersect<I.Key>(txn, query, k => {
@@ -85,11 +92,21 @@ const adaptTxnToRange = (txn: I.KVTxn, query: I.StaticRangeQuery): I.RangeResult
 }
 
 
+const mapRangeKeys = (q: I.RangeQuery, fn: (k: I.Key) => I.Key | null): I.RangeQuery => (
+  q.map(qc => ({
+    ...qc,
+    from: {k: fn(qc.from.k), ...qc.from},
+    to: {k: fn(qc.to.k), ...qc.to},
+  }))
+)
+
 registerQuery('static range', range, {
+  mapKeys: mapRangeKeys,
   adaptTxn: adaptTxnToRange,
 })
 
 registerQuery('range', range, {
+  mapKeys: mapRangeKeys,
   adaptTxn: () => {
     // TODO: Might be better to automatically try and convert the query
     // instead of bailing.

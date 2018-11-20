@@ -7,12 +7,17 @@
 
 import * as I from '../interfaces'
 import err from '../err'
-// import {queryTypes} from '../types/queryops'
 import assert from 'assert'
 import streamToIter from '../streamToIter'
+import {queryTypes, resultTypes} from '../qrtypes'
+
+import sel from '../sel'
+
+// Selector utilities.
+type Sel = I.StaticKeySelector
 
 export type Router = I.Store & {
-  mount(store: I.Store, fPrefix: string, range: [string, string] | null, bPrefix: string, isOwned: boolean): void,
+  mount(store: I.Store, fPrefix: string, range: [Sel, Sel] | null, bPrefix: string, isOwned: boolean): void,
 }
 
 type Route = {
@@ -20,8 +25,8 @@ type Route = {
 
   // Frontend prefix (eg movies/)
   fPrefix: string,
-  // Frontend range (eg ['movies/m', 'movies/q'])
-  fRange: [string, string],
+  // Frontend range (eg ['movies/m', 'movies/q']).
+  fRange: [Sel, Sel],
 
   // Backend prefix (eg imdb/)
   bPrefix: string,
@@ -31,7 +36,7 @@ type Route = {
   isOwned: boolean,
 }
 
-export const prefixToRange = (prefix: string): [string, string] => [prefix, prefix+'~']
+export const prefixToRange = (prefix: string): [Sel, Sel] => [sel(prefix), sel(prefix+'~')]
 export const ALL = prefixToRange('')
 
 const intersectVersionsMut = (dest: I.FullVersionRange, src: I.FullVersionRange) => {
@@ -52,22 +57,24 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string) => {
   return toPrefix + k.slice(fromPrefix.length)
 }
 
+const changeSelPrefix = (s: Sel, fromPrefix: string, toPrefix: string): Sel => {
+  return sel(changePrefix(s.k, fromPrefix, toPrefix), s.isAfter)
+}
+
 const mapKeysInto = <T>(dest: Map<I.Key, T> | null, oldMap: Map<I.Key, T> | null, keyRoutes: Map<I.Key, Route>) => {
   if (dest == null) dest = new Map<I.Key, T>()
   if (oldMap == null) return dest
 
-  for (const [bk, v] of oldMap) {
-    const route = keyRoutes.get(bk)
-    if (route == null) continue // We got a result we didn't ask for.
-    dest.set(changePrefix(bk, route.bPrefix, route.fPrefix), v)
-  }
-  return dest
+  const r = resultTypes['kv']
+
+  return r.copyInto!(dest, r.mapEntries(oldMap, (bk, v) => {
+    const route = keyRoutes.get(bk!)
+    return route == null ? null : [changePrefix(bk!, route.bPrefix, route.fPrefix), v]
+  }))
 }
 
 // Gross.
-const mapSetKeysInto = (dest: Set<I.Key> | null, oldSet: Iterable<I.Key>, keyRoutes: Map<I.Key, Route>) => {
-  if (dest == null) dest = new Set<I.Key>()
-
+const mapSetKeysInto = (dest: Set<I.Key>, oldSet: Iterable<I.Key>, keyRoutes: Map<I.Key, Route>) => {
   for (const bk of oldSet) {
     const route = keyRoutes.get(bk)
     if (route == null) continue
@@ -166,34 +173,52 @@ const mapCatchupInto = (dest: I.CatchupData | null, src: I.CatchupData, keyRoute
 }
 
 export default function router(): Router {
+  // The routes list is kept sorted in order of frontend ranges
   const routes: Route[] = []
   const sources: string[] = []
 
-  const getRoute = (k: I.Key) => {
-    for (let i = 0; i < routes.length; i++) {
-      const r = routes[i]
-      if (k >= r.fRange[0] && k < r.fRange[1]) return r
-    }
-    return null
-  }
+  const getRoute = (k: I.Key) => (
+    // This could be rewritten to use binary search. It won't make a huge
+    // difference in practice though - the number of routes will usually
+    // stay pretty small.
+    routes.find(r => sel.kGt(k, r.fRange[0]) && sel.kLt(k, r.fRange[1])) || null
+  )
 
   const splitKeysByStore = (keys: Set<I.Key>) => {
-    const result = new Map<I.Store, Map<I.Key, Route>>()
+    const result: [I.Store, Map<I.Key, Route>][] = []
 
     for (const fKey of keys) {
       const route = getRoute(fKey)
       if (route) {
         const bKey = changePrefix(fKey, route.fPrefix, route.bPrefix)
 
-        let routeForKey = result.get(route.store)
+        let pair = result.find(([s]) => s === route.store)
+        let routeForKey = pair ? pair[1] : null
+
         if (routeForKey == null) {
           routeForKey = new Map()
-          result.set(route.store, routeForKey)
+          result.push([route.store, routeForKey])
         }
         routeForKey.set(bKey, route)
       }
     }
 
+    return result
+  }
+
+  const splitRangeByRoutes = (r: I.StaticRange) => {
+    const result: [Sel, Sel, Route][] = []
+    for (let i = 0; i < routes.length; i++) {
+      const {fRange, fPrefix, bPrefix} = routes[i]
+      const activeRange = sel.intersect(r.from, r.to, fRange[0], fRange[1])
+      if (activeRange != null) {
+        result.push([
+          changeSelPrefix(activeRange[0], fPrefix, bPrefix),
+          changeSelPrefix(activeRange[1], fPrefix, bPrefix),
+          routes[i]
+        ])
+      }
+    }
     return result
   }
 
@@ -210,40 +235,109 @@ export default function router(): Router {
     return false
   }
 
+  async function fetchRange(query: {type: 'static range', q: I.StaticRangeQuery}, opts: I.FetchOpts) {
+    const qtype = query.type
+    // const [byStore, resolution] = [] as any as [[I.Store, I.RangeQuery][], number[][]]
+
+    // This function is a huge headache.
+    //
+    // A range query is a list of ranges. So we're passed in a list of
+    // ranges, and each of those ranges will turn into 0 or more backend
+    // ranges on stores. We need to aggregate the range queries by store,
+    // call fetch on each store then rearrange the output to match the
+    // ranges we were passed in by the query.
+
+    // Just like for KV queries, we'll aggregate into a list of [store,
+    // query] pairs.
+    const byStore: [I.Store, I.StaticRange[], Route[]][] = []
+
+    // When we run the queries we'll have a list of [store, results[][]]
+    // that we need to map back into a list of results corresponding to our
+    // input range. For each input range we'll produce some data describing
+    // how the corresponding output will be generated.
+
+    // This will mirror the format of query.q. For each range in the query,
+    // we'll have a list of [byStore index, output index] pairs from which
+    // to aggregate the actual result.
+    const res = query.q.map((r, i) => {
+      const ranges = splitRangeByRoutes(r)
+      return ranges.map(([from, to, route], k) => {
+        const {store} = route
+
+        let byStoreIdx = byStore.findIndex(x => x[0] === store)
+        if (byStoreIdx < 0) {
+          byStoreIdx = byStore.push([store, [], []]) - 1
+        }
+        const outIdx = byStore[byStoreIdx][1].push({from, to}) - 1
+        byStore[byStoreIdx][2][outIdx] = route
+
+        return [byStoreIdx, outIdx] as [number, number]
+      })
+    })
+
+    let versions: I.FullVersionRange = {}
+    const innerResults = await Promise.all(byStore.map(async ([store, q, routes]) => {
+      const r = await store.fetch({type: 'static range', q}, opts)
+
+      const newVersions = intersectVersionsMut(versions, r.versions)
+      if (newVersions == null) throw Error('Incompatible versions in results not yet implemented')
+      versions = newVersions
+    
+      return (r.results as I.RangeResult).map(
+        (rr, i) => rr.map(
+          ([k, v]) => ([changePrefix(k, routes[i].bPrefix, routes[i].fPrefix), v] as I.KVPair)
+        )
+      )
+    }))
+
+    const results: I.RangeResult = res.map((inputs, i) => {
+      const r = ([] as I.KVPair[]).concat(...inputs.map(([bsIdx, outIdx]) => innerResults[bsIdx][outIdx]))
+      return query.q[i].reverse ? r.reverse() : r
+    })
+
+    return {results, versions}
+  }
+
   return {
     mount(store, fPrefix, range, bPrefix, isOwned) {
       if (range == null) range = ALL
-      assert(range[0] < range[1], 'Range start must be before range end')
+      assert(sel.ltSel(range[0], range[1]), 'Range start must be before range end')
 
       store.storeInfo.sources.forEach(s => {
         if (!sources.includes(s)) sources.push(s)
       })
 
-      const fRange: [string, string] = [fPrefix + range[0], fPrefix + range[1]]
+      const [a, b] = [sel.prefix(fPrefix, range[0]), sel.prefix(fPrefix, range[1])]
+
       const route: Route = {
-        store, fPrefix, fRange, bPrefix, isOwned
+        store, fPrefix, fRange: [a, b], bPrefix, isOwned
       }
 
       // Check that the new route doesn't overlap an existing route
-      const [a, b] = fRange
-      for(let i = 0; i < routes.length; i++) {
-        const r = routes[i].fRange
-        if (a <= r[1]) assert(a < r[0] && b < r[0], 'Routes overlap')
+      let pos = 0
+      for(; pos < routes.length; pos++) {
+        const r = routes[pos].fRange
+        if (sel.ltSel(a, r[1])) {
+          assert(sel.LtESel(b, r[0]), 'Routes overlap')
+          break
+        }
       }
 
-      routes.push(route)
+      // Routes are kept sorted
+      routes.splice(pos, 0, route)
     },
 
     // Note the storeinfo will change as more stores are added.
     storeInfo: {
       sources,
       capabilities: {
-        queryTypes: new Set<I.QueryType>(['kv']),
+        queryTypes: new Set<I.QueryType>(['kv', 'static range']),
         mutationTypes: new Set<I.ResultType>(['kv']),
       }
     },
 
-    async fetch(q, opts) {
+    async fetch(q, opts = {}) {
+      if (q.type === 'static range') return await fetchRange(q, opts)
       const byStore = splitQueryByStore(q)
 
       const results = new Map<I.Key, any>()
@@ -251,7 +345,7 @@ export default function router(): Router {
       // the intersection of the result versions.
       let versions: I.FullVersionRange = {}
 
-      await Promise.all(Array.from(byStore).map(async ([store, keyRoutes]) => {
+      await Promise.all(byStore.map(async ([store, keyRoutes]) => {
         const r = await store.fetch({type:'kv', q:new Set(keyRoutes.keys())}, opts)
 
         mapKeysInto(results, r.results, keyRoutes)
@@ -264,15 +358,14 @@ export default function router(): Router {
       }))
 
       return {
-        queryRun: q,
+        // queryRun: q,
         results,
         versions,
       }
     },
 
     async getOps(q, queryVersions, opts) {
-      const byStore = splitQueryByStore(q)
-      const byStoreList = Array.from(byStore)
+      const byStoreList = splitQueryByStore(q)
 
       let validRange: I.FullVersionRange = {} // Output valid version range
 
@@ -366,7 +459,7 @@ export default function router(): Router {
       // subscriptions by their sources and merge catchup data
       
       // List of [store, Map<Key, Route>]
-      const queryByStore = Array.from(splitQueryByStore(q))
+      const queryByStore = splitQueryByStore(q)
       // console.log('qbs', queryByStore)
 
       const childOpts = {

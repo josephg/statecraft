@@ -18,9 +18,9 @@ import fieldOps from './field'
 
 type KVPair = [I.Key, I.Val]
 
-const mapRangeEntry = <T, R>(input: [I.Key, T][][], fn: (key: I.Key, val: T) => [I.Key, R]) => (
+const mapRangeEntry = <T, R>(input: [I.Key, T][][], fn: (key: I.Key, val: T) => [I.Key, R] | null) => (
   input.map(inner =>
-    inner.map(([key, val]) => fn(key, val))
+    inner.map(([key, val]) => fn(key, val)).filter(e => e != null) as [I.Key, R][]
   )
 )
 
@@ -31,10 +31,10 @@ const mapRange = <T, R>(input: [I.Key, T][][], fn: (x: T, k: I.Key) => R) => (
   )
 )
 
-const mapRangeEntryAsync = async <T, R>(input: [I.Key, T][][], fn: (key: I.Key, val: T) => Promise<[I.Key, R]>) => {
+const mapRangeEntryAsync = async <T, R>(input: [I.Key, T][][], fn: (key: I.Key, val: T) => Promise<[I.Key, R] | null>) => {
   let result: I.RangeResult = []
   for (let i = 0; i < input.length; i++) {
-    result.push(await Promise.all(input[i].map(([k, v]) => fn(k, v))))
+    result.push((await Promise.all(input[i].map(([k, v]) => fn(k, v)))).filter(e => e != null) as [I.Key, R][])
   }
   return result
 }
@@ -83,6 +83,11 @@ const type: I.ResultOps<I.RangeResult, I.RangeTxn> = {
 
   compose(op1, op2) { throw Error('not implemented') },
   
+  copyInto(dest, src) {
+    dest.push(...src)
+    return dest
+  },
+
   mapEntries: mapRangeEntry,
   mapEntriesAsync: mapRangeEntryAsync,
   map: mapRange,

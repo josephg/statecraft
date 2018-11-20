@@ -1,11 +1,11 @@
 import * as I from '../interfaces'
 import fieldOps from './field'
 
-const mapMapEntry = <T, R>(input: Map<I.Key, T>, fn: (key: I.Key, val: T) => [I.Key, R]) => {
+const mapMapEntry = <T, R>(input: Map<I.Key, T>, fn: (key: I.Key, val: T) => [I.Key, R] | null) => {
   const result = new Map<I.Key, R>()
   for (const [k, val] of input) {
-    const [k2, val2] = fn(k, val)
-    result.set(k2, val2)
+    const newEntry = fn(k, val)
+    if (newEntry != null) result.set(newEntry[0], newEntry[1])
   }
   return result
 }
@@ -17,10 +17,10 @@ const mapMapVal = <T, R>(input: Map<I.Key, T>, fn: (val: T, key: I.Key) => R) =>
   return result
 }
 
-const mapEntryAsync = <T, R>(input: Map<I.Key, T>, fn: (key: I.Key, val: T) => Promise<[I.Key, R]>) => {
+const mapEntryAsync = <T, R>(input: Map<I.Key, T>, fn: (key: I.Key, val: T) => Promise<[I.Key, R] | null>) => {
   const entries = Array.from(input.entries())
   const mapped = entries.map(([k, v]) => fn(k, v))
-  return Promise.all(entries).then((results) => new Map(results))
+  return Promise.all(entries).then((results) => new Map(results.filter(e => e != null)))
 }
 
 const mapAsync = <T, R>(input: Map<I.Key, T>, fn: (val: T, key: I.Key) => Promise<R>) => (
@@ -65,6 +65,11 @@ const type: I.ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
     const result = new Map(a)
     type.composeMut!(result, b)
     return result
+  },
+
+  copyInto(dest, src) {
+    for (const [k, v] of src) dest.set(k, v)
+    return dest
   },
 
   filter<K, V>(snap: Map<K, V>, query: Set<K>): Map<K, V> {
