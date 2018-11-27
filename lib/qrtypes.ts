@@ -45,7 +45,7 @@ registerQuery('kv', resultmap, {
   toJSON(s) { return Array.from(s) },
   fromJSON(data) { return new Set(data) },
   mapKeys: mapSetKeys,
-  adaptTxn(txn: I.KVTxn, query: I.KVQuery) {
+  adaptTxn(txn: I.KVTxn, query: I.KVQuery): I.KVTxn | null {
     let result: I.KVTxn | null = null
     eachIntersect<I.Key>(txn, query, k => {
       if (result == null) result = new Map<I.Key, I.Op>()

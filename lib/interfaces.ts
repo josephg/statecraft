@@ -100,6 +100,9 @@ export type SingleTxn = Op
 export type KVTxn = Map<Key, Op>
 // Ideally this would be a sparse list. Not a big deal in practice though.
 export type RangeTxn = [Key, Op][][]
+// But which one? For stores which implement KV + Range, they'll (obviously)
+// end up propogating a KVTxn through onTxn. Right now RangeTxn is only used
+// for range subscriptions.
 export type Txn = SingleTxn | KVTxn | RangeTxn
 export type TxnWithMeta = {
   versions: FullVersion,

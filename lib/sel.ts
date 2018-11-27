@@ -8,7 +8,7 @@ sel.kGt = (k: Key, s: Sel) => !kLtSel(k, s)
 
 const selLtSel = sel.ltSel = (a: Sel, b: Sel) => a.k < b.k || (!a.isAfter && b.isAfter)
 const selGtSel = sel.gtSel = (a: Sel, b: Sel) => selLtSel(b, a)
-sel.LtESel = (a: Sel, b: Sel) => !selGtSel(a, b)
+sel.LtESel = (a: Sel, b: Sel) => !selLtSel(b, a)
 sel.GtESel = (a: Sel, b: Sel) => !selLtSel(a, b)
 
 const minSel = sel.min = (a: Sel, b: Sel): Sel => (
@@ -28,6 +28,6 @@ sel.intersect = (as: Sel, ae: Sel, bs: Sel, be: Sel): [Sel, Sel] | null => {
   return selLtSel(end, start) ? null : [start, end]
 }
 
-sel.prefix = (prefix: string, s: Sel): Sel => ({k: prefix + s.k, isAfter: s.isAfter})
+sel.addPrefix = (prefix: string, s: Sel): Sel => ({k: prefix + s.k, isAfter: s.isAfter})
 
 export default sel
