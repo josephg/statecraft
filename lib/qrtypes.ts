@@ -3,6 +3,8 @@ import * as I from './interfaces'
 import field from './types/field'
 import resultmap from './types/map'
 import range from './types/range'
+import err from './err'
+import sel from './sel'
 
 type SetOrMap<T> = Map<T, any> | Set<T>
 function eachIntersect<T>(c1: SetOrMap<T>, c2: SetOrMap<T>, fn: (v:T) => void) {
@@ -16,15 +18,27 @@ type PartialQueryOPs = {
   [P in keyof I.QueryOps<any>]?: I.QueryOps<any>[P]
 }
 
-const mapSetKeys = <T, R>(q: Set<T>, fn: (k: T) => R | null): Set<R> => (
+const mapSetKeys = <T, R>(q: Set<T>, fn: (k: T, i: number) => R | null): Set<R> => (
   new Set(Array.from(q.keys()).map(fn).filter(k => k != null) as R[])
 )
 
+// const defaultReplaceAll = <Q extends I.Query>(q: Q, data: I.ResultData): {q: I.ReplaceQuery, with: I.ReplaceData} => {
+//   if (q.type === 'range' || q.type === 'static range') throw new err.InvalidDataError()
+//   return {q: {type: q.type, q: q.q as any} as I.ReplaceQuery, with: data}
+// }
+
+
+const nyi = () => {throw Error('Not implemented')}
 export const queryTypes: {[name: string]: I.QueryOps<any>} = {}
 const registerQuery = (name: I.QueryType, resultType: I.ResultOps<any, I.Txn>, fields: PartialQueryOPs = {}) => {
   queryTypes[name] = {
     toJSON: id, fromJSON: id,
     adaptTxn: id,
+    composeCR: nyi,
+    // fetchToReplace: defaultReplaceAll,
+    fetchToReplace: (q, data) => ({q: {type: name, q}, with: data}),
+    updateQuery: (q, op) => op,
+    updateResults: (s, q, data) => data,
     ...fields,
     name,
     resultType,
@@ -33,11 +47,19 @@ const registerQuery = (name: I.QueryType, resultType: I.ResultOps<any, I.Txn>, f
 
 // The query is a placeholder. The value is just a single field that you can
 // mutate directly.
-registerQuery('single', field)
+registerQuery('single', field, {
+  composeCR(a, b) {
+    return b
+  },
+})
 
 // The query is a placeholder and the resulting value is a KV map of key -> value.
 registerQuery('allkv', resultmap, {
   mapKeys: mapSetKeys,
+  composeCR(a, b) {
+    resultmap.copyInto!(a.with, b.with)
+    return a
+  },
 })
 
 // The query is a set of keys. The results are a KV map from key -> value.
@@ -53,6 +75,23 @@ registerQuery('kv', resultmap, {
     })
     return result
   },
+  composeCR(a, b) {
+    for (const k of b.q.q) a.q.q.add(k)
+    resultmap.copyInto!(a.with, b.with)
+    return a
+  },
+  updateQuery(q: I.KVQuery = new Set(), op: I.KVQuery) {
+    for (const k of op) q.add(k)
+    return q
+  },
+  updateResults(s: Map<I.Key, I.Val>, q: I.KVQuery, data: Map<I.Key, I.Val>) {
+    for (const k of q) {
+      if (data.has(k)) s.set(k, data.get(k))
+      else s.delete(k)
+    }
+    return s
+  },
+  // TODO: Consider making fetchToReplace return {type: 'allkv'} to save bandwidth.
 })
 
 
@@ -92,17 +131,56 @@ const adaptTxnToRange = (txn: I.KVTxn, query: I.StaticRangeQuery): I.RangeResult
 }
 
 
-const mapRangeKeys = (q: I.RangeQuery, fn: (k: I.Key) => I.Key | null): I.RangeQuery => (
-  q.map(qc => ({
+const mapRangeKeys = (q: I.RangeQuery, fn: (k: I.Key, i: number) => I.Key | null): I.RangeQuery => (
+  q.map((qc, i) => ({
     ...qc,
-    from: {k: fn(qc.from.k), ...qc.from},
-    to: {k: fn(qc.to.k), ...qc.to},
+    from: {k: fn(qc.from.k, i), ...qc.from},
+    to: {k: fn(qc.to.k, i), ...qc.to},
   }))
 )
 
+type CatchupRangeReplace = I.CatchupReplace<{type: 'static range', q: I.StaticRangeQuery[]}, I.RangeResult[]>
 registerQuery('static range', range, {
   mapKeys: mapRangeKeys,
   adaptTxn: adaptTxnToRange,
+  composeCR(a: CatchupRangeReplace, b: CatchupRangeReplace) {
+    const aqd = a.q.q, bqd = b.q.q
+    if (aqd.length !== bqd.length) throw new err.InvalidDataError()
+
+    for (let i = 0; i < aqd.length; i++) {
+      const aq = aqd[i], bq = bqd[i]
+
+      // TODO: This is totally not ideal, but its probably correct. And the
+      // times when the difference matters are rare.
+      aq.push(...bq)
+      a.with[i].push(...b.with[i])
+    }
+
+    return a
+  },
+
+  fetchToReplace(q: I.StaticRangeQuery, data: I.RangeResult) {
+    return {
+      q: {type: 'static range', q: q.map(x => [x])},
+      with: data.map(x => [x])
+    }
+  },
+
+  updateQuery(q: I.StaticRangeQuery | null, op: I.StaticRangeQuery[]) {
+    if (q == null) return op.map(x => x[0]) // TODO: Check that all the ranges have 1 item.
+    else {
+      if (q.length !== op.length) throw new err.InvalidDataError()
+
+      for (let i = 0; i < q.length; i++) {
+        nyi()
+      }
+      return q
+    }
+  },
+  
+  updateResults(snapshot, q, data) {
+    nyi()
+  }
 })
 
 registerQuery('range', range, {
@@ -112,6 +190,7 @@ registerQuery('range', range, {
     // instead of bailing.
     throw Error('adaptTxn on full range query not supported')
   },
+  fetchToReplace: nyi,
 })
 
 export const resultTypes: {[name: string]: I.ResultOps<any, I.Txn>} = {

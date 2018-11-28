@@ -90,11 +90,11 @@ const mapRangeResults = <T>(from: [I.Key, T][][], routes: Route[]): [I.Key, T][]
 )
 
 const mapResults = <T>(qtype: I.QueryType, from: Map<I.Key, T> | [I.Key, T][][], routes: Map<I.Key, Route> | Route[]) => (
-  qtype === 'kv' ? mapKVResults(from as Map<I.Key, T>, routes as Map<I.Key, Route>)
+  qtype === 'kv'
+    ? mapKVResults(from as Map<I.Key, T>, routes as Map<I.Key, Route>)
     : mapRangeResults(from as [I.Key, T][][], routes as Route[])
 )
 
-const always = () => true
 const mergeKVResults = <T>(from: (Map<I.Key, T> | null)[]): Map<I.Key, T> => {
   const results = new Map()
   for (let i = 0; i < from.length; i++) {
@@ -104,72 +104,84 @@ const mergeKVResults = <T>(from: (Map<I.Key, T> | null)[]): Map<I.Key, T> => {
   return results
 }
 
-const mergeRangeResults = <T>(from: ([I.Key, T][][] | null)[], res: [number, number][][], q: I.StaticRangeQuery): [I.Key, T][][] => (
+const mergeRangeResults = <T>(from: (T[][] | null)[], res: [number, number][][], reverse: boolean): T[][] => (
   res.map((inputs, i) => {
-    const r = ([] as [I.Key, T][]).concat(
+    const r = ([] as T[]).concat(
       ...inputs
         .filter(([bsIdx]) => from[bsIdx] != null)
         .map(([bsIdx, outIdx]) => from[bsIdx]![outIdx])
     )
-    return q[i].reverse ? r.reverse() : r
+    return reverse ? r.reverse() : r
   })
 )
 
 // const mergeResults = <T>(qtype: I.QueryType, from: (Map<I.Key, T> | null)[] | ([I.Key, T][][] | null)[], res: any, q: I.QueryData) => (
-const mergeResults = <T>(qtype: I.QueryType, from: (Map<I.Key, T> | [I.Key, T][][] | null)[], res: any, q: I.QueryData) => (
+const mergeResults = <T>(qtype: I.QueryType, from: (Map<I.Key, T> | [I.Key, T][][] | null)[], res: any, reverse?: boolean) => (
   qtype === 'kv' ? mergeKVResults(from as (Map<I.Key, T> | null)[])
-    : mergeRangeResults(from as ([I.Key, T][][] | null)[], res, q as I.StaticRangeQuery)
+    : mergeRangeResults(from as ([I.Key, T][][] | null)[], res, reverse || false)
 )
 
 
-// Gross.
-const mapSetKeysInto = (dest: Set<I.Key>, oldSet: Iterable<I.Key>, keyRoutes: Map<I.Key, Route>) => {
-  for (const bk of oldSet) {
-    const route = keyRoutes.get(bk)
-    if (route == null) continue
-    dest.add(changePrefix(bk, route.bPrefix, route.fPrefix))
+// Consumes data. (It rewrites it in-place)
+const mapCatchup = (data: I.CatchupData, qtype: I.QueryType, routes: Map<I.Key, Route> | Route[]) => {
+  const qr = queryTypes[qtype]
+
+  if (data.replace) {
+    data.replace.q.q = qr.mapKeys!(data.replace.q.q, (bk, i) => {
+      const route = qtype === 'kv'
+        ? (routes as Map<I.Key, Route>).get(bk)
+        : (routes as Route[])[i]
+      return route ? changePrefix(bk, route.bPrefix, route.fPrefix) : null
+    })
+    data.replace.with = mapResults(qtype, data.replace.with, routes)
   }
-  return dest
+
+  for (let i = 0; i < data.txns.length; i++) {
+    data.txns[i].txn = mapResults(qtype, data.txns[i].txn as I.KVTxn, routes)
+  }
+
+  return data
 }
 
-const flatMap = <X, Y>(arr: X[], f: (a: X) => Y[]): Y[] => [].concat.apply([], arr.map(f))
+// Wrap a subscription with the route mapping.
+const mapSub = async function*(sub: I.Subscription, qtype: I.QueryType, routes: Map<I.Key, Route> | Route[]) {
+  for await (const c of sub) {
+    yield mapCatchup(c, qtype, routes)
+  }
+}
 
 const mergeVersionsInto = (dest: I.FullVersion, src: I.FullVersion) => {
   for (const s in src) dest[s] = src[s]
 }
 
 // Consumes both. Returns a.
-// TODO: Rewrite this to use query result types.
-const composeCatchupsMut = (a: I.CatchupData, b: I.CatchupData) => {
-  if (b.replace) {
-    if (b.replace.q.type !== 'kv') {
-      throw Error('Dont know how to merge non KV results')
-    }
-    if (a.replace) {
-      // I know its a kv query. Sadly I don't yet have a generic function for
-      // merging these.
-      if (a.replace.q.type !== 'kv') {
-        throw Error('Dont know how to merge non KV results')
-      }
+const composeCatchupsMut = (qtype: I.QueryType, a: I.CatchupData, b: I.CatchupData) => {
+  const qt = queryTypes[qtype]
 
-      for (const k of b.replace.q.q) a.replace.q.q.add(k)
-      for (const [k, val] of b.replace.with) {
-        a.replace.with.set(k, val)
-      }
+  if (b.replace) {
+    if (b.replace.q.type !== qtype) throw new err.InvalidDataError()
+    if (a.replace) {
+      if (a.replace.q.type !== qtype) throw new err.InvalidDataError()
+
+      const {q, with: w} = qt.composeCR(a.replace, b.replace)
+      a.replace.q = q
+      a.replace.with = w
       mergeVersionsInto(a.replace.versions, b.replace.versions)
     } else {
       a.replace = b.replace
     }
 
     // Trim out any transaction data in a that has been replaced by b.
-    let i = 0
-    while (i < a.txns.length) {
-      const txn = (a.txns[i].txn as I.KVTxn)
-      for (const k in txn.values()) if (b.replace.q.q.has(k)) txn.delete(k)
+    if (qtype === 'kv') {
+      let i = 0
+      while (i < a.txns.length) {
+        const txn = (a.txns[i].txn as I.KVTxn)
+        for (const k in txn.values()) if ((<Set<I.Key>>b.replace.q.q).has(k)) txn.delete(k)
 
-      if (txn.size == 0) a.txns.splice(i, 1)
-      else ++i
-    }
+        if (txn.size == 0) a.txns.splice(i, 1)
+        else ++i
+      }
+    } else if (a.txns.length) throw Error('not implemented')
   }
 
   // Then merge all remaining transactions into a.
@@ -178,48 +190,106 @@ const composeCatchupsMut = (a: I.CatchupData, b: I.CatchupData) => {
   return a
 }
 
-const emptyCatchup = (): I.CatchupData => ({txns: [], toVersion: {}})
 
-// Both consumed. This maps and merges.
-const mapCatchupInto = (dest: I.CatchupData | null, src: I.CatchupData, keyRoutes: Map<I.Key, Route>): I.CatchupData => {
-  if (dest == null) dest = emptyCatchup()
 
-  if (src.replace) {
-    if (!dest.replace) dest.replace = {
-      q: {type: 'kv', q: new Set()},
-      with: new Map<I.Key, I.Val>(),
-      versions: {},
-    }
-    mapSetKeysInto(dest.replace.q.q as Set<I.Key>, src.replace.q.q as Set<I.Key>, keyRoutes)
-    mapKeysInto(dest.replace.with, src.replace.with, keyRoutes)
-
-    // Ugh, so the replace versions might not match up. I'm not really sure
-    // what to do in that case - it shouldn't really matter; but its
-    // technically incorrect.
-    const drv = dest.replace.versions
-    const srv = src.replace.versions
-    for (const s in src.replace.versions) {
-      drv[s] = drv[s] == null ? srv[s] : Math.max(drv[s], srv[s])
-    }
+// Its sad that I need this - its only used for subscription replace queries
+// at the moment. Though it will also be used for baked queries in fetch.
+const mergeKVQueries = <T>(from: (Set<I.Key> | null)[]): Set<I.Key> => {
+  const results = new Set()
+  for (let i = 0; i < from.length; i++) {
+    const innerMap = from[i]
+    if (innerMap != null) for (const k of innerMap) results.add(k)
   }
-
-  for (let i = 0; i < src.txns.length; i++) {
-    src.txns[i].txn = mapKeysInto(null, src.txns[i].txn as I.KVTxn, keyRoutes)
-  }
-
-  // The downside of doing it this way is that the results won't
-  // be strictly ordered by version. They should still be
-  // correct if applied in sequence.. but its a lil' janky.
-  dest.txns.push(...src.txns)
-
-  for (const s in src.toVersion) {
-    const dv = dest.toVersion[s]
-    if (dv == null) dest.toVersion[s] = src.toVersion[s]
-    else if (dv !== src.toVersion[s]) throw Error('Subscription ops misaligned')
-  }
-
-  return dest
+  return results
 }
+
+const mergeRangeQueries = <T>(from: (I.StaticRange[][] | null)[], res: [number, number][][]): I.StaticRangeQuery[] => (
+  // TODO: This is almost identical to mergeRangeResults. Consider merging the
+  // two functions.
+  res.map((inputs, i) => {
+    const r = ([] as I.StaticRangeQuery).concat(
+      ...inputs
+        .filter(([bsIdx]) => from[bsIdx] != null)
+        .map(([bsIdx, outIdx]) => from[bsIdx]![outIdx])
+    )
+    return r
+  })
+)
+
+const mergeQueries = <T>(qtype: I.QueryType, from: (Set<I.Key> | I.StaticRange[][] | null)[], res: any) => (
+  qtype === 'kv'
+    ? mergeKVQueries(from as (Set<I.Key> | null)[])
+    : mergeRangeQueries(from as (I.StaticRange[][] | null)[], res)
+)
+
+
+
+
+// // Gross.
+// const mapSetKeysInto = (dest: Set<I.Key>, oldSet: Iterable<I.Key>, keyRoutes: Map<I.Key, Route>) => {
+//   for (const bk of oldSet) {
+//     const route = keyRoutes.get(bk)
+//     if (route == null) continue
+//     dest.add(changePrefix(bk, route.bPrefix, route.fPrefix))
+//   }
+//   return dest
+// }
+
+// const flatMap = <X, Y>(arr: X[], f: (a: X) => Y[]): Y[] => [].concat.apply([], arr.map(f))
+
+
+
+
+// const noopRange = (): I.StaticRange => ({from: sel(''), to: sel('')})
+const mergeCatchups = (qtype: I.QueryType, cd: I.CatchupData[], res: any): I.CatchupData => {
+  const result: I.CatchupData = {txns: [], toVersion: {}}
+
+  // Check if any of the catchup data contains a replace block
+  if (cd.reduce((v, cd) => !!cd.replace || v, false)) {
+    // What a mess.
+    const q = {
+      type: qtype,
+      q: mergeQueries(qtype, cd.map(
+        c => c.replace == null ? null : c.replace.q.q as Set<I.Key> | I.StaticRange[][]
+      ), res)
+    } as I.ReplaceQuery
+
+    const w = mergeResults(qtype, cd.map(c => c.replace == null ? null : c.replace.with), res)
+
+    // So the replace versions might not match up. I'm not really sure what to
+    // do in that case - it shouldn't really matter; but its technically
+    // incorrect.
+    const versions = cd.reduce((acc, src) => {
+      if (src.replace) {
+        const srv = src.replace.versions
+        for (const s in srv) {
+          acc[s] = acc[s] == null ? srv[s] : Math.max(acc[s], srv[s])
+        }
+      }
+
+      return acc
+    }, {} as I.FullVersion)
+
+    result.replace = {q, with: w, versions}
+  }
+
+  for (let i = 0; i < cd.length; i++) {
+    const src = cd[i]
+    // The downside of doing it this way is that the results won't
+    // be strictly ordered by version. They should still be
+    // correct if applied in sequence.. but its a lil' janky.
+    result.txns.push(...src.txns)
+
+    for (const s in src.toVersion) {
+      const dv = result.toVersion[s]
+      if (dv == null) result.toVersion[s] = src.toVersion[s]
+      else if (dv !== src.toVersion[s]) throw Error('Subscription ops misaligned')
+    }
+  }
+
+  return result
+}
+
 
 export default function router(): Router {
   // The routes list is kept sorted in order of frontend ranges
@@ -394,7 +464,7 @@ export default function router(): Router {
       }))
 
       return {
-        results: mergeResults(qtype, innerResults, res, q),
+        results: mergeResults(qtype, innerResults, res), // TODO: Fix reverse.
         versions,
       }
     },
@@ -479,7 +549,7 @@ export default function router(): Router {
           const toMerge = filtered.map(item => item != null && item.length > 0 && item[0].v === minVersion
             ? item.shift()!.txn : null)
 
-          const txn = mergeResults(qtype, toMerge, res, query.q)
+          const txn = mergeResults(qtype, toMerge, res) // TODO: reverse?
           merged.push({
             txn,
             versions: {[source]: minVersion},
@@ -497,7 +567,10 @@ export default function router(): Router {
     },
 
     subscribe(q, opts = {}) {
-      if (q.type !== 'kv') throw new err.UnsupportedTypeError('Router only supports kv queries')
+      const qtype = q.type
+      if (qtype !== 'kv' && qtype !== 'static range') {
+        throw new err.UnsupportedTypeError('Router only supports kv queries')
+      }
 
       let {fromVersion} = opts
       if (fromVersion === 'current') throw new Error('opts.fromVersion current not supported by router')
@@ -506,18 +579,17 @@ export default function router(): Router {
       // When advancing the catchup iterators, we have to group the
       // subscriptions by their sources and merge catchup data
       
-      // List of [store, Map<Key, Route>]
-      const queryByStore = splitQueryByStore(q)
-      // console.log('qbs', queryByStore)
+      const [byStore, res] = splitQueryByStore(q)
+      // console.log('qbs', byStore)
 
       const childOpts = {
         ...opts,
         alwaysNotify: true
       }
-      const childSubs = queryByStore.map(([store, keyRoutes]) => ({
+      const childSubs = byStore.map(([store, q, routes]) => ({
         store,
-        keyRoutes,
-        sub: store.subscribe({type:'kv', q:new Set(keyRoutes.keys())}, childOpts),
+        // routes,
+        sub: mapSub(store.subscribe({type:qtype, q} as I.Query, childOpts), qtype, routes) as I.AsyncIterableIteratorWithRet<I.CatchupData>,
       }))
 
       const stream = streamToIter<I.CatchupData>(() => {
@@ -536,15 +608,15 @@ export default function router(): Router {
         if (fromVersion == null) {
           // We need to read the first catchup operation from all child subs
           // before doing anything else.
-          const innerCatchups = await Promise.all(childSubs.map(({sub}) => sub.next()))
+          const catchupIterItem = await Promise.all(childSubs.map(({sub}) => sub.next()))
 
           // Figure out the starting version for subscriptions, which is the
           // max version of everything that was returned.
           fromVersion = {}
 
           const catchups: I.CatchupData[] = []
-          for (let i = 0; i < innerCatchups.length; i++) {
-            const catchup = innerCatchups[i].value
+          for (let i = 0; i < catchupIterItem.length; i++) {
+            const catchup = catchupIterItem[i].value
             if (catchup == null) {
               // One of the child subscriptions ended before it started. Bubble up!
               console.warn('In router child subscription ended before catchup!')
@@ -571,7 +643,7 @@ export default function router(): Router {
                   finished = true;
                   return
                 }
-                composeCatchupsMut(catchups[i], value)
+                composeCatchupsMut(qtype, catchups[i], value)
 
                 for (const s in catchups[i].toVersion) {
                   if (catchups[i].toVersion[s] > fromVersion[s]) {
@@ -585,11 +657,9 @@ export default function router(): Router {
           await Promise.all(waiting)
 
           // We'll send all initial catchups in one big first update. This is
-          // more consistent with the behaviour of other, more normal stores.
-          const initialCatchup = catchups.reduce((acc, upd, i) => (
-            mapCatchupInto(acc, upd, childSubs[i].keyRoutes)
-          ), null as null | I.CatchupData)
-          if (initialCatchup != null) stream.append(initialCatchup)
+          // consistent with the behaviour of stores and will let the router
+          // self-compose cleaner.
+          if (catchups.length) stream.append(mergeCatchups(qtype, catchups, res))
         }
 
         // ***** Ok we have our initial data and fromVersion is set now.
@@ -609,7 +679,7 @@ export default function router(): Router {
         
         const subGroups: {
           store: I.Store,
-          keyRoutes: Map<string, Route>,
+          // routes: Route[] | Map<string, Route>,
           sub: I.Subscription,
         }[][] = []
 
@@ -662,7 +732,7 @@ export default function router(): Router {
           assert(subGroups[i].length > 0)
 
           const subs = subGroups[i].map(ss => ss.sub)
-          const keyRoutes = subGroups[i].map(ss => ss.keyRoutes)
+          // const routes = subGroups[i].map(ss => ss.routes)
 
           ;(async () => {
             // First
@@ -677,15 +747,10 @@ export default function router(): Router {
               // Locally or from another sub group.
               if (finished) break
 
-              const update = updates.reduce((acc, upd, j) => (
-                mapCatchupInto(acc, upd, keyRoutes[j])
-              ), emptyCatchup())
-
               // I could update fromVersions, but I don't need to. Its not
               // used for anything at this point.
-              stream.append(update)
+              stream.append(mergeCatchups(qtype, updates, res))
             }
-
           })()
         }
 

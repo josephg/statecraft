@@ -30,12 +30,10 @@ export default function<T>(onDone?: () => void): Stream<T> {
   const iter: AsyncIterableIteratorWithRet<T> = {
     // Calls to next() either eat the first item in buffer or create a new resolver.
     next(): Promise<IteratorResult<T>> {
-      if (buffer.length) return Promise.resolve({value: buffer.shift()!, done: false})
-      else if (err) return Promise.reject(err)
-      else if (done) return Promise.resolve({value: undefined as any as T, done: true})
-      else return new Promise((resolve, reject) => {
-        resolvers.push([resolve, reject])
-      })
+      return buffer.length ? Promise.resolve({value: buffer.shift()!, done: false})
+        : err ? Promise.reject(err)
+        : done ? Promise.resolve({value: undefined as any as T, done: true})
+        : new Promise((resolve, reject) => {resolvers.push([resolve, reject])})
     },
     return(): Promise<IteratorResult<T>> {
       // NOTE: return() here is for the iterator *consumer* to notify the
@@ -82,11 +80,15 @@ export default function<T>(onDone?: () => void): Stream<T> {
     },
 
     throw(_err) {
+      // console.warn('stream throw', _err.stack)
       // Put an error at the end of the stream. Any further reads will see it.
-      // Note that this is for the *producer*
+      // Note that this method is for the *producer*
       err = _err
       onDone && onDone()
       onDone = undefined
+      while (resolvers.length) {
+        (resolvers.shift()!)[1](err)
+      }
     },
 
     iter,

@@ -65,7 +65,7 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
     switch (msg.a) {
       case N.Action.Fetch: {
         const {ref, query: netQuery, opts} = (msg as N.FetchRequest)
-        const query = queryFromNet(netQuery)
+        const query = queryFromNet(netQuery) as I.Query
         const qtype = query.type
         if (!store.storeInfo.capabilities.queryTypes.has(qtype)) {
           return writeErr(ref, new errs.UnsupportedTypeError(`query type ${qtype} not supported in fetch`))
@@ -90,7 +90,7 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
 
       case N.Action.GetOps: {
         const {ref, query: netQuery, v, opts} = <N.GetOpsRequest>msg
-        const query = queryFromNet(netQuery)
+        const query = queryFromNet(netQuery) as I.Query
         const qtype = query.type
 
         if (!store.storeInfo.capabilities.queryTypes.has(qtype)) {
@@ -133,7 +133,7 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
 
       case N.Action.SubCreate: {
         const {ref, query: netQuery, opts} = msg
-        const query = queryFromNet(netQuery)
+        const query = queryFromNet(netQuery) as I.Query
         const innerOpts: I.SubscribeOpts = {
           supportedTypes: opts.st ? new Set(opts.st) : undefined,
           fromVersion: opts.fv === 'c' ? 'current' : opts.fv,

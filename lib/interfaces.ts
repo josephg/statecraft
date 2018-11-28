@@ -71,6 +71,20 @@ export type QueryData = boolean | KVQuery | StaticRangeQuery | RangeQuery
 
 export type ResultData = any | Map<Key, Val> | RangeResult
 
+
+// For now this is just used for snapshot replacements. It'll probably need work.
+export type ReplaceQuery = {type: 'single' | 'allkv', q: boolean} | {
+  type: 'kv',
+  q: KVQuery,
+} | {
+  type: 'static range',
+  q: StaticRangeQuery[], // !!
+} // TODO: What should this be for full range queries?
+export type ReplaceQueryData = boolean | KVQuery | StaticRangeQuery[]
+
+export type ReplaceData = any | Map<Key, Val> | RangeResult[]
+
+
 // export type Result = {
 //   type: 'single',
 //   d: any
@@ -189,10 +203,15 @@ export type CatchupData = {
     // This is a bit of a hack. If the query here contains more keys / ranges
     // than the original request, they should be added to the active known
     // set.
-    // Queries are currently only expanded, so this works but a QueryDelta would
-    // be better.
-    q: Query,
-    with: Map<Key, Val> | any, // Make a result set type for this
+    //
+    // Queries are currently only expanded, so this works but a QueryDelta
+    // would be better.
+    //
+    // Its awkward for ranges. For now the query contains a list of query
+    // parts matching the original query. Each part is either a noop or its a
+    // range query extension. (And then `with` is a standard KV[][]).
+    q: ReplaceQuery,
+    with: ReplaceData,
 
     // This is the max version for each source of the replacement data. This
     // becomes from:X if ingesting into a FullVersonRange.
@@ -441,6 +460,9 @@ export interface ResultOps<R, Txn> extends Type<R, Txn> {
   compose(op1: Txn, op2: Txn): Txn
   composeMut?(op1: Txn, op2: Txn): void
 
+  // Compose two consecutive result objects. Returns dest
+  composeResultsMut(dest: R, src: R): R
+
   // Copy all items from src into dest. Returns dest.
   copyInto?(dest: R, src: R): R
 
@@ -455,29 +477,42 @@ export interface ResultOps<R, Txn> extends Type<R, Txn> {
   mapTxnAsync(op: Txn, fn: (v: Op, k: Key | null) => Promise<Op>): Promise<Txn>
 
   // These are compulsory.
-  snapToJSON(data: R): any,
-  snapFromJSON(data: any): R,
-  opToJSON(data: Txn): any,
-  opFromJSON(data: any): Txn,
+  snapToJSON(data: R): any
+  snapFromJSON(data: any): R
+  opToJSON(data: Txn): any
+  opFromJSON(data: any): Txn
 
   // from(type: ResultType, snap: ResultData): R
-  getCorrespondingQuery(snap: R): Query,
+  getCorrespondingQuery(snap: R): Query
 
   // Replace fancy types with {set} if they're not supported.
-  filterSupportedOps(txn: Txn, view: any, supportedTypes: Set<string>): Txn,
+  filterSupportedOps(txn: Txn, view: any, supportedTypes: Set<string>): Txn
 }
 
-export interface QueryOps<Q> {
-  name: QueryType,
-  toJSON(q: Q): any,
-  fromJSON(data: any): Q,
+// Basically, the replace section of catchup data.
+export type CatchupReplace<Q extends ReplaceQuery, R extends ReplaceData> = {q: Q, with: R}
 
-  mapKeys?(q: Q, fn: (k: Key) => Key | null): Q,
+export interface QueryOps<Q> {
+  name: QueryType
+  toJSON(q: Q): any
+  fromJSON(data: any): Q
+
+  mapKeys?(q: Q, fn: (k: Key, i: number) => Key | null): Q
 
   // Adapt the specified transaction (of the expected type) to the passed in
   // query. If the transaction doesn't match any part of the query, return
   // null.
-  adaptTxn(txn: Txn, query: QueryData): Txn | null,
+  adaptTxn(txn: Txn, query: QueryData): Txn | null
 
-  resultType: ResultOps<any, Txn>,
+  // a must be after b. Consumes a and b. Returns result.
+  composeCR(a: CatchupReplace<any, any>, b: CatchupReplace<any, any>): CatchupReplace<any, any>
+
+  // Convert a fetch into a catchup replace object.
+  fetchToReplace(q: Q, data: ResultData): CatchupReplace<any, any>
+
+  // Consumes q and snapshot
+  updateQuery(q: Q | null, op: ReplaceQueryData): Q
+  updateResults(snapshot: ResultData, q: ReplaceQueryData, data: ReplaceData): ResultData
+
+  resultType: ResultOps<any, Txn>
 }

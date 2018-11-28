@@ -67,6 +67,11 @@ const type: I.ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
     return result
   },
 
+  composeResultsMut(dest, src) {
+    // For maps this is the same as copyInto.
+    return type.copyInto!(dest, src)
+  },
+
   copyInto(dest, src) {
     for (const [k, v] of src) dest.set(k, v)
     return dest

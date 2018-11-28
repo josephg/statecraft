@@ -42,8 +42,26 @@ const mapRangeAsync = <T, R>(input: [I.Key, T][][], fn: (val: T, key: I.Key) => 
   mapRangeEntryAsync(input, (k, v) => fn(v, k).then(v2 => ([k, v2] as [I.Key, R])))
 )
 
-const id = <T>(x: T) => x
+const walk2 = <T>(a: [I.Key, T][], b: [I.Key, T][], fn: (k: I.Key, a: T | null, b: T | null) => void) => {
+  let ai = 0, bi = 0
 
+  while (ai < a.length && bi < b.length) {
+    const [ak, av] = a[ai]
+    const [bk, bv] = b[bi]
+
+    if (ak < bk) { fn(ak, av, null); ai++ }
+    else if (ak > bk) { fn(bk, null, bv); bi++ }
+    else { // equal.
+      fn(ak, av, bv)
+      ai++
+      bi++
+    }
+  }
+  for (; ai < a.length; ai++) fn(a[ai][0], a[ai][1], null)
+  for (; bi < b.length; bi++) fn(b[bi][0], null, b[bi][1])
+}
+
+const id = <T>(x: T) => x
 
 const type: I.ResultOps<I.RangeResult, I.RangeTxn> = {
   name: 'range',
@@ -83,6 +101,18 @@ const type: I.ResultOps<I.RangeResult, I.RangeTxn> = {
 
   compose(op1, op2) { throw Error('not implemented') },
   
+  composeResultsMut(dest, src) {
+    // The two range result objects were created from the same query.
+    if (dest.length !== src.length) throw new err.InvalidDataError()
+    return dest.map((d, i) => {
+      const r: [I.Key, I.Val][] = []
+      walk2(d, src[i], (k, a, b) => {
+        r.push([k, b != null ? b : a])
+      })
+      return r
+    })
+  },
+
   copyInto(dest, src) {
     dest.push(...src)
     return dest

@@ -71,14 +71,12 @@ export default class SubGroup {
       const [from, to] = splitFullVersions(versions)
       return {
         replace: {
-          q: bakedQuery || query,
-          with: results,
+          ...queryTypes[query.type].fetchToReplace((bakedQuery || query).q, results),
           versions: from,
         },
         txns: [],
         toVersion: to,
       }
-
     } else if (this.store.catchup) {
       // Use the provided catchup function to bring us up to date
       return await this.store.catchup(query, fromVersion, {
@@ -136,6 +134,8 @@ export default class SubGroup {
         }
 
         const qtype = queryTypes[sub.q.type]
+        // console.log('qtype', sub.q)
+        // if (!qtype) throw Error('Missing type ' + sub.q.type)
         const localTxn = qtype.adaptTxn(_txn, sub.q.q)
         console.log('onop', txn, localTxn)
 
@@ -184,7 +184,7 @@ export default class SubGroup {
 
       const catchupVersion = catchup.toVersion
       sub.expectVersion = catchupVersion
-      if (catchup.replace) sub.q = catchup.replace.q
+      if (catchup.replace) sub.q.q = qtype.updateQuery(sub.q.q, catchup.replace.q.q)
       
       if (sub.opsBuffer == null) throw Error('Invalid internal state in subgroup')
 

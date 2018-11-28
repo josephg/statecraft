@@ -121,7 +121,9 @@ const type: ResultOps<any, Op> = {
     } else {
       return supportedTypes.has(txn.type) ? txn : type.asOp(view)
     }
-  }
+  },
+
+  composeResultsMut(a, b) { return b }
 }
 
 export default type

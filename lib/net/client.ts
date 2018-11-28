@@ -176,7 +176,7 @@ export default function storeFromStreams(
 
             const update: I.CatchupData = {
               replace: r == null ? undefined : {
-                q: queryFromNet(q!),
+                q: queryFromNet(q!) as I.ReplaceQuery,
                 with: type.resultType.snapFromJSON(r),
                 versions: rv!,
               },
