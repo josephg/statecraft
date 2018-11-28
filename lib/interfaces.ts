@@ -494,6 +494,7 @@ export type CatchupReplace<Q extends ReplaceQuery, R extends ReplaceData> = {q: 
 
 export interface QueryOps<Q> {
   name: QueryType
+  // createEmpty(q?: Q): Q
   toJSON(q: Q): any
   fromJSON(data: any): Q
 

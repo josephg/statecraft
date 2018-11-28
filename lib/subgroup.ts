@@ -18,7 +18,7 @@ type BufferItem = {
 }
 
 type Sub = {
-  q: I.Query
+  q: I.Query | null
   // iter: I.Subscription,
 
   // When we get an operation, do we just send from the current version? Set
@@ -125,6 +125,8 @@ export default class SubGroup {
 
       if (sub.opsBuffer) sub.opsBuffer.push({source, fromV, toV, txn: _txn, meta})
       else {
+        if (sub.q == null) throw Error('Invalid state')
+
         if (isVersion(sub.expectVersion)) {
           if (sub.expectVersion![source] !== fromV) {
             throw Error(`Invalid version from source: from/to versions mismatch: ${sub.expectVersion[source]} != ${fromV}`)
@@ -166,7 +168,7 @@ export default class SubGroup {
       // of the query instead of the raw query. If catchup gives us
       // replacement data, we'll use the query that came along there -
       // although thats not quite accurate either.
-      q: query,
+      q: null,//{type: query.type, q: qtype.createEmpty(query.q)} as I.Query,
       alwaysNotify: opts.alwaysNotify || false,
       supportedTypes: opts.supportedTypes || null,
       expectVersion: opts.fromVersion || null,
@@ -184,7 +186,10 @@ export default class SubGroup {
 
       const catchupVersion = catchup.toVersion
       sub.expectVersion = catchupVersion
-      if (catchup.replace) sub.q.q = qtype.updateQuery(sub.q.q, catchup.replace.q.q)
+      if (catchup.replace) sub.q = {
+        type: query.type,
+        q: qtype.updateQuery(sub.q == null ? null : sub.q.q, catchup.replace.q.q)
+      } as I.Query
       
       if (sub.opsBuffer == null) throw Error('Invalid internal state in subgroup')
 
@@ -192,7 +197,7 @@ export default class SubGroup {
       for (let i = 0; i < sub.opsBuffer.length; i++) {
         const {source, fromV, toV, txn, meta} = sub.opsBuffer[i]
         const v = catchupVersion[source]
-        const filteredTxn = qtype.adaptTxn(txn, sub.q.q)
+        const filteredTxn = qtype.adaptTxn(txn, sub.q!.q)
         if (v === fromV) {
           if (filteredTxn != null) catchup.txns.push({versions:{[source]: toV}, txn: filteredTxn, meta})
           catchupVersion[source] = toV

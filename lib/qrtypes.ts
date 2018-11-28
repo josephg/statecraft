@@ -6,6 +6,11 @@ import range from './types/range'
 import err from './err'
 import sel from './sel'
 
+
+// import {inspect} from 'util'
+// const ins = (x: any) => inspect(x, {depth: null, colors: true})
+
+
 type SetOrMap<T> = Map<T, any> | Set<T>
 function eachIntersect<T>(c1: SetOrMap<T>, c2: SetOrMap<T>, fn: (v:T) => void) {
   const [larger, smaller] = c1.size > c2.size ? [c1, c2] : [c2, c1]
@@ -32,6 +37,7 @@ const nyi = () => {throw Error('Not implemented')}
 export const queryTypes: {[name: string]: I.QueryOps<any>} = {}
 const registerQuery = (name: I.QueryType, resultType: I.ResultOps<any, I.Txn>, fields: PartialQueryOPs = {}) => {
   queryTypes[name] = {
+    // createEmpty: () => null,
     toJSON: id, fromJSON: id,
     adaptTxn: id,
     composeCR: nyi,
@@ -55,6 +61,7 @@ registerQuery('single', field, {
 
 // The query is a placeholder and the resulting value is a KV map of key -> value.
 registerQuery('allkv', resultmap, {
+  // createEmpty: () => new Set<I.Key>(),
   mapKeys: mapSetKeys,
   composeCR(a, b) {
     resultmap.copyInto!(a.with, b.with)
@@ -64,6 +71,7 @@ registerQuery('allkv', resultmap, {
 
 // The query is a set of keys. The results are a KV map from key -> value.
 registerQuery('kv', resultmap, {
+  // createEmpty: () => new Set<I.Key>(),
   toJSON(s) { return Array.from(s) },
   fromJSON(data) { return new Set(data) },
   mapKeys: mapSetKeys,
@@ -140,7 +148,9 @@ const mapRangeKeys = (q: I.RangeQuery, fn: (k: I.Key, i: number) => I.Key | null
 )
 
 type CatchupRangeReplace = I.CatchupReplace<{type: 'static range', q: I.StaticRangeQuery[]}, I.RangeResult[]>
+
 registerQuery('static range', range, {
+  // createEmpty: (q) => new Array(q.length),
   mapKeys: mapRangeKeys,
   adaptTxn: adaptTxnToRange,
   composeCR(a: CatchupRangeReplace, b: CatchupRangeReplace) {
@@ -184,6 +194,7 @@ registerQuery('static range', range, {
 })
 
 registerQuery('range', range, {
+  // createEmpty: (q) => new Array(q.length),
   mapKeys: mapRangeKeys,
   adaptTxn: () => {
     // TODO: Might be better to automatically try and convert the query

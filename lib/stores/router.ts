@@ -13,6 +13,11 @@ import {queryTypes, resultTypes} from '../qrtypes'
 
 import sel from '../sel'
 
+
+// import {inspect} from 'util'
+// const ins = (x: any) => inspect(x, {depth: null, colors: true})
+
+
 // Selector utilities.
 type Sel = I.StaticKeySelector
 
@@ -124,18 +129,29 @@ const mergeResults = <T>(qtype: I.QueryType, from: (Map<I.Key, T> | [I.Key, T][]
 )
 
 
+const mapCRKeys = (qtype: I.QueryType, data: I.ReplaceQueryData, mapFn: (k: I.Key, i: number) => I.Key | null) => (
+  qtype === 'kv'
+    ? queryTypes['kv'].mapKeys!(data, mapFn)
+    : (data as I.StaticRangeQuery[]).map(r => queryTypes['static range'].mapKeys!(r, mapFn))
+)
+
 // Consumes data. (It rewrites it in-place)
 const mapCatchup = (data: I.CatchupData, qtype: I.QueryType, routes: Map<I.Key, Route> | Route[]) => {
   const qr = queryTypes[qtype]
 
   if (data.replace) {
-    data.replace.q.q = qr.mapKeys!(data.replace.q.q, (bk, i) => {
+    // This is super gross. The data format for KVs matches the format for
+    // fetches, but the data format for ranges is subtly different. What a
+    // mess.
+    data.replace.q.q = mapCRKeys(qtype, data.replace.q.q, (bk, i) => {
       const route = qtype === 'kv'
         ? (routes as Map<I.Key, Route>).get(bk)
         : (routes as Route[])[i]
       return route ? changePrefix(bk, route.bPrefix, route.fPrefix) : null
     })
-    data.replace.with = mapResults(qtype, data.replace.with, routes)
+    data.replace.with = qtype === 'kv'
+      ? mapResults(qtype, data.replace.with, routes)
+      : (data.replace.with as [I.Key, I.Val][][][]).map(d => mapResults(qtype, d, routes))
   }
 
   for (let i = 0; i < data.txns.length; i++) {
@@ -749,7 +765,10 @@ export default function router(): Router {
 
               // I could update fromVersions, but I don't need to. Its not
               // used for anything at this point.
-              stream.append(mergeCatchups(qtype, updates, res))
+              const merged = mergeCatchups(qtype, updates, res)
+              if (opts.alwaysNotify || merged.replace || merged.txns.length) {
+                stream.append(merged)
+              }
             }
           })()
         }
