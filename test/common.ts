@@ -2,9 +2,9 @@ import * as I from '../lib/interfaces'
 import 'mocha'
 import assert from 'assert'
 import {queryTypes} from '../lib/qrtypes'
-import {inspect} from 'util'
 import sel from '../lib/sel'
 
+import {inspect} from 'util'
 const ins = (x: any) => inspect(x, {depth: null, colors: true})
 
 const assertThrows = async (block: () => Promise<void>, errType?: string) => {

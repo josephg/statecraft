@@ -675,7 +675,11 @@ export default function router(): Router {
           // We'll send all initial catchups in one big first update. This is
           // consistent with the behaviour of stores and will let the router
           // self-compose cleaner.
-          if (catchups.length) stream.append(mergeCatchups(qtype, catchups, res))
+          //
+          // Note we're sending the catchup even if there's no data - if the
+          // input query maps to an empty query, we'll still generate an empty
+          // catchup which returns nothing.
+          stream.append(mergeCatchups(qtype, catchups, res))
         }
 
         // ***** Ok we have our initial data and fromVersion is set now.
