@@ -185,7 +185,12 @@ export default class SubGroup {
       // TODO: ^?
 
       const catchupVersion = catchup.toVersion
-      sub.expectVersion = catchupVersion
+      if (sub.expectVersion == null) sub.expectVersion = catchupVersion
+      else if (sub.expectVersion !== 'current') {
+        for (const s in catchupVersion) sub.expectVersion[s] = catchupVersion[s]
+      }
+
+      // console.log('catchup -> ', catchup, sub.expectVersion)
       if (catchup.replace) sub.q = {
         type: query.type,
         q: qtype.updateQuery(sub.q == null ? null : sub.q.q, catchup.replace.q.q)

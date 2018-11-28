@@ -76,8 +76,12 @@ const otDoc = async <Op>(
       ) : undefined,
   })
 
-  let doc: any = opts.initial ? opts.initial.val : null
-  let version: number = -1
+  const initial = opts.initial
+  let doc: any = initial ? initial.val : null
+
+  let version = initial
+    ? (typeof initial.version === 'object' ? initial.version[source] : initial.version)
+    : -1
 
   // Written assuming the type has a compose() function.
   let pendingTxn: Op | null = null

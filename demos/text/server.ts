@@ -21,6 +21,7 @@ import router, {ALL} from '../../lib/stores/router'
 import onekey from '../../lib/stores/onekey'
 import createWss from '../../lib/net/wsserver'
 import {register} from '../../lib/typeregistry'
+import sel from '../../lib/sel'
 
 import http from 'http'
 
@@ -32,6 +33,7 @@ import commonmark from 'commonmark'
 
 import {type as texttype} from 'ot-text'
 import fresh from 'fresh'
+import html from 'nanohtml'
 
 process.on('unhandledRejection', err => { throw err })
 
@@ -44,17 +46,17 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
 
 
 ;(async () => {
-  // const backend = kvStore(undefined, {source: 'rootstore'})
+  const backend = kvStore()
 
-  const pclient = await new Promise<PClient>((resolve, reject) => {
-    const pclient = reconnecter(9999, 'localhost', err => {
-      if (err) reject(err)
-      else resolve(pclient)
-    })
-  })
+  // const pclient = await new Promise<PClient>((resolve, reject) => {
+  //   const pclient = reconnecter(9999, 'localhost', err => {
+  //     if (err) reject(err)
+  //     else resolve(pclient)
+  //   })
+  // })
 
-  const LMDBPATH = process.env.LMDBPATH || 'textdemo_db'
-  const backend = await lmdbStore(pclient, LMDBPATH)
+  // const LMDBPATH = process.env.LMDBPATH || 'textdemo_db'
+  // const backend = await lmdbStore(pclient, LMDBPATH)
 
   // const backend = lmdbStore(
   const rootStore = otStore(augment(backend))
@@ -197,6 +199,23 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
     res.setHeader('x-sc-version', JSON.stringify(result.versions))
     res.setHeader('content-type', 'text/plain')
     res.send(value)
+  })
+
+  app.get('/', async (req, res) => {
+    const result = await store.fetch({type: 'static range', q: [{from: sel('raw/'), to: sel('raw/~')}]})
+    res.setHeader('x-sc-version', JSON.stringify(result.versions))
+    res.setHeader('content-type', 'text/html')
+    res.send(`<!doctype html>
+<title>Blag</title>
+<style>
+a {
+  display: block;
+  padding: 1em;
+}
+</style>
+<body>
+${result.results[0].map(([k, v]: [string, string]) => html`<a href=/${changePrefix(k, 'raw/', 'edit/')}>${v}</a>`)}
+`)
   })
 
   const server = http.createServer(app)
