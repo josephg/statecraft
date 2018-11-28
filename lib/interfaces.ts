@@ -476,6 +476,9 @@ export interface ResultOps<R, Txn> extends Type<R, Txn> {
   mapTxn(op: Txn, fn: (v: Op, k: Key | null) => Val): Txn
   mapTxnAsync(op: Txn, fn: (v: Op, k: Key | null) => Promise<Op>): Promise<Txn>
 
+  // TODO: Add another generic parameter for snap here. Its a ReplaceData object.
+  mapReplace<T>(snap: any, fn: (v: Val, k: Key | null) => Val): any
+
   // These are compulsory.
   snapToJSON(data: R): any
   snapFromJSON(data: any): R
@@ -487,6 +490,8 @@ export interface ResultOps<R, Txn> extends Type<R, Txn> {
 
   // Replace fancy types with {set} if they're not supported.
   filterSupportedOps(txn: Txn, view: any, supportedTypes: Set<string>): Txn
+
+  // TODO: replace.
 }
 
 // Basically, the replace section of catchup data.
@@ -513,6 +518,7 @@ export interface QueryOps<Q> {
 
   // Consumes q and snapshot
   updateQuery(q: Q | null, op: ReplaceQueryData): Q
+  // TODO: Move this into ResultOps.
   updateResults(snapshot: ResultData, q: ReplaceQueryData, data: ReplaceData): ResultData
 
   resultType: ResultOps<any, Txn>

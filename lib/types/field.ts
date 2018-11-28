@@ -104,10 +104,14 @@ const type: ResultOps<any, Op> = {
   mapTxn: apply2,
   mapTxnAsync: apply2,
 
+  mapReplace: apply2,
+  
+
   snapToJSON: id,
   snapFromJSON: id,
   opToJSON: id,
   opFromJSON: id,
+
 
   getCorrespondingQuery(data) { return {type: 'single', q: true} },
 

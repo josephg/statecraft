@@ -93,17 +93,19 @@ const type: I.ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
   //   }
   // },
 
-  snapToJSON(snap) { return Array.from(snap) },
-  snapFromJSON(data) { return new Map(data) },
-  opToJSON(op) { return Array.from(op) },
-  opFromJSON(data) { return new Map(data) },
-
   mapEntries: mapMapEntry,
   mapEntriesAsync: mapEntryAsync,
   map: mapMapVal,
   mapAsync,
   mapTxn: mapMapVal,
   mapTxnAsync: mapAsync,
+
+  mapReplace: mapMapVal,
+
+  snapToJSON(snap) { return Array.from(snap) },
+  snapFromJSON(data) { return new Map(data) },
+  opToJSON(op) { return Array.from(op) },
+  opFromJSON(data) { return new Map(data) },
 
   getCorrespondingQuery(snap) {
     return {type: 'kv', q: new Set(snap.keys())}

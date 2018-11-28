@@ -1,6 +1,29 @@
 import * as I from '../interfaces'
 import err from '../err'
 import fieldOps from './field'
+import binsearch from 'binary-search'
+
+
+const cmp = <T>(a: T, b: T) => a < b ? -1 : a > b ? 1 : 0
+const clamp = (x: number, a: number, b: number) => (x < a ? a : x > b ? b : x)
+
+export const findRaw = (sel: I.KeySelector | I.StaticKeySelector, keys: ArrayLike<I.Key>): number => {
+  const pos = binsearch(keys, sel.k, cmp)
+
+  return clamp((pos < 0
+    ? -pos-1
+    : sel.isAfter ? pos+1 : pos
+  ), 0, keys.length)
+}
+
+export const findRangeStatic = (range: I.StaticRange, keys: ArrayLike<I.Key>) => {
+  const spos = findRaw(range.from, keys)
+  const epos = findRaw(range.to, keys)
+  // The semantics of the way we're using .slice() below means we don't need
+  // to clamp these positions at the top end.
+  // return [max(spos, 0), max(epos, 0)]
+  return [spos, epos]
+}
 
 
 // The keys must be sorted.
@@ -124,6 +147,8 @@ const type: I.ResultOps<I.RangeResult, I.RangeTxn> = {
   mapAsync: mapRangeAsync,
   mapTxn: mapRange,
   mapTxnAsync: mapRangeAsync,
+
+  mapReplace: (s: I.RangeResult[], fn) => s.map(e => mapRange(e, fn)),
 
   snapToJSON: id,
   snapFromJSON: id,

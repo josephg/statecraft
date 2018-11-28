@@ -2,9 +2,10 @@
 import * as I from './interfaces'
 import field from './types/field'
 import resultmap from './types/map'
-import range from './types/range'
+import range, {findRangeStatic} from './types/range'
 import err from './err'
 import sel from './sel'
+
 
 
 // import {inspect} from 'util'
@@ -88,7 +89,8 @@ registerQuery('kv', resultmap, {
     resultmap.copyInto!(a.with, b.with)
     return a
   },
-  updateQuery(q: I.KVQuery = new Set(), op: I.KVQuery) {
+  updateQuery(q: I.KVQuery | null, op: I.KVQuery) {
+    if (q == null) q = new Set()
     for (const k of op) q.add(k)
     return q
   },
@@ -127,9 +129,7 @@ const adaptTxnToRange = (txn: I.KVTxn, query: I.StaticRangeQuery): I.RangeResult
 
     for (const entry of txn) {
       const [k, v] = entry
-      if ((k > q.from.k || (!q.from.isAfter && k === q.from.k))
-        && (k < q.to.k || (q.from.isAfter && k === q.to.k))
-      ) {
+      if (sel.kWithin(k, q.from, q.to)) {
         r.push(entry)
         empty = false
       }
@@ -188,8 +188,30 @@ registerQuery('static range', range, {
     }
   },
   
-  updateResults(snapshot, q, data) {
-    nyi()
+  // TODO: Move this into results.
+  updateResults(snapshot: I.RangeResult, q: I.StaticRangeQuery[], data: I.RangeResult[]) {
+    // console.log('snap', ins(snapshot), ins(q), ins(data))
+    // This is a bit dirty, but on the first updateResults we don't have the
+    // result length populated. I'll just fill it in from the other data...
+    if (snapshot.length === 0) snapshot.length = q.length
+    if (snapshot.length !== q.length || snapshot.length !== data.length) throw new err.InvalidDataError()
+
+    for (let i = 0; i < snapshot.length; i++) {
+      let si = snapshot[i], qq = q[i], dd = data[i]
+      if (si == null) snapshot[i] = si = []
+
+      // For each qq/dd pair, we need to replace that range in si with the entry in dd.
+      if (qq.length !== dd.length) throw new err.InvalidDataError()
+      for (let k = 0; k < qq.length; k++) {
+        const qqq = qq[i], ddd = dd[i]
+
+        const [start, end] = findRangeStatic(qqq, si.map(x => x[0]))
+        if (end < start) throw new err.InvalidDataError() // It might make sense to just skip?
+        si.splice(start, end-start, ...ddd)
+      }
+    }
+
+    return snapshot
   }
 })
 
@@ -201,7 +223,13 @@ registerQuery('range', range, {
     // instead of bailing.
     throw Error('adaptTxn on full range query not supported')
   },
-  fetchToReplace: nyi,
+
+  fetchToReplace(q: I.RangeQuery, data: I.RangeResult) {
+    return {
+      q: {type: 'static range', q: q.map(x => [x])},
+      with: data.map(x => [x])
+    }
+  },
 })
 
 export const resultTypes: {[name: string]: I.ResultOps<any, I.Txn>} = {

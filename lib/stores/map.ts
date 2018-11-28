@@ -117,7 +117,8 @@ const map = (inner: I.Store, mapfn: MapFn): I.Store => {
             txns: mapTxnWithMetas(qtype.resultType, innerUpdates.txns, mapfn),
             replace: innerUpdates.replace ? {
               q: innerUpdates.replace.q,
-              with: qtype.resultType.map(innerUpdates.replace.with, (v, k) => mapfn(v, k, version))
+              with: qtype.resultType.mapReplace(innerUpdates.replace.with, (v, k) => mapfn(v, k, version)),
+              versions: innerUpdates.replace.versions,
             } : undefined,
           }
         }

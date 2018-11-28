@@ -4,49 +4,9 @@ import genSource from '../gensource'
 import err from '../err'
 import resultMap from '../types/map'
 import {queryTypes} from '../qrtypes'
-import binsearch from 'binary-search'
 
+import {findRangeStatic} from '../types/range'
 
-// const mapValueMapMut = <K>(map: Map<K, any>, f: (v: any, k: K) => any): Map<K, any> => {
-//   for (const [k, v] of map) map.set(k, f(v, k))
-//   return map
-// }
-
-const cmp = <T>(a: T, b: T) => a < b ? -1 : a > b ? 1 : 0
-
-// This whole bit is sort of really awkward. Typescript makes it safe, but the
-// way I'd write this in javascript is way more terse.
-// const isRange = (r: I.Range | I.StaticRange): r is I.Range => (
-//   (r as I.Range).limit != null || (r as I.Range).from.offset != 0 || (r as I.Range).to.offset != 0
-// )
-// const splitRange = (r: I.Range | I.StaticRange): [number, number, number] => (
-//   isRange(r) ? [r.limit || 0, r.from.offset, r.to.offset] : [0, 0, 0]
-// )
-
-const max = (a: number, b: number) => a > b ? a : b
-const clamp = (x: number, a: number, b: number) => (x < a ? a : x > b ? b : x)
-// const nullRange = (): I.StaticRange => ({
-//   from: {k: '', isAfter: false},
-//   to: {k: '', isAfter: false},
-// })
-
-const findRaw = (sel: I.KeySelector | I.StaticKeySelector, keys: ArrayLike<I.Key>): number => {
-  const pos = binsearch(keys, sel.k, cmp)
-
-  return clamp((pos < 0
-    ? -pos-1
-    : sel.isAfter ? pos+1 : pos
-  ), 0, keys.length)
-}
-
-const findRangeStatic = (range: I.StaticRange, keys: ArrayLike<I.Key>) => {
-  const spos = findRaw(range.from, keys)
-  const epos = findRaw(range.to, keys)
-  // The semantics of the way we're using .slice() below means we don't need
-  // to clamp these positions at the top end.
-  // return [max(spos, 0), max(epos, 0)]
-  return [spos, epos]
-}
 
 const bakeSel = (sel: I.KeySelector, rawpos: number, resultpos: number, keys: ArrayLike<I.Key>) => {
   const {k, offset, isAfter} = sel
@@ -132,18 +92,20 @@ export default function singleStore(
       let results: Map<I.Key, I.Val> | I.RangeResult
       let lowerRange: I.Version = initialVersion
       let bakedQuery: I.Query | undefined
+      const tag = (k: I.Key) => {
+        const v = lastModVersion.get(k)
+        if (v !== undefined) lowerRange = Math.max(lowerRange, v)
+      }
 
       switch (query.type) {
         case 'kv':
           results = resultMap.filter(data, query.q)
-          for (const k of query.q) {
-            const v = lastModVersion.get(k)
-            if (v !== undefined) lowerRange = Math.max(lowerRange, v)
-          }
+          for (const k of query.q) tag(k)
           break
 
         case 'allkv':
           results = new Map(data)
+          lowerRange = version
           break
 
         case 'static range':
@@ -169,9 +131,11 @@ export default function singleStore(
             } else {
               [from, to] = findRangeStatic(qc, keys)
             }
-            const vals = keys.slice(from, to).map(
-              k => ([k, data.get(k)] as I.KVPair)
-            )
+            const vals = keys.slice(from, to).map(k => {
+              // This is a bit sneaky.
+              tag(k)
+              return ([k, data.get(k)] as I.KVPair)
+            })
             results.push(qc.reverse ? vals.reverse() : vals)
           }
           break
