@@ -20,6 +20,8 @@ export type Router = I.Store & {
   mount(store: I.Store, fPrefix: string, range: [Sel, Sel] | null, bPrefix: string, isOwned: boolean): void,
 }
 
+type RangeRes = {inputs: [number, number][], reverse: boolean}[]
+
 type Route = {
   store: I.Store,
 
@@ -104,8 +106,8 @@ const mergeKVResults = <T>(from: (Map<I.Key, T> | null)[]): Map<I.Key, T> => {
   return results
 }
 
-const mergeRangeResults = <T>(from: (T[][] | null)[], res: [number, number][][], reverse: boolean): T[][] => (
-  res.map((inputs, i) => {
+const mergeRangeResults = <T>(from: (T[][] | null)[], res: RangeRes): T[][] => (
+  res.map(({reverse, inputs}, i) => {
     const r = ([] as T[]).concat(
       ...inputs
         .filter(([bsIdx]) => from[bsIdx] != null)
@@ -116,9 +118,9 @@ const mergeRangeResults = <T>(from: (T[][] | null)[], res: [number, number][][],
 )
 
 // const mergeResults = <T>(qtype: I.QueryType, from: (Map<I.Key, T> | null)[] | ([I.Key, T][][] | null)[], res: any, q: I.QueryData) => (
-const mergeResults = <T>(qtype: I.QueryType, from: (Map<I.Key, T> | [I.Key, T][][] | null)[], res: any, reverse?: boolean) => (
+const mergeResults = <T>(qtype: I.QueryType, from: (Map<I.Key, T> | [I.Key, T][][] | null)[], res: any) => (
   qtype === 'kv' ? mergeKVResults(from as (Map<I.Key, T> | null)[])
-    : mergeRangeResults(from as ([I.Key, T][][] | null)[], res, reverse || false)
+    : mergeRangeResults(from as ([I.Key, T][][] | null)[], res)
 )
 
 
@@ -203,17 +205,14 @@ const mergeKVQueries = <T>(from: (Set<I.Key> | null)[]): Set<I.Key> => {
   return results
 }
 
-const mergeRangeQueries = <T>(from: (I.StaticRange[][] | null)[], res: [number, number][][]): I.StaticRangeQuery[] => (
+const mergeRangeQueries = <T>(from: (I.StaticRange[][] | null)[], res: RangeRes): I.StaticRangeQuery[] => (
   // TODO: This is almost identical to mergeRangeResults. Consider merging the
   // two functions.
-  res.map((inputs, i) => {
-    const r = ([] as I.StaticRangeQuery).concat(
-      ...inputs
-        .filter(([bsIdx]) => from[bsIdx] != null)
-        .map(([bsIdx, outIdx]) => from[bsIdx]![outIdx])
-    )
-    return r
-  })
+  res.map(({inputs}, i) => ([] as I.StaticRangeQuery).concat(
+    ...inputs
+      .filter(([bsIdx]) => from[bsIdx] != null)
+      .map(([bsIdx, outIdx]) => from[bsIdx]![outIdx])
+  ))
 )
 
 const mergeQueries = <T>(qtype: I.QueryType, from: (Set<I.Key> | I.StaticRange[][] | null)[], res: any) => (
@@ -358,8 +357,8 @@ export default function router(): Router {
     // res will mirror the format of query.q. For each range in the query,
     // we'll have a list of [byStore index, output index] pairs from which
     // the actual result will be aggregated.
-    const res = q.map((r, i) => (
-      splitRangeByRoutes(r).map(([from, to, route], k) => {
+    const res = q.map((r, i) => ({
+      inputs: splitRangeByRoutes(r).map(([from, to, route], k) => {
         const {store} = route
 
         let byStoreIdx = byStore.findIndex(x => x[0] === store)
@@ -370,8 +369,9 @@ export default function router(): Router {
         byStore[byStoreIdx][2][outIdx] = route
 
         return [byStoreIdx, outIdx] as [number, number]
-      })
-    ))
+      }),
+      reverse: r.reverse || false,
+    } as RangeRes[0]))
 
     return [byStore, res] as [typeof byStore, typeof res]
   }
@@ -464,7 +464,7 @@ export default function router(): Router {
       }))
 
       return {
-        results: mergeResults(qtype, innerResults, res), // TODO: Fix reverse.
+        results: mergeResults(qtype, innerResults, res),
         versions,
       }
     },

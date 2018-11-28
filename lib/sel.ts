@@ -8,7 +8,7 @@ sel.kGt = (k: Key, s: Sel) => !kLtSel(k, s)
 
 sel.kWithin = (k: Key, s: Sel, e: Sel) => !kLtSel(k, s) && kLtSel(k, e)
 
-const selLtSel = sel.ltSel = (a: Sel, b: Sel) => a.k < b.k || (!a.isAfter && b.isAfter)
+const selLtSel = sel.ltSel = (a: Sel, b: Sel) => a.k < b.k || (a.k === b.k && !a.isAfter && b.isAfter)
 const selGtSel = sel.gtSel = (a: Sel, b: Sel) => selLtSel(b, a)
 sel.LtESel = (a: Sel, b: Sel) => !selLtSel(b, a)
 sel.GtESel = (a: Sel, b: Sel) => !selLtSel(a, b)
