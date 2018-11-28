@@ -139,7 +139,7 @@ export default class SubGroup {
         // console.log('qtype', sub.q)
         // if (!qtype) throw Error('Missing type ' + sub.q.type)
         const localTxn = qtype.adaptTxn(_txn, sub.q.q)
-        console.log('onop', txn, localTxn)
+        // console.log('onop', txn, localTxn)
 
         // This is pretty verbose. Might make sense at some point to do a few MS of aggregation on these.
         if (localTxn != null || sub.alwaysNotify) sub.stream.append({
@@ -168,7 +168,7 @@ export default class SubGroup {
       // of the query instead of the raw query. If catchup gives us
       // replacement data, we'll use the query that came along there -
       // although thats not quite accurate either.
-      q: null,//{type: query.type, q: qtype.createEmpty(query.q)} as I.Query,
+      q: fromCurrent == null ? null : query,
       alwaysNotify: opts.alwaysNotify || false,
       supportedTypes: opts.supportedTypes || null,
       expectVersion: opts.fromVersion || null,

@@ -13,6 +13,7 @@ const capabilities = {
 
 const onekey = (innerStore: I.Store, key: I.Key): I.Store => {
   const canMutate = innerStore.storeInfo.capabilities.mutationTypes.has('kv')
+  console.log('cm', canMutate, innerStore.storeInfo)
 
   const innerQuery: I.Query = {type: 'kv', q: new Set([key])}
   if (!innerStore.storeInfo.capabilities.queryTypes.has('kv')) throw new err.UnsupportedTypeError('Inner store must support KV queries')

@@ -237,24 +237,6 @@ const mergeQueries = <T>(qtype: I.QueryType, from: (Set<I.Key> | I.StaticRange[]
     : mergeRangeQueries(from as (I.StaticRange[][] | null)[], res)
 )
 
-
-
-
-// // Gross.
-// const mapSetKeysInto = (dest: Set<I.Key>, oldSet: Iterable<I.Key>, keyRoutes: Map<I.Key, Route>) => {
-//   for (const bk of oldSet) {
-//     const route = keyRoutes.get(bk)
-//     if (route == null) continue
-//     dest.add(changePrefix(bk, route.bPrefix, route.fPrefix))
-//   }
-//   return dest
-// }
-
-// const flatMap = <X, Y>(arr: X[], f: (a: X) => Y[]): Y[] => [].concat.apply([], arr.map(f))
-
-
-
-
 // const noopRange = (): I.StaticRange => ({from: sel(''), to: sel('')})
 const mergeCatchups = (qtype: I.QueryType, cd: I.CatchupData[], res: any): I.CatchupData => {
   const result: I.CatchupData = {txns: [], toVersion: {}}
@@ -423,12 +405,13 @@ export default function router(): Router {
       store.storeInfo.sources.forEach(s => {
         if (!sources.includes(s)) sources.push(s)
       })
+
       // Filter the advertised capabilities to only be those which all our
       // routes support.
-      const {queryTypes, mutationTypes} = this.storeInfo.capabilities
-      const {queryTypes: oqt, mutationTypes: omt} = store.storeInfo.capabilities
-      for (const type of queryTypes) if (!oqt.has(type)) queryTypes.delete(type)
-      for (const type of mutationTypes) if (!omt.has(type)) mutationTypes.delete(type)
+      // const {queryTypes, mutationTypes} = this.storeInfo.capabilities
+      // const {queryTypes: oqt, mutationTypes: omt} = store.storeInfo.capabilities
+      // for (const type of queryTypes) if (!oqt.has(type)) queryTypes.delete(type)
+      // for (const type of mutationTypes) if (!omt.has(type)) mutationTypes.delete(type)
 
 
       // Ok, now create & add the route to the list.
