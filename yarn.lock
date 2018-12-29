@@ -2707,11 +2707,6 @@ osenv@^0.1.4:
     os-homedir "^1.0.0"
     os-tmpdir "^1.0.0"
 
-ot-text@^1.0.1:
-  version "1.0.1"
-  resolved "https://registry.yarnpkg.com/ot-text/-/ot-text-1.0.1.tgz#3f850f6ee858bc36ef45ac9aa51d06c77e78dfcf"
-  integrity sha1-P4UPbuhYvDbvRayapR0Gx354388=
-
 outpipe@^1.1.0:
   version "1.1.1"
   resolved "https://registry.yarnpkg.com/outpipe/-/outpipe-1.1.1.tgz#50cf8616365e87e031e29a5ec9339a3da4725fa2"

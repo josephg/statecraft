@@ -3,9 +3,7 @@
 // Features:
 // - Live markdown rendering
 
-
 // TODO:
-// - Collaborative editing
 // - Security around the editing capability
 
 import * as I from '../../lib/interfaces'

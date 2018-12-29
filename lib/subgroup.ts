@@ -88,7 +88,7 @@ export default class SubGroup {
       })
 
     } else {
-      // Fall back to getOps
+      // Use getOps
       const getOps = this.getOps!
 
       // _other is used for any other sources we run into in getOps.
@@ -168,7 +168,7 @@ export default class SubGroup {
       // of the query instead of the raw query. If catchup gives us
       // replacement data, we'll use the query that came along there -
       // although thats not quite accurate either.
-      q: fromCurrent == null ? null : query,
+      q: fromCurrent ? query : null,
       alwaysNotify: opts.alwaysNotify || false,
       supportedTypes: opts.supportedTypes || null,
       expectVersion: opts.fromVersion || null,
