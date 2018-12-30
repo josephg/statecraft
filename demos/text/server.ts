@@ -44,17 +44,17 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
 
 
 ;(async () => {
-  const backend = kvStore()
+  // const backend = kvStore()
 
-  // const pclient = await new Promise<PClient>((resolve, reject) => {
-  //   const pclient = reconnecter(9999, 'localhost', err => {
-  //     if (err) reject(err)
-  //     else resolve(pclient)
-  //   })
-  // })
+  const pclient = await new Promise<PClient>((resolve, reject) => {
+    const pclient = reconnecter(9999, 'localhost', err => {
+      if (err) reject(err)
+      else resolve(pclient)
+    })
+  })
 
-  // const LMDBPATH = process.env.LMDBPATH || 'textdemo_db'
-  // const backend = await lmdbStore(pclient, LMDBPATH)
+  const LMDBPATH = process.env.LMDBPATH || 'textdemo_db'
+  const backend = await lmdbStore(pclient, LMDBPATH)
 
   // const backend = lmdbStore(
   const rootStore = otStore(augment(backend))
@@ -89,6 +89,7 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
   <meta name="viewport" content="width=device-width">
   <link rel="stylesheet" type="text/css" href="/editorstyle.css">
   <textarea id=content autofocus>${value || 'YOOOOOOO'}</textarea>
+  <div id=connstatus></div>
   <script>
   const config = ${jsesc({
     key,

@@ -100,7 +100,22 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
 
 ;(async () => {
   const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws/${config.key}`
-  const [status, storeP] = createStore(() => connect(wsurl))
+  const [statusStore, storeP] = createStore(() => connect(wsurl))
+
+  statusStore.onTxn = (source, fromV, toV, type, txn, rv, meta) => {
+    // This is a bit nasty.. Might be better to augment and then subscribe.
+    // In any case, rv contains the view information.
+    document.getElementById('connstatus')!.className = rv
+
+    // console.log(source, fromV, toV, type, txn, rv, meta)
+  }
+
+  // ;(async () => {
+  //   for await (const st of statusStore.subscribe({type: 'single', q: true}, {})) {
+
+  //   }
+  // })()
+
   const store = await storeP
   console.log('Connected to websocket server', wsurl)
 

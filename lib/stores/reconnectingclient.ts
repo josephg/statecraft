@@ -6,11 +6,17 @@ import singleMem, {setSingle} from './singlemem'
 
 const wait = (timeout: number) => new Promise(resolve => setTimeout(resolve, timeout))
 
+// Connection states:
+// - connected
+// - connecting
+// - waiting
+// - stopped
+
 const reconnector = (connect: (() => [TinyReader<N.SCMsg>, TinyWriter<N.CSMsg>])): [I.SimpleStore, Promise<I.Store>] => {
   // This is a tiny store that the client can use to track & display whether
   // or not we're currently connected. Ite tempting to make a metastore be a
   // default feature.
-  const status = singleMem({connected: false})
+  const status = singleMem('waiting')
   let innerStore: NetStore | null = null
   let shouldReconnect = true
 
@@ -26,7 +32,7 @@ const reconnector = (connect: (() => [TinyReader<N.SCMsg>, TinyWriter<N.CSMsg>])
       onClose() {
         // We don't clear innerStore yet - all requests will still go there
         // until we change the guard.
-        setSingle(status, {connected: false})
+        setSingle(status, 'waiting')
 
         // This is pretty rough.
         ;(async () => {
@@ -35,6 +41,7 @@ const reconnector = (connect: (() => [TinyReader<N.SCMsg>, TinyWriter<N.CSMsg>])
             const [r, w] = connect()
 
             try {
+              setSingle(status, 'connecting')
               await createStore(r, w, {
                 ...opts,
                 restoreFrom: innerStore!,
@@ -44,7 +51,7 @@ const reconnector = (connect: (() => [TinyReader<N.SCMsg>, TinyWriter<N.CSMsg>])
                   // We have to initialize here to avoid an event loop frame
                   // where innerStore is set incorrectly.
                   innerStore = store
-                  setSingle(status, {connected: true})
+                  setSingle(status, 'connected')
                   console.warn('Reconnected')
                 }
               })
@@ -53,15 +60,18 @@ const reconnector = (connect: (() => [TinyReader<N.SCMsg>, TinyWriter<N.CSMsg>])
               console.warn('Reconnection failed', e)
             }
 
+            setSingle(status, 'waiting')
             await wait(3000)
           }
         })()
       },
     }
 
+
+    setSingle(status, 'connecting')
     createStore(r, w, opts).then(initialStore => {
       innerStore = initialStore
-      setSingle(status, {connected: true})
+      setSingle(status, 'connected')
 
       // This is basically a proxy straight to innerStore.
       const s: I.Store = {
