@@ -41,14 +41,17 @@ textarea:focus {
 #connstatus.waiting {
   background-color: red;
 }
+#connstatus.connecting {
+  background-color: yellow;
+}
 
 #connstatus.connected:before {
   content: 'Connected'
+}
+#connstatus.connecting:before {
+  content: 'Connecting'
 }
 #connstatus.waiting:before {
   content: 'Not connected! Waiting to reconnect'
 }
 
-#connstatus.waiting:connecting {
-  content: 'Connecting'
-}
