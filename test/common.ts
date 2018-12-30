@@ -48,7 +48,7 @@ const assertEqualResults = (actual: SimpleResult, expected: SimpleResult, strict
 }
 
 const id = <T>(x: T) => x
-const flatMap = <X, Y>(arr: X[], f: (a: X) => Y[]): Y[] => [].concat.apply([], arr.map(f))
+const flatMap = <X, Y>(arr: X[], f: (a: X) => Y[]): Y[] => ([] as Y[]).concat.apply([], arr.map(f))
 const toKVMap = <T>(m: Map<I.Key, T> | [I.Key, T][][]): Map<I.Key, T> => (
   (m instanceof Map)
     ? m

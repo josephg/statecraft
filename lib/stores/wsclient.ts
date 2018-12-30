@@ -1,14 +1,12 @@
 import * as I from '../interfaces'
 import * as N from '../net/netmessages'
-import storeFromStreams from '../net/client'
+import createStore from '../net/client'
 import {TinyReader, TinyWriter} from '../net/tinystream'
 import WebSocket from 'isomorphic-ws'
 
 // const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws`
 
-// TODO: Implement automatic reconnection and expose a simple server
-// describing the connection state
-export default function(wsurl: string): Promise<I.Store> {
+export function connect(wsurl: string): [TinyReader<N.SCMsg>, TinyWriter<N.CSMsg>] {
   const ws = new WebSocket(wsurl)
 
   ws.onopen = () => {console.log('ws opened')}
@@ -24,7 +22,7 @@ export default function(wsurl: string): Promise<I.Store> {
   ws.onclose = () => {
     console.warn('---- WEBSOCKET CLOSED ----')
     reader.isClosed = true
-    reader.onclose && reader.onclose()
+    reader.onClose && reader.onClose()
   }
 
   const writer: TinyWriter<N.CSMsg> = {
@@ -44,5 +42,12 @@ export default function(wsurl: string): Promise<I.Store> {
     },
   }
 
-  return storeFromStreams(reader, writer)
+  return [reader, writer]
+}
+
+// TODO: Implement automatic reconnection and expose a simple server
+// describing the connection state
+export default function(wsurl: string): Promise<I.Store> {
+  const [r, w] = connect(wsurl)
+  return createStore(r, w)
 }

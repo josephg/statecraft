@@ -19,7 +19,7 @@ const augment = (innerStore: I.SimpleStore, opts?: any): I.Store => {
     fetch: innerStore.fetch.bind(innerStore),
     catchup: innerStore.catchup ? innerStore.catchup.bind(innerStore) : undefined,
     mutate: innerStore.mutate.bind(innerStore),
-    close: innerStore.close ? innerStore.close.bind(innerStore) : undefined,
+    close: innerStore.close.bind(innerStore),
 
     getOps: getOps,
     subscribe: innerStore.subscribe || subscriptions!.create.bind(subscriptions)

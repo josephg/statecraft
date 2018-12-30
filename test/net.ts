@@ -23,4 +23,6 @@ describe('net', () => {
       })
     })
   }), (store) => serverForStore.get(store).close())
+
+  it('returns an error if connection fails before hello is received')
 })

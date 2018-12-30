@@ -29,7 +29,7 @@ import jsesc from 'jsesc'
 import assert from 'assert'
 import commonmark from 'commonmark'
 
-import {type as texttype} from 'ot-text'
+import {type as texttype} from 'ot-text-unicode'
 import fresh from 'fresh'
 import html from 'nanohtml'
 

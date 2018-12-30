@@ -49,4 +49,8 @@ const singleStore = (initialValue: any = null, source: I.Source = genSource(), i
   return store
 }
 
+export function setSingle(store: I.SimpleStore, value: any) {
+  return store.mutate('single', {type: 'set', data: value})
+}
+
 export default singleStore

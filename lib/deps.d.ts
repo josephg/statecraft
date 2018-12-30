@@ -1,23 +1,4 @@
 
-declare module 'msgpack-lite' {
-  import {Duplex} from 'stream'
-
-  interface Codec {}
-
-  function encode(data: any, opts?: {codec?: Codec}): Buffer
-  function decode(buf: Buffer, opts?: {codec?: Codec}): any
-
-  function createCodec(opts: object): Codec
-
-  // This is a hack to expose out the encoder.flush() function, which is needed because of
-  // https://github.com/kawanet/msgpack-lite/issues/80
-  interface DuplexPlus extends Duplex {
-    encoder: { flush(): void }
-  }
-  function createEncodeStream(): DuplexPlus
-  function createDecodeStream(): Duplex
-}
-
 declare module 'node-lmdb' {
   interface Database {
     close(): void

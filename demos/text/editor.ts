@@ -4,9 +4,11 @@ import html from 'nanohtml'
 
 // Should be able to use an alias here... but alas.
 import * as I from '../../lib/interfaces'
-import connect from '../../lib/stores/wsclient'
+// import connect from '../../lib/stores/wsclient'
+import {connect} from '../../lib/stores/wsclient'
+import createStore from '../../lib/stores/reconnectingclient'
 import fieldOps from '../../lib/types/field'
-import {type as texttype, TextOp} from 'ot-text'
+import {type as texttype, TextOp} from 'ot-text-unicode'
 import otDoc from './otdoc'
 import {register} from '../../lib/typeregistry'
 
@@ -98,7 +100,8 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
 
 ;(async () => {
   const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws/${config.key}`
-  const store = await connect(wsurl)
+  const [status, storeP] = createStore(() => connect(wsurl))
+  const store = await storeP
   console.log('Connected to websocket server', wsurl)
 
   if (config.initialValue == null) {
@@ -106,7 +109,7 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
     await store.mutate('single', {type: 'set', data: ''})
   }
 
-  const otdoc = await otDoc<TextOp>(store, 'text', {
+  const otdoc = await otDoc<TextOp>(store, 'text-unicode', {
     initial: { val: config.initialValue, version: config.initialVersions }
     // knownAtVersions: config.initialVersions,
   }, (txn, val) => {
@@ -116,7 +119,7 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
       case 'set':
         applyChange(localCtx, elem.value, val)
         break
-      case 'text': {
+      case 'text-unicode': {
         let pos = 0
         const op = txn.data as TextOp
         for (let i = 0; i < op.length; i++) {

@@ -3,7 +3,7 @@
 import * as I from '../interfaces'
 import * as N from './netmessages'
 
-import storeFromStreams from './client'
+import createStore from './client'
 import serve from './server'
 
 import {TinyReader, TinyWriter} from './tinystream'
@@ -56,5 +56,5 @@ export default function connectMux(reader: TinyReader<BothMsg>, writer: TinyWrit
   }
 
   serve(localReader, localWriter, localStore)
-  return storeFromStreams(remoteReader, remoteWriter)
+  return createStore(remoteReader, remoteWriter)
 }

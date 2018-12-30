@@ -1,4 +1,4 @@
-require('./util')
+// require('./util')
 const alpha = 'abcdefghijklmnopqrstuvwxyz'
 const alphabet = alpha + alpha.toUpperCase() + '0123456789'
 

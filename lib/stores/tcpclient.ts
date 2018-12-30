@@ -1,6 +1,6 @@
 import * as I from '../interfaces'
 import * as N from '../net/netmessages'
-import storeFromStreams from '../net/client'
+import createStore from '../net/client'
 import {TinyReader, TinyWriter, wrapReader, wrapWriter} from '../net/tinystream'
 
 import net from 'net'
@@ -19,5 +19,5 @@ export default function(port: number, host: string): Promise<I.Store> {
 
   const reader = wrapReader<N.SCMsg>(readStream)
 
-  return storeFromStreams(reader, writer)
+  return createStore(reader, writer)
 }

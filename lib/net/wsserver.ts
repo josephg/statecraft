@@ -40,7 +40,7 @@ export const serveWS = (wsOpts: WebSocket.ServerOptions, store: I.Store | ((ws: 
     client.on('close', () => {
       writer.end() // Does this help??
       reader.isClosed = true
-      reader.onclose && reader.onclose()
+      reader.onClose && reader.onClose()
     })
 
     serve(reader, wrapWriter(writer), getStore(client, req))

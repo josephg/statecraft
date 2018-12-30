@@ -168,13 +168,14 @@ export default class SubGroup {
       // of the query instead of the raw query. If catchup gives us
       // replacement data, we'll use the query that came along there -
       // although thats not quite accurate either.
-      q: fromCurrent ? query : null,
+      q: opts.fromVersion != null ? query : null,
       alwaysNotify: opts.alwaysNotify || false,
       supportedTypes: opts.supportedTypes || null,
       expectVersion: opts.fromVersion || null,
       opsBuffer: fromCurrent ? null : [],
       stream,
     }
+    // console.log('created sub', query, sub)
     this.allSubs.add(sub)
 
     if (!fromCurrent) this.catchup(query, opts).then(catchup => {
@@ -190,11 +191,11 @@ export default class SubGroup {
         for (const s in catchupVersion) sub.expectVersion[s] = catchupVersion[s]
       }
 
-      // console.log('catchup -> ', catchup, sub.expectVersion)
       if (catchup.replace) sub.q = {
         type: query.type,
         q: qtype.updateQuery(sub.q == null ? null : sub.q.q, catchup.replace.q.q)
       } as I.Query
+      // console.log('catchup -> ', catchup, sub.expectVersion, sub.q, query.type)
       
       if (sub.opsBuffer == null) throw Error('Invalid internal state in subgroup')
 

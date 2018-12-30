@@ -35,15 +35,6 @@ const parseTxnsWithMeta = (type: I.ResultOps<any, I.Txn>, data: N.NetTxnWithMeta
   }))
 )
 
-type Callback<T> = (err: Error | null, results?: T) => void
-const awaitHello = (reader: TinyReader<N.SCMsg>, callback: Callback<N.HelloMsg>) => {
-  reader.onmessage = (msg: N.SCMsg) => {
-    if (msg.a !== N.Action.Hello || msg.p !== 'statecraft') return callback(Error('Invalid hello message'))
-    if (msg.pv !== 0) return callback(Error('Incompatible protocol versions'))
-    callback(null, msg)
-  }
-}
-
 interface RemoteSub {
   query: I.Query,
   // This is needed to reestablish the subscription later
@@ -59,10 +50,15 @@ interface RemoteSub {
   cleanup: () => void,
 }
 
+type ResRej = (val: any) => void
+
 type Details = {
-  resolve: any,//((_: I.FetchResults | I.GetOpsResult | I.FullVersion) => void),
-  reject: ((e: Error) => void),
-  type: I.QueryType | I.ResultType
+  resolve: ResRej,
+  reject: ResRej,
+
+  type: 'fetch' | 'getOps' | 'mutate',
+  args: any[],
+  // type: I.QueryType | I.ResultType
 }
 
 // When we reconnect, a ReconnectionData object is passed to the caller. This
@@ -70,252 +66,295 @@ type Details = {
 // structure from the outside. Just pass it back into the next client's
 // reconnect opt field.
 interface ReconnectionData {
-  subs: IterableIterator<RemoteSub>
+  hello: N.HelloMsg,
+  subs: IterableIterator<RemoteSub>,
+  details: IterableIterator<Details>,
 }
 
 export interface ClientOpts {
-  preserveOnClose?: (data: ReconnectionData) => void,
-  reconnect?: ReconnectionData,
+  // preserveOnClose?: (data: ReconnectionData) => void,
+  onClose?: () => void,
+  preserveState?: boolean,
+  restoreFrom?: NetStore,
+  syncReady?: (store: NetStore) => void // working around await not returning syncronously.
 }
 
-export default function storeFromStreams(
-    reader: TinyReader<N.SCMsg>,
+export type NetStore = I.Store & {
+  getState(): ReconnectionData
+}
+
+const checkHello = (hello: N.HelloMsg, ref?: I.StoreInfo) => {
+  // TODO: Move these errors into standard errors. Especially important for
+  // protocol version (& probably want some sort of epoch version too!)
+  if (hello.a !== N.Action.Hello || hello.p !== 'statecraft') throw Error('Invalid hello message')
+  if (hello.pv !== 0) throw Error('Incompatible protocol versions')
+
+  if (ref) {
+    // TODO: Check that the storeinfo is compatible.
+    console.warn('Warning: Not validating reconnection storeinfo data')
+  }
+}
+
+function storeFromStreams(reader: TinyReader<N.SCMsg>,
     writer: TinyWriter<N.CSMsg>,
-    opts: ClientOpts = {}): Promise<I.Store> {
-  return new Promise((resolve, reject) => {
-    const subByRef = new Map<N.Ref, RemoteSub>()
+    hello: N.HelloMsg, opts: ClientOpts = {}): NetStore {
+  let nextRef = 1
+  const subByRef = new Map<N.Ref, RemoteSub>()
+  const detailsByRef = new Map<N.Ref, Details>()
+  let closed = false
 
-    reader.onclose = () => {
-      if (opts.preserveOnClose) opts.preserveOnClose({
-        subs: subByRef.values()
-      }); else {
-        for (const {stream} of subByRef.values()) {
-          // Tell the receiver they won't get any more messages.
-          stream.end()
-        }
-      }
+  const takeCallback = (ref: N.Ref): Details => {
+    const dets = detailsByRef.get(ref)
+    detailsByRef.delete(ref)
+    assert(dets) // ?? TODO: What should I do in this case?
+    return dets!
+  }
 
-      delete reader.onmessage
+  const cleanup = () => {
+    for (const {stream} of subByRef.values()) {
+      // Tell the receiver they won't get any more messages.
+      stream.end()
     }
+    subByRef.clear()
 
-    // It'd be nice to rewrite this using promises. The problem is that we
-    // have to onmessage() syncronously with the hello message being
-    // processed, so awaitHello can't return a promise. It'd be better to have
-    // a way to `await stream.read()` method and do it that way.
-    awaitHello(reader, (err, _msg?: N.HelloMsg) => {
-      if (err) return reject(err)
+    for (const {reject} of detailsByRef.values()) {
+      reject(Error('Store closed before results returned'))
+    }
+    detailsByRef.clear()
+  }
 
-      // TODO: check reader.isClosed and .. what??
+  reader.onClose = () => {
+    if (opts.onClose) opts.onClose()
+    if (!opts.preserveState) cleanup()
 
-      const hello = _msg!
+    delete reader.onmessage
+  }
 
-      let nextRef = 1
-      const detailsByRef = new Map<N.Ref, Details>()
-      const takeCallback = (ref: N.Ref): Details => {
-        const dets = detailsByRef.get(ref)
-        detailsByRef.delete(ref)
-        assert(dets) // ?? TODO: What should I do in this case?
-        return dets!
+  reader.onmessage = msg => {
+    // console.log('got SC data', msg)
+
+    switch (msg.a) {
+      case N.Action.Fetch: {
+        const {ref, results, bakedQuery, versions} = <N.FetchResponse>msg
+        const {resolve, args: [q]} = takeCallback(ref)
+        const type = queryTypes[q.type]!
+        resolve(<I.FetchResults>{
+          results: type.resultType.snapFromJSON(results),
+          bakedQuery: bakedQuery ? queryFromNet(bakedQuery) : undefined,
+          versions
+        })
+        break
       }
 
-      reader.onmessage = msg => {
-        // console.log('got SC data', msg)
+      case N.Action.GetOps: {
+        const {ref, ops, v} = <N.GetOpsResponse>msg
+        const {resolve, args: [q]} = takeCallback(ref)
+        const type = queryTypes[q.type]!
+        resolve(<I.GetOpsResult>{
+          ops: parseTxnsWithMeta(type.resultType, ops),
+          versions: v,
+        })
+        break
+      }
 
-        switch (msg.a) {
-          case N.Action.Fetch: {
-            const {ref, results, bakedQuery, versions} = <N.FetchResponse>msg
-            const {resolve, type: qtype} = takeCallback(ref)
-            const type = queryTypes[qtype]!
-            resolve(<I.FetchResults>{
-              results: type.resultType.snapFromJSON(results),
-              bakedQuery: bakedQuery ? queryFromNet(bakedQuery) : undefined,
-              versions
-            })
-            break
-          }
+      case N.Action.Mutate: {
+        const {ref, v} = <N.MutateResponse>msg
+        const {resolve} = takeCallback(ref)
+        resolve(v)
+        break
+      }
 
-          case N.Action.GetOps: {
-            const {ref, ops, v} = <N.GetOpsResponse>msg
-            const {resolve, type: qtype} = takeCallback(ref)
-            const type = queryTypes[qtype]!
-            resolve(<I.GetOpsResult>{
-              ops: parseTxnsWithMeta(type.resultType, ops),
-              versions: v,
-            })
-            break
-          }
+      case N.Action.Err: {
+        // This is used for both normal errors and subscription errors.
+        // We use the ref to disambiguate.
+        const {ref, err} = <N.ResponseErr>msg
 
-          case N.Action.Mutate: {
-            const {ref, v} = <N.MutateResponse>msg
-            const {resolve} = takeCallback(ref)
-            resolve(v)
-            break
-          }
+        const errObj = errFromJSON(err)
+        const sub = subByRef.get(ref)
+        if (sub) sub.stream.throw(errObj)
+        else takeCallback(ref).reject(errObj)
+        break
+      }
 
-          case N.Action.Err: {
-            // This is used for both normal errors and subscription errors.
-            // We use the ref to disambiguate.
-            const {ref, err} = <N.ResponseErr>msg
+      case N.Action.SubUpdate: {
+        const {ref, q, r, rv, txns, tv} = msg
+        const sub = subByRef.get(ref)
 
-            const errObj = errFromJSON(err)
-            const sub = subByRef.get(ref)
-            if (sub) sub.stream.throw(errObj)
-            else takeCallback(ref).reject(errObj)
-            break
-          }
+        // Will happen if the client closes the sub and the server has
+        // messages in flight
+        if (!sub) break
 
-          case N.Action.SubUpdate: {
-            const {ref, q, r, rv, txns, tv} = msg
-            const sub = subByRef.get(ref)
+        const type = queryTypes[sub.query.type]
 
-            // Will happen if the client closes the sub and the server has
-            // messages in flight
-            if (!sub) break
+        const update: I.CatchupData = {
+          replace: r == null ? undefined : {
+            q: queryFromNet(q!) as I.ReplaceQuery,
+            with: type.resultType.snapFromJSON(r),
+            versions: rv!,
+          },
 
-            const type = queryTypes[sub.query.type]
+          txns: parseTxnsWithMeta(type.resultType, txns),
 
-            const update: I.CatchupData = {
-              replace: r == null ? undefined : {
-                q: queryFromNet(q!) as I.ReplaceQuery,
-                with: type.resultType.snapFromJSON(r),
-                versions: rv!,
-              },
-
-              txns: parseTxnsWithMeta(type.resultType, txns),
-
-              toVersion: tv,
-            }
-
-            // Update fromVersion so if we need to resubscribe we'll request
-            // the right version from the server. Note that I'm not updating
-            // the version if its specified as 'current'. In that mode you
-            // might miss operations! I have no idea if this is the right
-            // thing to do.
-            const fv = sub.opts.fromVersion
-            if (fv == null) sub.opts.fromVersion = update.toVersion
-            else if (fv !== 'current') for (const s in tv) fv[s] = tv[s]
-
-            sub.stream.append(update)
-            break
-          }
-
-          case N.Action.SubClose: {
-            const {ref} = msg
-            const sub = subByRef.get(ref)
-            if (sub != null) {
-              sub.stream.end()
-              subByRef.delete(ref)
-            }
-            break
-          }
-
-          default: console.error('Invalid or unknown server->client message', msg)
+          toVersion: tv,
         }
+
+        // Update fromVersion so if we need to resubscribe we'll request
+        // the right version from the server. Note that I'm not updating
+        // the version if its specified as 'current'. In that mode you
+        // might miss operations! I have no idea if this is the right
+        // thing to do.
+        const fv = sub.opts.fromVersion
+        if (fv == null) sub.opts.fromVersion = update.toVersion
+        else if (fv !== 'current') for (const s in tv) fv[s] = tv[s]
+
+        sub.stream.append(update)
+        break
       }
 
-      const registerSub = (sub: RemoteSub) => {
-        const ref = nextRef++
-
-        sub.cleanup = () => {
-          writer.write({a:N.Action.SubClose, ref})
+      case N.Action.SubClose: {
+        const {ref} = msg
+        const sub = subByRef.get(ref)
+        if (sub != null) {
+          sub.stream.end()
           subByRef.delete(ref)
         }
-
-        subByRef.set(ref, sub)
-
-        const {opts} = sub
-        const netOpts: N.SubscribeOpts = {
-          // TODO more here.
-          st: Array.from(opts.supportedTypes || supportedTypes),
-          fv: opts.fromVersion === 'current' ? 'c' : opts.fromVersion,
-        }
-
-        // Advertise that the subscription has been created, but don't wait
-        // for acknowledgement before returning it locally.
-        writer.write({a: N.Action.SubCreate, ref, query: queryToNet(sub.query), opts: netOpts})
+        break
       }
 
-      const store: I.Store = {
-        storeInfo: parseStoreInfo(hello),
+      default: console.error('Invalid or unknown server->client message', msg)
+    }
+  }
 
-        fetch(query, opts = {}) {
-          return new Promise((resolve, reject) => {
-            // const qtype = query.type
-            // assert(typeof callback === 'function')
-            const ref = nextRef++
-            detailsByRef.set(ref, {resolve, reject, type:query.type})
+  const registerSub = (sub: RemoteSub) => {
+    const ref = nextRef++
 
-            // const type = queryTypes[qtype]
-            // assert(type) // TODO.
+    sub.cleanup = () => {
+      writer.write({a:N.Action.SubClose, ref})
+      subByRef.delete(ref)
+    }
 
-            writer.write({
-              a: N.Action.Fetch, ref,
-              query: queryToNet(query),
-              opts: opts,
-            })
-          })
-        },
+    subByRef.set(ref, sub)
 
-        mutate(mtype, txn, versions = {}, opts = {}) {
-          return new Promise((resolve, reject) => {
-            // console.log('....')
-            // setTimeout(() => {
-            const ref = nextRef++
+    const {opts} = sub
+    const netOpts: N.SubscribeOpts = {
+      // TODO more here.
+      st: Array.from(opts.supportedTypes || supportedTypes),
+      fv: opts.fromVersion === 'current' ? 'c' : opts.fromVersion,
+    }
 
-            const type = resultTypes[mtype]
-            assert(type) // TODO: proper checking.
+    // Advertise that the subscription has been created, but don't wait
+    // for acknowledgement before returning it locally.
+    writer.write({a: N.Action.SubCreate, ref, query: queryToNet(sub.query), opts: netOpts})
+  }
 
-            detailsByRef.set(ref, {resolve, reject, type: mtype})
+  const reqToMessage: {
+    [k: string]: (ref: number, ...args: any) => N.CSMsg
+  } = {
+    fetch: (ref: number, query: I.Query, opts: I.FetchOpts = {}) => ({
+      a: N.Action.Fetch, ref,
+      query: queryToNet(query),
+      opts: opts,
+    }),
 
-            writer.write({
-              a: N.Action.Mutate, ref, mtype,
-              txn: type.opToJSON(txn),
-              v: versions, opts
-            })
-            // }, 5000)
-          })
-        },
+    getOps: (ref: number, query: I.Query, versions: I.FullVersionRange, opts: I.GetOpsOptions = {}) => ({
+      a: N.Action.GetOps, ref,
+      query: queryToNet(query),
+      v: versions, opts
+    }),
 
-        getOps(query, versions, opts = {}) {
-          return new Promise((resolve, reject) => {
-            const ref = nextRef++
-            // const qtype = query.type
-            detailsByRef.set(ref, {resolve, reject, type:query.type})
-
-            // const type = queryTypes[qtype]
-            // assert(type) // TODO.
-
-            writer.write({
-              a: N.Action.GetOps, ref,
-              query: queryToNet(query),
-              v: versions, opts
-            })
-          })
-        },
-
-        subscribe(query, opts = {}) {
-          const sub = {
-            query, opts,
-          } as RemoteSub
-
-          sub.stream = streamToIter<I.CatchupData>(() => sub.cleanup())
-
-          registerSub(sub)
-          return sub.stream.iter
-        },
-
-        close() {
-          // TODO: And terminate all pending callbacks and stuff.
-          writer.close()
-        }
-      }
-
-      if (opts.reconnect) {
-        // Wire the listed subscriptions back up to the server
-        for (const sub of opts.reconnect.subs) registerSub(sub)
-      }
-
-      resolve(store)
+    mutate: (ref: number, mtype: I.ResultType, txn: I.Txn, versions: I.FullVersion = {}, opts: I.MutateOptions = {}) => ({
+      a: N.Action.Mutate, ref, mtype,
+      txn: resultTypes[mtype].opToJSON(txn),
+      v: versions, opts
     })
+  }
+
+  const registerReq = (type: 'fetch' | 'getOps' | 'mutate', resolve: ResRej, reject: ResRej, args: any[]) => {
+    const ref = nextRef++
+    const msg = reqToMessage[type](ref, ...args)
+    detailsByRef.set(ref, {type, args, resolve, reject})
+    writer.write(msg)
+  }
+
+  const req = (type: 'fetch' | 'getOps' | 'mutate') => (...args: any[]): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      if (closed) return reject(Error('Cannot make request from a closed store'))
+      registerReq(type, resolve, reject, args)
+    })
+  }
+
+  if (opts.restoreFrom) {
+    const state = opts.restoreFrom.getState()
+    // Wire the listed subscriptions back up to the server
+    for (const sub of state.subs) registerSub(sub)
+    for (const d of state.details) registerReq(d.type, d.resolve, d.reject, d.args)
+  }
+
+  // const store: I.Store = {
+  return {
+    storeInfo: parseStoreInfo(hello),
+
+    fetch: req('fetch'),
+    getOps: req('getOps'),
+    mutate: req('mutate'),
+
+    subscribe(query, opts = {}) {
+      if (closed) throw Error('Cannot make request from a closed store')
+
+      const sub = {
+        query, opts,
+      } as RemoteSub
+
+      sub.stream = streamToIter<I.CatchupData>(() => sub.cleanup())
+
+      registerSub(sub)
+      return sub.stream.iter
+    },
+
+    close() {
+      closed = true
+      writer.close()
+      cleanup()
+    },
+
+    getState() {
+     return {
+        hello,
+        subs: subByRef.values(),
+        details: detailsByRef.values(),
+      };
+    }
+  }
+}
+
+
+// export function reconnectStore(reader: TinyReader<N.SCMsg>,
+//     writer: TinyWriter<N.CSMsg>,
+//     reconnectState: ReconnectionData,
+//     opts: ClientOpts = {}): NetStore {
+
+//   opts.reconnect = reconnectState // Gross.
+//   return storeFromStreams(reader, writer, reconnectState.hello, opts)
+// }
+
+
+const readNext = <T>(r: TinyReader<T>): Promise<T> => (
+  // This is a bit overly simple for general use, but it should work ok for what I'm using it for.
+  new Promise((resolve, reject) => {
+    r.onmessage = resolve
+    r.onClose = () => reject(new Error('Closed before handshake'))
   })
+)
+
+export default async function createStore(
+    reader: TinyReader<N.SCMsg>,
+    writer: TinyWriter<N.CSMsg>,
+    opts: ClientOpts = {}): Promise<NetStore> {
+
+  const hello = await readNext(reader) as N.HelloMsg
+  checkHello(hello, opts.restoreFrom ? opts.restoreFrom.storeInfo : undefined)
+
+  const store = storeFromStreams(reader, writer, hello, opts)
+  if (opts.syncReady) opts.syncReady(store)
+  return store
 }

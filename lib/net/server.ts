@@ -43,7 +43,7 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
   }
 
   // let closed = false
-  reader.onclose = () => {
+  reader.onClose = () => {
     for (const sub of subForRef.values()) {
       sub.return()
     }
