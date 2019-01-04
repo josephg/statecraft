@@ -13,7 +13,7 @@ const capabilities = {
 
 const onekey = (innerStore: I.Store, key: I.Key): I.Store => {
   const canMutate = innerStore.storeInfo.capabilities.mutationTypes.has('kv')
-  console.log('cm', canMutate, innerStore.storeInfo)
+  // console.log('cm', canMutate, innerStore.storeInfo)
 
   const innerQuery: I.Query = {type: 'kv', q: new Set([key])}
   if (!innerStore.storeInfo.capabilities.queryTypes.has('kv')) throw new err.UnsupportedTypeError('Inner store must support KV queries')
@@ -76,7 +76,7 @@ const onekey = (innerStore: I.Store, key: I.Key): I.Store => {
       const innerTxn = new Map([[key, txn as I.Op]])
       return await innerStore.mutate('kv', innerTxn, versions, {
         ...opts,
-        conflictKeys: opts.conflictKeys && opts.conflictKeys.includes(key) ? [''] : undefined,
+        // conflictKeys: opts.conflictKeys && opts.conflictKeys.includes(key) ? [''] : undefined,
       })
     },
 

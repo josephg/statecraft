@@ -168,6 +168,7 @@ export default function singleStore(
     mutate(type, _txn, versions, opts = {}) {
       if (type !== 'kv') return Promise.reject(new err.UnsupportedTypeError())
       if (storeOpts.readonly) return Promise.reject(new err.AccessDeniedError())
+      // console.log('kvmem mutate')
 
       const txn = _txn as I.KVTxn
 

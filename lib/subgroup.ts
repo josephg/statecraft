@@ -121,7 +121,7 @@ export default class SubGroup {
       fromV: I.Version, toV: I.Version,
       type: I.ResultType, txn: I.Txn, resultingView: any,
       meta: I.Metadata) {
-    // console.log('sg onOp')
+    // console.log('sg onOp', fromV, toV)
     for (const sub of this.allSubs) {
       // console.log('onOp version', sub.id, 'fv', fromV, 'tv', toV, 'buf', sub.opsBuffer, 'sub ev', sub.expectVersion)
       // First filter out any op types we don't know about here
@@ -153,6 +153,8 @@ export default class SubGroup {
           toVersion: {[source]:toV},
         })
       }
+
+      // console.log('sub', sub.id, 'ev', sub.expectVersion)
     }
   }
 
@@ -186,18 +188,19 @@ export default class SubGroup {
     // console.log('created sub', query, sub)
     this.allSubs.add(sub)
 
+    // console.log('Creating sub', sub.id, 'fv', opts.fromVersion, sub.expectVersion, sub.opsBuffer)
+
     if (!fromCurrent) this.catchup(query, opts).then(catchup => {
+      // debugger
       // So quite often if you're passing in a known version, this catchup
       // object will be empty. Is it still worth sending it?
       // - Upside: The client can depend on it to know when they're up to date
       // - Downside: Extra pointless work.
       // TODO: ^?
 
+      // console.log('Got catchup', catchup)
+
       const catchupVersion = catchup.toVersion
-      if (sub.expectVersion == null) sub.expectVersion = catchupVersion
-      else if (sub.expectVersion !== 'current') {
-        for (const s in catchupVersion) sub.expectVersion[s] = catchupVersion[s]
-      }
 
       if (catchup.replace) sub.q = {
         type: query.type,
@@ -218,6 +221,11 @@ export default class SubGroup {
         } else if (v != null && v > toV) {
           throw Error('Invalid operation data - version span incoherent')
         }
+      }
+      
+      if (sub.expectVersion == null) sub.expectVersion = catchupVersion
+      else if (sub.expectVersion !== 'current') {
+        for (const s in catchupVersion) sub.expectVersion[s] = catchupVersion[s]
       }
       sub.opsBuffer = null
 
