@@ -91,7 +91,7 @@ export default function createMock(): PClient {
     // This gets ops in the range [from, to].
     getEventsRaw(from, to, opts, callback) {
       process.nextTick(() => {
-        const f = clamp(from - base, 0, events.length-1)
+        const f = clamp(from - base, 0, events.length) // Allowed to fall off the end.
         const t = to === -1 ? undefined : clamp(to - base, 0, events.length-1)+1
         const evts = events.slice(f, t)
         callback && callback(null, {
