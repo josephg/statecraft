@@ -55,7 +55,7 @@ const otStore = (inner: I.Store /*, filter: (key: I.Key) => boolean */): I.Store
           // pretty rare in practice - basically the mutation type has to
           // match the type of the corresponding query. Which will basically
           // always be kv or single.
-          if (queryTypes[q.type].resultType.name !== type) throw Error('Mismatched query types unsupported')
+          if (queryTypes[q.type].resultType.name !== type) throw Error(`Mismatched query types unsupported ${queryTypes[q.type].resultType.name} != ${type}`)
 
           const catchupVersions: I.FullVersionRange = {}
           for (const s in versions) { catchupVersions[s] = {from: versions[s], to: -1}}

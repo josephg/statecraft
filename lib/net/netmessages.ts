@@ -16,15 +16,15 @@ export type SubscribeOpts = {
 
 export const enum Action {
   // Many of these are used by both the server and client.
-  Hello,
-  Err,
+  Hello = 0,
+  Err = 1,
   
-  Fetch,
-  GetOps,
-  Mutate,
-  SubCreate,
-  SubClose,
-  SubUpdate,
+  Fetch = 2,
+  GetOps = 3,
+  Mutate = 4,
+  SubCreate = 5,
+  SubClose = 6,
+  SubUpdate = 7,
 }
 
 // **************** Client -> Server messages

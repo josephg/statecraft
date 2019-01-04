@@ -44,11 +44,15 @@ type Sub = {
 
   // Stream attached to the returned subscription.
   stream: Stream<I.CatchupData>,
+
+  id: number, // For debugging.
 }
 
 const isVersion = (expectVersion: I.FullVersion | 'current' | null): expectVersion is I.FullVersion => (
   expectVersion !== 'current' && expectVersion != null
 )
+
+let nextId = 1
 
 export default class SubGroup {
   private readonly allSubs = new Set<Sub>()
@@ -117,7 +121,9 @@ export default class SubGroup {
       fromV: I.Version, toV: I.Version,
       type: I.ResultType, txn: I.Txn, resultingView: any,
       meta: I.Metadata) {
+    // console.log('sg onOp')
     for (const sub of this.allSubs) {
+      // console.log('onOp version', sub.id, 'fv', fromV, 'tv', toV, 'buf', sub.opsBuffer, 'sub ev', sub.expectVersion)
       // First filter out any op types we don't know about here
       let _txn = sub.supportedTypes
         ? resultTypes[type].filterSupportedOps(txn, resultingView, sub.supportedTypes)
@@ -154,6 +160,7 @@ export default class SubGroup {
     if (query.type === 'range' && opts.fromVersion != null) {
       throw new err.UnsupportedTypeError('Can only subscribe to full range queries with no version specified')
     }
+    // debugger
 
     const fromCurrent = opts.fromVersion === 'current'
     const qtype = queryTypes[query.type]
@@ -174,6 +181,7 @@ export default class SubGroup {
       expectVersion: opts.fromVersion || null,
       opsBuffer: fromCurrent ? null : [],
       stream,
+      id: nextId++,
     }
     // console.log('created sub', query, sub)
     this.allSubs.add(sub)

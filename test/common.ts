@@ -188,9 +188,10 @@ function splitSingleVersions(versions: I.FullVersion | I.FullVersionRange): Sing
   return {source, version: versions[source] as any}
 }
 
+const ssTxn = (k: I.Key, v: I.Val): I.KVTxn => new Map([[k, {type:'set', data:v}]])
 const setSingle = async (store: I.Store, key: I.Key, value: I.Val, versions: I.FullVersion = {}): Promise<SingleVersion> => {
   // if (typeof versions === 'function') [versions, callback] = [{}, versions]
-  const txn = new Map([[key, {type:'set', data:value}]])
+  const txn = ssTxn(key, value)
   const vs = await store.mutate('kv', txn, versions, {})
   return splitSingleVersions(vs)
 }
@@ -377,10 +378,10 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
         this.v4 = (await setSingle(this.store, 'b', 4)).version
 
         this.expectedOps = [
-          {versions:{[source]: this.v1}, txn:new Map([['a', {type:'set', data:1}]]), meta:{}},
-          {versions:{[source]: this.v2}, txn:new Map([['b', {type:'set', data:2}]]), meta:{}},
-          {versions:{[source]: this.v3}, txn:new Map([['a', {type:'set', data:3}]]), meta:{}},
-          {versions:{[source]: this.v4}, txn:new Map([['b', {type:'set', data:4}]]), meta:{}},
+          {versions:{[source]: this.v1}, txn:ssTxn('a', 1), meta:{}},
+          {versions:{[source]: this.v2}, txn:ssTxn('b', 2), meta:{}},
+          {versions:{[source]: this.v3}, txn:ssTxn('a', 3), meta:{}},
+          {versions:{[source]: this.v4}, txn:ssTxn('b', 4), meta:{}},
         ]
 
         this.allVersions = <I.FullVersionRange>{
@@ -422,6 +423,46 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
 
 
       // TODO: How does the op store respond to operations which edit multiple keys?
+    })
+
+    describe('subscribe', () => {
+      beforeEach(async function() {
+        const {source, version: v1} = await setSingle(this.store, 'a', 1)
+        // console.log('v1', v1)
+        this.source = source
+        this.v1 = v1
+      })
+
+      it('allows you to subscribe from the current version, specified explicitly', async function() {
+        const sub = (this.store as I.Store).subscribe({type: 'kv', q: new Set(['a'])}, {fromVersion: {[this.source]: this.v1}})
+
+        // The first message will be a catchup, which should be empty.
+        const {value: catchup} = await sub.next()
+        // console.log('cu', catchup, catchup.txns)
+        assert.deepStrictEqual(catchup.txns, [])
+
+        const v2 = (await setSingle(this.store, 'a', 2)).version
+        const {value: update} = await sub.next()
+        assert.deepStrictEqual(update.txns[0].txn, ssTxn('a', 2))
+        assert.deepStrictEqual(update.toVersion[this.source], v2)
+      })
+
+      it('allows you to subscribe from the previous version, specified explicitly', async function() {
+        const v2 = (await setSingle(this.store, 'a', 2)).version
+
+        const sub = (this.store as I.Store).subscribe({type: 'kv', q: new Set(['a'])}, {fromVersion: {[this.source]: this.v1}})
+
+        // The first message will be a catchup, which should bring us to v2.
+        const {value: catchup} = await sub.next()
+        assert.deepStrictEqual(catchup.txns[0].txn, ssTxn('a', 2))
+        assert.deepStrictEqual(catchup.toVersion[this.source], v2)
+
+        // And we should also be able to submit a subsequent op to get to v3.
+        const v3 = (await setSingle(this.store, 'a', 3)).version
+        const {value: update} = await sub.next()
+        assert.deepStrictEqual(update.txns[0].txn, ssTxn('a', 3))
+        assert.deepStrictEqual(update.toVersion[this.source], v3)
+      })
     })
   })
 }

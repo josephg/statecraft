@@ -28,7 +28,7 @@ const mapAsync = <T, R>(input: Map<I.Key, T>, fn: (val: T, key: I.Key) => Promis
 )
 
 const type: I.ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
-  name: 'resultmap',
+  name: 'kv',
 
   create(data) {
     return data instanceof Map ? data : new Map(data)

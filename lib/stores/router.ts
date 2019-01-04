@@ -599,71 +599,69 @@ export default function router(): Router {
       ;(async () => {
         let finished = false
 
-        // We have 2 modes we're operating in: Either opts.fromVersion is set,
-        // and we're going to subscribe to all stores from the same version.
-        // Or its not set (its null), and the underlying subscribe functions
-        // will do a whole catchup first.
+        // Either opts.fromVersion is set, and we're going to subscribe to all
+        // stores from the version specified in the options. Or its not set
+        // (its null), and the underlying subscribe functions will do a whole
+        // catchup first. Either way by convention we'll get an initial
+        // catchup op from the stores; it might just be empty. We forward that
+        // on.
 
-        if (fromVersion == null) {
-          // We need to read the first catchup operation from all child subs
-          // before doing anything else.
-          const catchupIterItem = await Promise.all(childSubs.map(({sub}) => sub.next()))
+        const catchupIterItem = await Promise.all(childSubs.map(({sub}) => sub.next()))
 
-          // Figure out the starting version for subscriptions, which is the
-          // max version of everything that was returned.
-          fromVersion = {}
+        // Figure out the starting version for subscriptions, which is the
+        // max version of everything that was returned.
+        fromVersion = {}
 
-          const catchups: I.CatchupData[] = []
-          for (let i = 0; i < catchupIterItem.length; i++) {
-            const catchup = catchupIterItem[i].value
-            if (catchup == null) {
-              // One of the child subscriptions ended before it started. Bubble up!
-              console.warn('In router child subscription ended before catchup!')
-              stream.end()
-              for (const sub of childSubs) sub.sub.return()
-              return
-            }
-
-            for (const s in catchup.toVersion) {
-              fromVersion[s] = Math.max(fromVersion[s], catchup.toVersion[s])
-            }
-            catchups.push(catchup)
+        const catchups: I.CatchupData[] = []
+        for (let i = 0; i < catchupIterItem.length; i++) {
+          const catchup = catchupIterItem[i].value
+          if (catchup == null) {
+            // One of the child subscriptions ended before it started. Bubble up!
+            console.warn('In router child subscription ended before catchup!')
+            stream.end()
+            for (const sub of childSubs) sub.sub.return()
+            return
           }
 
-          // Ok, now we need to wait for everyone to catch up to fromVersion!
-          const waiting = []
-          for (let i = 0; i < catchups.length; i++) {
-            if (isBefore(catchups[i].toVersion, fromVersion)) waiting.push((async () => {
-              // I could use for-await here, but I want a while loop and its
-              // pretty twisty.
-              while (!finished && isBefore(catchups[i].toVersion, fromVersion)) {
-                const {value, done} = await childSubs[i].sub.next()
-                if (done) {
-                  finished = true;
-                  return
-                }
-                composeCatchupsMut(qtype, catchups[i], value)
+          for (const s in catchup.toVersion) {
+            fromVersion[s] = Math.max(fromVersion[s], catchup.toVersion[s])
+          }
+          catchups.push(catchup)
+        }
 
-                for (const s in catchups[i].toVersion) {
-                  if (catchups[i].toVersion[s] > fromVersion[s]) {
-                    throw new Error('Skipped target version. Handling this is NYI')
-                  }
+        // Ok, now we need to wait for everyone to catch up to fromVersion!
+        const waiting = []
+        for (let i = 0; i < catchups.length; i++) {
+          if (isBefore(catchups[i].toVersion, fromVersion)) waiting.push((async () => {
+            // I could use for-await here, but I want a while loop and its
+            // pretty twisty.
+            while (!finished && isBefore(catchups[i].toVersion, fromVersion)) {
+              const {value, done} = await childSubs[i].sub.next()
+              if (done) {
+                finished = true;
+                return
+              }
+              composeCatchupsMut(qtype, catchups[i], value)
+
+              for (const s in catchups[i].toVersion) {
+                if (catchups[i].toVersion[s] > fromVersion[s]) {
+                  throw new Error('Skipped target version. Handling this is NYI')
                 }
               }
-            })())
-          }
-
-          await Promise.all(waiting)
-
-          // We'll send all initial catchups in one big first update. This is
-          // consistent with the behaviour of stores and will let the router
-          // self-compose cleaner.
-          //
-          // Note we're sending the catchup even if there's no data - if the
-          // input query maps to an empty query, we'll still generate an empty
-          // catchup which returns nothing.
-          stream.append(mergeCatchups(qtype, catchups, res))
+            }
+          })())
         }
+
+        await Promise.all(waiting)
+
+        // We'll send all initial catchups in one big first update. This is
+        // consistent with the behaviour of stores and will let the router
+        // self-compose cleaner.
+        //
+        // Note we're sending the catchup even if there's no data - if the
+        // input query maps to an empty query, we'll still generate an empty
+        // catchup which returns nothing.
+        stream.append(mergeCatchups(qtype, catchups, res))
 
         // ***** Ok we have our initial data and fromVersion is set now.
 
