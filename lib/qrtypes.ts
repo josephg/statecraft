@@ -129,7 +129,7 @@ const adaptTxnToRange = (txn: I.KVTxn, query: I.StaticRangeQuery): I.RangeResult
 
     for (const entry of txn) {
       const [k, v] = entry
-      if (sel.kWithin(k, q.from, q.to)) {
+      if (sel.kWithin(k, q.low, q.high)) {
         r.push(entry)
         empty = false
       }
@@ -142,8 +142,8 @@ const adaptTxnToRange = (txn: I.KVTxn, query: I.StaticRangeQuery): I.RangeResult
 const mapRangeKeys = (q: I.RangeQuery, fn: (k: I.Key, i: number) => I.Key | null): I.RangeQuery => (
   q.map((qc, i) => ({
     ...qc,
-    from: {k: fn(qc.from.k, i), ...qc.from},
-    to: {k: fn(qc.to.k, i), ...qc.to},
+    low: {k: fn(qc.low.k, i), ...qc.low},
+    high: {k: fn(qc.high.k, i), ...qc.high},
   }))
 )
 

@@ -17,8 +17,8 @@ export const findRaw = (sel: I.KeySelector | I.StaticKeySelector, keys: ArrayLik
 }
 
 export const findRangeStatic = (range: I.StaticRange, keys: ArrayLike<I.Key>) => {
-  const spos = findRaw(range.from, keys)
-  const epos = findRaw(range.to, keys)
+  const spos = findRaw(range.low, keys)
+  const epos = findRaw(range.high, keys)
   // The semantics of the way we're using .slice() below means we don't need
   // to clamp these positions at the top end.
   // return [max(spos, 0), max(epos, 0)]

@@ -118,8 +118,8 @@ async function runBothKVQueries<T>(
   .map(qtype => {
     const query = qtype === 'static range'
       ? Array.from(keys).map(k => ({
-          from: sel(k, false),
-          to: sel(k, true),
+          low: sel(k, false),
+          high: sel(k, true),
         }))
       : keys
 

@@ -201,7 +201,7 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
   })
 
   app.get('/', async (req, res) => {
-    const result = await store.fetch({type: 'static range', q: [{from: sel('raw/'), to: sel('raw/~')}]})
+    const result = await store.fetch({type: 'static range', q: [{low: sel('raw/'), high: sel('raw/~')}]})
     res.setHeader('x-sc-version', JSON.stringify(result.versions))
     res.setHeader('content-type', 'text/html')
     res.send(`<!doctype html>

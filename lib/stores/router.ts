@@ -329,7 +329,7 @@ export default function router(): Router {
     const result: [Sel, Sel, Route][] = []
     for (let i = 0; i < routes.length; i++) {
       const {fRange, fPrefix, bPrefix} = routes[i]
-      const activeRange = sel.intersect(r.from, r.to, fRange[0], fRange[1])
+      const activeRange = sel.intersect(r.low, r.high, fRange[0], fRange[1])
       if (activeRange != null) {
         result.push([
           changeSelPrefix(activeRange[0], fPrefix, bPrefix),
@@ -363,7 +363,7 @@ export default function router(): Router {
         if (byStoreIdx < 0) {
           byStoreIdx = byStore.push([store, [], []]) - 1
         }
-        const outIdx = byStore[byStoreIdx][1].push({from, to}) - 1
+        const outIdx = byStore[byStoreIdx][1].push({low:from, high:to}) - 1
         byStore[byStoreIdx][2][outIdx] = route
 
         return [byStoreIdx, outIdx] as [number, number]

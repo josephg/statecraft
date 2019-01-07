@@ -33,15 +33,15 @@ export type KeySelector = StaticKeySelector & {
 }
 
 export type StaticRange = {
-  from: StaticKeySelector,
-  to: StaticKeySelector,
+  low: StaticKeySelector,
+  high: StaticKeySelector,
   // If true, results will be returned in reverse lexicographical
   // order beginning with range.to.
   reverse?: boolean, // default false.
 }
 export type Range = {
-  from: KeySelector,
-  to: KeySelector,
+  low: KeySelector,
+  high: KeySelector,
   reverse?: boolean, // default false.
   // If non-zero, limits the number of documents returned. TODO: Add marker in
   // results somehow showing that there are more results after the limit.

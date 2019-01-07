@@ -22,12 +22,12 @@ const bakeSel = (sel: I.KeySelector, rawpos: number, resultpos: number, keys: Ar
 }
 
 const findRangeAndBake = (range: I.Range, keys: ArrayLike<I.Key>): [number, number, I.StaticRange] => {
-  const {from, to, limit, reverse} = range
+  const {low, high, limit, reverse} = range
 
   const [sposraw, eposraw] = findRangeStatic(range as I.StaticRange, keys)
 
-  let spos = sposraw + range.from.offset
-  let epos = eposraw + range.to.offset
+  let spos = sposraw + range.low.offset
+  let epos = eposraw + range.high.offset
 
   const l = limit || 0
   if (l > 0) {
@@ -39,8 +39,8 @@ const findRangeAndBake = (range: I.Range, keys: ArrayLike<I.Key>): [number, numb
   }
 
   return [spos, epos, {
-    from: bakeSel(from, sposraw, spos, keys),
-    to: bakeSel(to, eposraw, epos, keys),
+    low: bakeSel(low, sposraw, spos, keys),
+    high: bakeSel(high, eposraw, epos, keys),
     reverse,
   }]
 }
@@ -108,14 +108,14 @@ export default function singleStore(
           lowerRange = version
           break
 
-        case 'static range':
-        case 'range': {
+        case 'range':
+          bakedQuery = {type: 'static range', q: query.q.slice()}
+        case 'static range': {
           const q = query.q as I.RangeQuery
           results = [] as I.RangeResult
 
           // We're going to modify this to the baked range info.
           // Baked range info has no limit and no key offsets.
-          if (query.type === 'range') bakedQuery = {type: 'static range', q: q.slice()}
 
           // This is expensive, but ... kvmem was never designed for large
           // data sets. Could refactor kvmem to use a btree or something
