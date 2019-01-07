@@ -8,16 +8,18 @@ import fs from 'fs'
 import msgpack from 'msgpack-lite'
 import debugLib from 'debug'
 
-// Its very sad that this has a direct dependancy on prozess client.
-// It'd be way better to abstract this out, but its too early for that.
+// Its very sad that this has a direct dependancy on prozess client. It'd be
+// way better to abstract this out into some generic op stream interface.
 import {PClient} from 'prozess-client'
 import {encodeTxn, decodeTxn, decodeEvent, sendTxn} from '../prozess'
 
 import fieldOps from '../types/field'
 import {queryTypes} from '../qrtypes'
+import sel from '../sel'
 
 import * as I from '../interfaces'
 import err from '../err'
+
 
 const debug = debugLib('statecraft')
 const CONFIG_KEY = Buffer.from('\x01config')
@@ -29,6 +31,13 @@ const encodeVersion = (v: I.Version) => {
   return buf
 }
 const decodeVersion = (buf: Buffer) => buf.readUInt32LE(4)
+
+// Valid keys are in the [0x02, 0xff) range.
+const START_KEY = '\x02'
+const END_KEY = '\xff'
+
+const START_SEL = sel(START_KEY, false)
+const END_SEL = sel(END_KEY, false)
 
 // We take ownership of the PClient, so don't use it elsewhere after passing it to lmdbstore.
 //
@@ -58,11 +67,6 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
     txn.putBinary(dbi, VERSION_KEY, encodeVersion(version))
   }
 
-  const rawGet = (txn: lmdb.Txn, k: I.Key): [I.Version, any] => {
-    const bytes = txn.getBinaryUnsafe(dbi, k)
-    return bytes == null ? [0, null] : msgpack.decode(bytes)
-  }
-
   // Ok, first do catchup.
   {
     const txn = env.beginTxn()
@@ -83,7 +87,7 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
 
   // TODO: Generate these based on the opstore.
   const capabilities = {
-    queryTypes: new Set<I.QueryType>(['allkv', 'kv']),
+    queryTypes: new Set<I.QueryType>(['allkv', 'kv', 'static range', 'range']),
     mutationTypes: new Set<I.ResultType>(['kv']),
   }
 
@@ -101,6 +105,10 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
       resolve()
     })
   })
+
+
+  const decode = (bytes: Buffer | null): [I.Version, any] => bytes == null ? [0, null] : msgpack.decode(bytes)
+  const rawGet = (txn: lmdb.Txn, k: I.Key) => decode(txn.getBinaryUnsafe(dbi, k))
 
   // TODO: Probably cleaner to write this as iterators? This is simpler / more
   // understandable though.
@@ -120,7 +128,7 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
   const getAllResults = (dbTxn: lmdb.Txn, opts: I.FetchOpts, resultsOut: Map<I.Key, I.Val>) => {
     let maxVersion = 0
     const cursor = new lmdb.Cursor(dbTxn, dbi)
-    let k = cursor.goToRange('\x02')
+    let k = cursor.goToRange('\x02') // positioned right after config key
     while (k != null) {
       const bytes = cursor.getCurrentBinaryUnsafe()
       const [lastMod, doc] = msgpack.decode(bytes)
@@ -129,38 +137,119 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
 
       k = cursor.goToNext()
     }
+    cursor.close()
 
     return maxVersion
+  }
+
+  // const max = <T>(a: T, b: T) => a < b ? b : a
+
+  // const cursorAt = (dbTxn: lmdb.Txn, sel: I.StaticKeySelector | I.KeySelector): [lmdb.Cursor, string | null] => {
+    // const cursor = new lmdb.Cursor(dbTxn, dbi)
+  //   const k = max(sel.k, '\02')
+  //   let key = cursor.goToRange(k) as null | string
+  //   if (key == k && sel.isAfter) key = cursor.goToNext() as null | string
+  //   return [cursor, key]
+  // }
+
+  const setCursor = (cursor: lmdb.Cursor, sel: I.StaticKeySelector) => {
+    let {k, isAfter} = sel
+    let ck = cursor.goToRange(k < START_KEY ? START_KEY : k) as null | string
+    if (ck === k && isAfter) ck = cursor.goToNext() as null | string
+    return ck === null || ck >= END_KEY ? null : ck
+  }
+
+  const moveCursor = (cursor: lmdb.Cursor, offset: number): string | null => {
+    while (true) {
+      const key = (offset > 0 ? cursor.goToNext() : cursor.goToPrev()) as null | string
+      // if (key == null) return offset > 0 ? END_KEY : START_KEY
+      if (key == null || key < START_KEY || key >= END_KEY) return null
+      offset += offset > 0 ? -1 : 1
+
+      if (offset == 0) return key
+    }
+  }
+
+  const bakeSel = (cursor: lmdb.Cursor, sel: I.KeySelector): I.StaticKeySelector => {
+    // This is a bit ugly, and I'm sure there's a nicer way to write this.
+
+    // This function could instead be written to just return a key.
+    let {k, isAfter, offset} = sel
+
+    if (k < START_KEY) { k = START_KEY; isAfter = false }
+    else if (k >= END_KEY) { k = END_KEY; isAfter = false }
+
+    let ck = setCursor(cursor, sel)
+    // let ck = cursor.goToRange(k) as null | string
+    // if (ck == k && isAfter) ck = cursor.goToNext() as null | string
+
+    // There's no key at or after the specified point.
+    if (ck == null) {
+      if (offset >= 0) return {k, isAfter} // Also valid: END_SEL.
+      else {
+        // offset is negative, so we're counting back from the end of the database.
+        ck = cursor.goToLast() as null | string
+        if (ck == null || ck < START_KEY) return START_SEL // Db is empty.
+        offset++
+      }
+    }
+
+    if (offset && (ck = moveCursor(cursor, offset)) == null) {
+      return offset > 0 ? END_SEL : START_SEL
+    } else return {k: ck, isAfter: false}
+  }
+
+  const bakeRange = (dbTxn: lmdb.Txn, {low, high, limit, reverse}: I.Range): I.StaticRange => {
+    const cursor = new lmdb.Cursor(dbTxn, dbi)
+
+    let lowBake = bakeSel(cursor, low)
+    let highBake = bakeSel(cursor, high)
+
+    if (limit != null) {
+      const fromBake = reverse ? highBake : lowBake
+      const toBake = reverse ? lowBake : highBake
+
+      if (sel.gtSel(toBake, fromBake)) {
+        setCursor(cursor, fromBake)
+        const limitEnd = moveCursor(cursor, reverse ? -limit : limit)
+
+        if (limitEnd != null && (reverse ? limitEnd < toBake.k : limitEnd > toBake.k)) {
+          toBake.k = limitEnd
+          toBake.isAfter = false // ?? I think this is right...
+        }
+
+        if (reverse) { lowBake = toBake }
+        else { highBake = toBake }
+      }
+    }
+
+    return {low: lowBake, high: highBake, reverse}
+    
+    cursor.close()
+  }
+
+  function *rangeContentIter(dbTxn: lmdb.Txn, {low, high, reverse}: I.StaticRange) {
+    const cursor = new lmdb.Cursor(dbTxn, dbi)
+    
+    const from = reverse ? high : low
+    const to = reverse ? low : high
+
+    let key = setCursor(cursor, from)
+
+    while (key != null
+        && (reverse ? sel.kGt(key, to) : sel.kLt(key, to))) {
+      // This is awkward. Probably better to just break if we drop outside the range.
+      if (key >= START_KEY && key < END_KEY) yield [key, cursor.getCurrentBinaryUnsafe()] as [string, Buffer]
+      key = cursor.goToNext() as null | string
+    }
+
+    cursor.close()
   }
 
   const store: I.SimpleStore = {
     storeInfo: {
       sources: [source],
       capabilities,
-    },
-
-    fetch(query, opts = {}) {
-      // TODO: Allow range queries too.
-      if (!capabilities.queryTypes.has(query.type)) return Promise.reject(new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`))
-      const qops = queryTypes[query.type]
-
-      return ready.then(() => {
-        const dbTxn = env.beginTxn({readOnly: true})
-
-        const results = new Map<I.Key, I.Val>()
-        // KV txn. Query is a set of keys.
-        let maxVersion = query.type === 'kv'
-          ? getKVResults(dbTxn, query.q, opts, results)
-          : getAllResults(dbTxn, opts, results)
-
-        dbTxn.commit()
-
-        return {
-          results,
-          queryRun: query,
-          versions: {[source]: {from: maxVersion, to: version}}
-        }
-      })
     },
 
     async mutate(type, _txn, versions, opts = {}) {
@@ -200,11 +289,66 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
       return {[source]: resultVersion}
     },
 
+    fetch(query, opts = {}) {
+      // TODO: Allow range queries too.
+      // if (!capabilities.queryTypes.has(query.type)) return Promise.reject(new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`))
+      const qops = queryTypes[query.type]
+      let bakedQuery: I.Query | undefined
+
+      return ready.then(() => {
+        const dbTxn = env.beginTxn({readOnly: true})
+
+        let results: I.ResultData
+        // KV txn. Query is a set of keys.
+        let maxVersion: number
+
+        switch (query.type) {
+          case 'kv':
+            results = new Map<I.Key, I.Val>()
+            maxVersion = getKVResults(dbTxn, query.q, opts, results)
+            break
+          case 'allkv':
+            results = new Map<I.Key, I.Val>()
+            maxVersion = getAllResults(dbTxn, opts, results)
+            break
+
+          case 'range':
+            bakedQuery = {type: 'static range', q: query.q.slice()}
+          case 'static range': {
+            const q = query.q as I.RangeQuery // | I.StaticRangeQuery
+            maxVersion = 0
+            results = q.map((range) => {
+              const staticRange = (query.type === 'range') ? bakeRange(dbTxn, range) : (range as I.StaticRange)
+              const docs = [] // A map might be nicer.
+              for (const [k, bytes] of rangeContentIter(dbTxn, staticRange)) {
+                const [lastMod, doc] = decode(bytes)
+                maxVersion = Math.max(maxVersion, lastMod)
+                docs.push([k, doc])
+              }
+              return docs
+            })
+
+            break
+          }
+          default: throw new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`)
+        }
+         // = query.type === 'kv'
+         //  ? getKVResults(dbTxn, query.q, opts, results)
+         //  : getAllResults(dbTxn, opts, results)
+
+        dbTxn.commit()
+
+        return {
+          bakedQuery,
+          results,
+          versions: {[source]: {from: maxVersion, to: version}}
+        }
+      })
+    },
+
     async getOps(query, versions, opts) {
       // We don't need to wait for ready here because the query is passed straight back.
-
-      // TODO: Allow range queries too.
-      if (query.type !== 'allkv' && query.type !== 'kv') throw new err.UnsupportedTypeError()
+      if (query.type !== 'allkv' && query.type !== 'kv' && query.type !== 'static range') throw new err.UnsupportedTypeError()
       const qops = queryTypes[query.type]
 
       // We need to fetch ops in the range of (from, to].
