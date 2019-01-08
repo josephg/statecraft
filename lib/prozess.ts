@@ -2,8 +2,9 @@
 // with prozess stores.
 
 import * as I from './interfaces'
-import {Event, PClient, SubCbData} from 'prozess-client'
+import {Event, PClient, SubCbData, VersionConflictError} from 'prozess-client'
 import msgpack from 'msgpack-lite'
+import err from './err'
 
 export const encodeTxn = (txn: I.KVTxn, meta: I.Metadata) => msgpack.encode([Array.from(txn), meta])
 export const decodeTxn = (data: Buffer): [I.KVTxn, I.Metadata] => {
@@ -30,6 +31,12 @@ export function sendTxn(client: PClient,
     // targetVersion: expectedVersion === -1 ? -1 : expectedVersion + 1,
     targetVersion: expectedVersion + 1,
     conflictKeys: Array.from(txn.keys()),
+  }).catch(e => {
+    console.warn('WARNING: prozess detected conflict', e.stack)
+    return Promise.reject(e instanceof VersionConflictError
+      ? new err.WriteConflictError(e.message)
+      : e
+    )
   })
 }
 

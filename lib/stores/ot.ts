@@ -40,6 +40,7 @@ const otStore = (inner: I.Store /*, filter: (key: I.Key) => boolean */): I.Store
           const result = await inner.mutate(type, txn, versions, opts)
           return result
         } catch (e) {
+          // console.error('Caught error in mutate', e.stack)
           if (!(e instanceof err.WriteConflictError)
               || versions == null) {
             throw e

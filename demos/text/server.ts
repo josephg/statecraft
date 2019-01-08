@@ -88,7 +88,7 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
       data: `<!doctype html>
   <meta name="viewport" content="width=device-width">
   <link rel="stylesheet" type="text/css" href="/editorstyle.css">
-  <textarea id=content autofocus>${value || 'YOOOOOOO'}</textarea>
+  <textarea id=content autofocus>${value || ''}</textarea>
   <div id=connstatus></div>
   <script>
   const config = ${jsesc({

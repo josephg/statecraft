@@ -4,17 +4,10 @@
 // This code is based on ShareJS's doc type here:
 // https://github.com/josephg/ShareJS/blob/master/lib/client/doc.js
 
-import * as I from '../../lib/interfaces'
-import fieldOps from '../../lib/types/field'
-import {typeOrThrow} from '../../lib/typeregistry'
-
-const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-const genIdStem = () => {
-  let result = ''
-  for (let i = 0; i < 8; i++) result += alphabet[(Math.random() * alphabet.length)|0]
-  return result + '_'
-}
-
+import * as I from './interfaces'
+import fieldOps from './types/field'
+import {typeOrThrow} from './typeregistry'
+import genSource from './gensource'
 
 const xf = <Op>(type: I.AnyOTType, client: Op | null, server: I.SingleOp | null): [Op | null, I.SingleOp | null] => {
   if (client == null || server == null) return [client, server]
@@ -88,7 +81,7 @@ const otDoc = async <Op>(
   let inflightTxn: Op | null = null
   let inflightUid: string | null = null
 
-  const idStem = genIdStem()
+  const idStem = genSource() + '_'
   let nextId = 0
 
   let readyResolve: null | (() => void) = null
@@ -101,6 +94,8 @@ const otDoc = async <Op>(
     if (inflightTxn) [inflightTxn, serverOp] = xf(type, inflightTxn, serverOp)
     if (pendingTxn) [pendingTxn, serverOp] = xf(type, pendingTxn, serverOp)
     version = newVersion
+
+    // TODO: Handle rollback, if the server nuked our edit.
 
     if (serverOp != null) {
       doc = fieldOps.apply(doc, serverOp)
@@ -123,6 +118,7 @@ const otDoc = async <Op>(
     // inflightTxn = null
 
     // flush()
+    console.log('flush -> pending', !!pendingTxn, 'inflight', !!inflightTxn)
   }
 
   ;(async () => {
@@ -164,6 +160,8 @@ const otDoc = async <Op>(
       if (update.toVersion[source]) version = update.toVersion[source]
 
       if (tryFlush) flush()
+
+      console.log('on update pending', !!pendingTxn, 'inflight', !!inflightTxn)
     }
   })()
 

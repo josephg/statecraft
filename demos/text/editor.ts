@@ -9,7 +9,7 @@ import {connect} from '../../lib/stores/wsclient'
 import createStore from '../../lib/stores/reconnectingclient'
 import fieldOps from '../../lib/types/field'
 import {type as texttype, TextOp} from 'ot-text-unicode'
-import otDoc from './otdoc'
+import otDoc from '../../lib/otdoc'
 import {register} from '../../lib/typeregistry'
 
 register(texttype)
