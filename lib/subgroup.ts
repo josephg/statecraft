@@ -59,6 +59,16 @@ export default class SubGroup {
   private readonly store: I.SimpleStore
   private readonly getOps: I.GetOpsFn | null
 
+  constructor(store: I.SimpleStore, getOps?: I.GetOpsFn) {
+    this.store = store
+    this.getOps = getOps ? getOps : store.getOps ? store.getOps.bind(store) : null
+
+    // Need at least one of these.
+    if (this.getOps == null && store.catchup == null) {
+      throw Error('Cannot attach subgroup to store without getOps or catchup function')
+    }
+  }
+  
   async catchup(query: I.Query, opts: I.SubscribeOpts): Promise<I.CatchupData> {
     // TODO: This should look at the aggregation options to decide if a fetch
     // would be the right thing to do.
@@ -104,16 +114,6 @@ export default class SubGroup {
       const {ops: txns, versions: opVersions} = await getOps(query, versions, {bestEffort: opts.bestEffort})
       const toVersion = splitFullVersions(opVersions)[1]
       return {txns, toVersion}
-    }
-  }
-
-  constructor(store: I.SimpleStore, getOps?: I.GetOpsFn) {
-    this.store = store
-    this.getOps = getOps ? getOps : store.getOps ? store.getOps.bind(store) : null
-
-    // Need at least one of these.
-    if (this.getOps == null && store.catchup == null) {
-      throw Error('Cannot attach subgroup to store without getOps or catchup function')
     }
   }
 

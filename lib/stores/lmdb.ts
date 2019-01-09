@@ -10,8 +10,8 @@ import debugLib from 'debug'
 
 // Its very sad that this has a direct dependancy on prozess client. It'd be
 // way better to abstract this out into some generic op stream interface.
-import {PClient} from 'prozess-client'
-import {encodeTxn, decodeTxn, decodeEvent, sendTxn} from '../prozess'
+// import {PClient} from 'prozess-client'
+// import {encodeTxn, decodeTxn, decodeEvent, sendTxn} from '../prozess'
 
 import fieldOps from '../types/field'
 import {queryTypes} from '../qrtypes'
@@ -43,11 +43,16 @@ const END_SEL = sel(END_KEY, false)
 //
 // ... At some point it'll make sense for the caller to get more detailed notifications about catchup state.
 // For now the promise won't be called until catchup is complete.
-const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> => {
+const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> => {
   const env = new lmdb.Env()
 
-  assert(client.source, 'Cannot attach lmdb store until source is known')
-  const source: I.Source = client.source!
+  // console.log('inner', inner)
+  if (inner.storeInfo.sources.length !== 1) {
+    // It would be trivial though.
+    throw new Error('LMDB store with multiple sources not implemented')
+  }
+
+  const source: I.Source = inner.storeInfo.sources[0]
 
   // Check that the directory exists.
   try { fs.mkdirSync(location) }
@@ -91,21 +96,7 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
     mutationTypes: new Set<I.ResultType>(['kv']),
   }
 
-  const ready = new Promise((resolve, reject) => {
-    client.subscribe(version + 1, {}, (err, results) => {
-      // console.log('catchup', results)
-      if (err) {
-        // Again, not sure what to do here. Eat it and continue.
-        console.error('Error subscribing', err)
-        return reject(err)
-      }
-
-      // The events will all be emitted via the onevent callback. We'll do catchup there.
-      console.log(`Catchup complete - ate ${results!.v_end - results!.v_start} events`)
-      resolve()
-    })
-  })
-
+  const ready = inner.start!({[source]: version})
 
   const decode = (bytes: Buffer | null): [I.Version, any] => bytes == null ? [0, null] : msgpack.decode(bytes)
   const rawGet = (txn: lmdb.Txn, k: I.Key) => decode(txn.getBinaryUnsafe(dbi, k))
@@ -141,16 +132,6 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
 
     return maxVersion
   }
-
-  // const max = <T>(a: T, b: T) => a < b ? b : a
-
-  // const cursorAt = (dbTxn: lmdb.Txn, sel: I.StaticKeySelector | I.KeySelector): [lmdb.Cursor, string | null] => {
-    // const cursor = new lmdb.Cursor(dbTxn, dbi)
-  //   const k = max(sel.k, '\02')
-  //   let key = cursor.goToRange(k) as null | string
-  //   if (key == k && sel.isAfter) key = cursor.goToNext() as null | string
-  //   return [cursor, key]
-  // }
 
   const setCursor = (cursor: lmdb.Cursor, sel: I.StaticKeySelector) => {
     let {k, isAfter} = sel
@@ -283,10 +264,13 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
       dbTxn.abort()
 
       // console.log('sendTxn', txn, expectedVersion)
-      const resultVersion = await sendTxn(client, txn, opts.meta || {}, version, {})
+      // const resultVersion = await sendTxn(client, txn, opts.meta || {}, version, {})
+      
+      // We know its valid at the current version, so we're ok to pass that here.
+      const result = await inner.mutate('kv', txn, {[source]: version}, opts)
 
-      debug('mutate cb', resultVersion)
-      return {[source]: resultVersion}
+      debug('mutate cb', result.resultVersion)
+      return result
     },
 
     fetch(query, opts = {}) {
@@ -336,7 +320,7 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
          //  ? getKVResults(dbTxn, query.q, opts, results)
          //  : getAllResults(dbTxn, opts, results)
 
-        dbTxn.commit()
+        dbTxn.abort()
 
         return {
           bakedQuery,
@@ -346,103 +330,54 @@ const lmdbStore = (client: PClient, location: string): Promise<I.SimpleStore> =>
       })
     },
 
-    async getOps(query, versions, opts) {
-      // We don't need to wait for ready here because the query is passed straight back.
-      if (query.type !== 'allkv' && query.type !== 'kv' && query.type !== 'static range') throw new err.UnsupportedTypeError()
-      const qops = queryTypes[query.type]
-
-      // We need to fetch ops in the range of (from, to].
-      const vs = versions[source] || versions._other
-      if (!vs || vs.from === vs.to) return {ops: [], versions: {}}
-
-      const {from, to} = vs
-
-      const data = await client.getEvents(from + 1, to, {})
-      // console.log('client.getEvents', from+1, to, data)
-
-      // Filter events by query.
-      let ops = data!.events.map(event => decodeEvent(event, source))
-      .filter((data) => {
-        const txn = qops.adaptTxn(data.txn, query.q)
-        if (txn == null) return false
-        else {
-          data.txn = txn
-          return true
-        }
-      })
-
-      return {
-        ops,
-        versions: {[source]: {from:data!.v_start - 1, to: data!.v_end - 1}}
-      }
-    },
+    getOps: inner.getOps ? inner.getOps.bind(inner) : undefined,
 
     close() {
       dbi.close()
       env.close()
 
       // We take ownership, so this makes sense.
-      client.close()
+      inner.close()
       // And close the lmdb database.
     },
   }
 
+  // This is a hack. I really just want to make one transaction for
+  // efficiency, but onTxn will be called for each transaction in the block.
+  // So we'll make a txn and throw it away at the end of the event loop...
+  let evtTxn: lmdb.Txn | null = null
+  let nextVersion = -1
 
-  client.onevents = (events, nextVersion) => {
-    // debug('Got events', events, nextVersion)
+  inner.onTxn = (source, fromV, toV, type, txn, _view, meta) => {
+    if (evtTxn == null) {
+      evtTxn = env.beginTxn()
+      process.nextTick(() => {
+        setVersion(evtTxn!, nextVersion)
+        evtTxn!.commit()
+        evtTxn = null
+      })
+    }
 
-    const dbTxn = env.beginTxn()
+    const txn_ = txn as I.KVTxn
+    const view = new Map<I.Key, I.Val>()
+    for (const [k, op] of txn_) {
+      // const oldData = fieldOps.create(rawGet(dbTxn, k)[0], op)
+      const oldData = rawGet(evtTxn, k)[1]
 
-    let newVersion = version
+      const newData = fieldOps.apply(oldData, op)
+      // console.log('updated key', k, 'from', oldData, 'to', newData)
 
-    const txnsOut: {
-      txn: I.KVTxn,
-      from: I.Version,
-      to: I.Version,
-      view: Map<I.Key, I.Val>,
-      meta: I.Metadata,
-    }[] = []
+      // I'm leaving an empty entry in the lmdb database even if newData is
+      // null so fetch will correctly report last modified versions.
+      // This can be stripped with a periodically updating baseVersion if
+      // thats useful.
+      evtTxn.putBinary(dbi, k, msgpack.encode([toV, newData]))
 
-    events.forEach(event => {
-      // This is kind of a big assertion.
-      assert(newVersion === event.version - 1,
-        'Error: Version consistency violation. This needs debugging'
-      )
+      view.set(k, newData)
+    }
+    nextVersion = toV
 
-      const view = new Map<I.Key, I.Val>()
-
-      // TODO: Batches.
-      const [txn, meta] = decodeTxn(event.data)
-      // console.log('decodeTxn', txn, meta)
-      const nextVersion = event.version + event.batch_size - 1
-
-      for (const [k, op] of txn) {
-        // const oldData = fieldOps.create(rawGet(dbTxn, k)[0], op)
-        const oldData = rawGet(dbTxn, k)[1]
-
-        const newData = fieldOps.apply(oldData, op)
-        // console.log('updated key', k, 'from', oldData, 'to', newData)
-
-        // I'm leaving an empty entry in the lmdb database even if newData is
-        // null so fetch will correctly report last modified versions.
-        // This can be stripped with a periodically updating baseVersion if
-        // thats useful.
-        dbTxn.putBinary(dbi, k, msgpack.encode([nextVersion, newData]))
-
-        view.set(k, newData)
-      }
-
-      txnsOut.push({txn, from: version, to: nextVersion, view, meta})
-      newVersion = nextVersion
-    })
-
-    // console.log('new version', newVersion)
-    setVersion(dbTxn, newVersion)
-    dbTxn.commit()
-
-    if (store.onTxn) txnsOut.forEach(({txn, from, to, view, meta}) =>
-      store.onTxn!(source, from, to, 'kv', txn, view, meta)
-    )
+    if (store.onTxn) store.onTxn(source, fromV, toV, type, txn, view, meta)
   }
 
   return ready.then(() => store)

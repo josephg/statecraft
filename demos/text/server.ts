@@ -14,6 +14,7 @@ import kvStore from '../../lib/stores/kvmem'
 
 import augment from '../../lib/augment'
 import otStore from '../../lib/stores/ot'
+import prozessOps from '../../lib/stores/prozessops'
 import mapStore from '../../lib/stores/map'
 import router, {ALL} from '../../lib/stores/router'
 import onekey from '../../lib/stores/onekey'
@@ -54,7 +55,7 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
   })
 
   const LMDBPATH = process.env.LMDBPATH || 'textdemo_db'
-  const backend = await lmdbStore(pclient, LMDBPATH)
+  const backend = await lmdbStore(prozessOps(pclient), LMDBPATH)
 
   // const backend = lmdbStore(
   const rootStore = otStore(augment(backend))

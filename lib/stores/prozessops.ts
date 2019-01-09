@@ -3,90 +3,116 @@
 // The store type is raw. The 'document' is empty, and you can't
 // query anything.
 
-import {reconnecter, Event, SubCbData} from 'prozess-client'
+import {PClient, Event, SubCbData} from 'prozess-client'
 import assert from 'assert'
 
 import * as I from '../interfaces'
 import err from '../err'
 import {encodeTxn, decodeTxn, decodeEvent, sendTxn} from '../prozess'
+import {queryTypes} from '../qrtypes'
 
 // const codec = msgpack.createCodec({usemap: true})
 
 const doNothing = () => {}
 
 const capabilities = {
-  queryTypes: new Set<I.QueryType>(['allkv']),
+  // ... Except you can't fetch. :/
+  queryTypes: new Set<I.QueryType>(['allkv', 'kv', 'static range', 'range']),
   mutationTypes: new Set<I.ResultType>(['kv']),
 }
 
 // TODO: pick a better port.
-const prozessStore = (port: number = 9999, hostname: string = 'localhost'): Promise<I.SimpleStore> => {
-  return new Promise((resolve, reject) => {
-    const conn = reconnecter(port, hostname, (error, _source) => {
-      if (error) return reject(error)
-      const source = _source!
+const prozessStore = (conn: PClient): I.OpStore => {
+  const source = conn.source!
 
-      const store: I.SimpleStore = {
-        storeInfo: {
-          sources: [source],
-          capabilities,
-        },
+  const store: I.OpStore = {
+    storeInfo: {
+      sources: [source],
+      capabilities,
+    },
 
-        fetch(query, opts) {
-          return Promise.reject(new err.UnsupportedTypeError('Unsupported query type'))
-        },
+    async mutate(type, _txn, versions, opts = {}) {
+      if (type !== 'kv') throw new err.UnsupportedTypeError()
+      const txn = _txn as I.KVTxn
 
-        async mutate(type, _txn, versions, opts = {}) {
-          if (type !== 'kv') throw new err.UnsupportedTypeError()
-          const txn = _txn as I.KVTxn
+      const version = await sendTxn(conn, txn, opts.meta || {}, (versions && versions[source]) || -1, {})
+      return {[source]: version!}
+    },
 
-          const version = await sendTxn(conn, txn, opts.meta || {}, (versions && versions[source]) || -1, {})
-          return {[source]: version!}
-        },
+    async getOps(query, versions, opts) {
+      // We don't need to wait for ready here because the query is passed straight back.
+      if (query.type !== 'allkv' && query.type !== 'kv' && query.type !== 'static range') throw new err.UnsupportedTypeError()
+      const qops = queryTypes[query.type]
 
-        async getOps(query, versions, opts) {
-          if (query.type !== 'allkv') throw new err.UnsupportedTypeError()
+      // We need to fetch ops in the range of (from, to].
+      const vs = versions[source] || versions._other
+      if (!vs || vs.from === vs.to) return {ops: [], versions: {}}
 
-          // We need to fetch ops in the range of (from, to].
-          const vs = versions[source] || versions._other
-          if (!vs) return {ops: [], versions: {}}
+      const {from, to} = vs
 
-          const {from, to} = vs
+      const data = await conn.getEvents(from + 1, to, {})
+      // console.log('client.getEvents', from+1, to, data)
 
-          const data = await conn.getEvents(from + 1, to, {})
-
-          const ops = data!.events.map(event => decodeEvent(event, source))
-
-          return {
-            ops,
-            versions: {[source]: {from: data!.v_start - 1, to: data!.v_end}}
-          }
-        },
-
-        close() {
-          conn.close()
-        },
-
-      }
-
-      conn.subscribe(-1, {}, (err, subdata) => {
-        if (err) {
-          // I'm not sure what to do here. It'll depend on the error
-          return console.error('Warning: Ignoring subscribe error', err)
-        }
-
-        if (store.onTxn) {
-          subdata!.events.forEach(event => {
-            // TODO: Pack & unpack batches.
-            const [txn, meta] = decodeTxn(event.data)
-            store.onTxn!(source, event.version, event.version + 1, 'kv', txn, null, meta)
-          })
+      // Filter events by query.
+      let ops = data!.events.map(event => decodeEvent(event, source))
+      .filter((data) => {
+        const txn = qops.adaptTxn(data.txn, query.q)
+        if (txn == null) return false
+        else {
+          data.txn = txn
+          return true
         }
       })
 
-      resolve(store)
-    })
-  })
+      return {
+        ops,
+        versions: {[source]: {from:data!.v_start - 1, to: data!.v_end - 1}}
+      }
+    },
+
+    close() {
+      conn.close()
+    },
+
+    start(v) {
+      let expectVersion = -1
+      conn.onevents = (events, nextVersion) => {
+        if (store.onTxn) {
+          events.forEach(event => {
+            if (expectVersion !== -1) assert.strictEqual(
+              expectVersion, event.version - 1,
+              'Error: Prozess version consistency violation. This needs debugging'
+            )
+
+            // TODO: Pack & unpack batches.
+            const [txn, meta] = decodeTxn(event.data)
+
+            const nextVersion = event.version - 1 + event.batch_size
+            store.onTxn!(source, event.version - 1, nextVersion, 'kv', txn, null, meta)
+
+            expectVersion = nextVersion
+          })
+        }
+      }
+
+      return new Promise((resolve, reject) => {
+        const vs = v == null ? null : v[source]
+        // Should this be vs or vs+1 or something?
+        conn.subscribe(vs == null ? -1 : vs + 1, {}, (err, subdata) => {
+          if (err) {
+            // I'm not sure what to do here. It'll depend on the error
+            console.error('Error subscribing to prozess store')
+            return reject(err)
+          }
+          
+          // The events will all be emitted via the onevent callback. We'll do catchup there.
+          resolve({[source]: subdata!.v_end + 1}) // +1 ??? 
+        })
+      })
+    }
+  }
+
+  return store
 }
 
 export default prozessStore

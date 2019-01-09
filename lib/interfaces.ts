@@ -360,14 +360,13 @@ export type TxnListener = (
   source: Source,
   fromV: Version, toV: Version,
   type: ResultType, txn: Txn, resultingView: any,
-  meta: Metadata) => void
+  meta: Metadata
+) => void
 
 
-export interface SimpleStore {
+
+export interface OpStore {
   readonly storeInfo: StoreInfo, // TODO: Should this be a promise?
-
-  // (q: Query, opts?: FetchOpts) => Promise<FetchResults>
-  readonly fetch: FetchFn,
 
   // Modify the db. txn is a map from key => {type, data}. versions is just source => v.
   // TODO: Consider adding a txnType argument here as well.
@@ -399,6 +398,14 @@ export interface SimpleStore {
   // 
   // ... Eh. 🤷‍♀️
   onTxn?: TxnListener,
+  // Start calling onTxn from the specified version (or latest if v not passed).
+  // Returns a promise to the current version when we're ready.
+  start?(v?: FullVersion): Promise<FullVersion>
+}
+
+export interface SimpleStore extends OpStore {
+  // (q: Query, opts?: FetchOpts) => Promise<FetchResults>
+  readonly fetch: FetchFn,
 }
 
 export interface Store extends SimpleStore {
