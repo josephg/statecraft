@@ -126,7 +126,7 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
         store.mutate(mtype, type.opFromJSON(txn), v, opts).then(v => {
           write({a: N.Action.Mutate, ref, v:v!})
         }, err => {
-          console.log('... in mutate', err.stack)
+          // console.log('... in mutate', err.stack)
           writeErr(ref, err)
         })
         break

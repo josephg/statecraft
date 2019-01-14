@@ -29,6 +29,11 @@ export const wrapReader = <Msg>(r: Readable) => {
     reader.isClosed = true
     if (reader.onClose) reader.onClose()
   })
+  r.on('error', err => {
+    // I think this'll hit end right afterwards, so we don't have to do
+    // anything here. I think.
+    console.warn('socket error', err)
+  })
   
   return reader
 }

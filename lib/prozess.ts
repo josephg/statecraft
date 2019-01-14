@@ -32,7 +32,7 @@ export function sendTxn(client: PClient,
     targetVersion: expectedVersion + 1,
     conflictKeys: Array.from(txn.keys()),
   }).catch(e => {
-    console.warn('WARNING: prozess detected conflict', e.stack)
+    // console.warn('WARNING: prozess detected conflict', e.stack)
     return Promise.reject(e instanceof VersionConflictError
       ? new err.WriteConflictError(e.message)
       : e

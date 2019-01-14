@@ -10,7 +10,7 @@ import err from '../err'
 import assert from 'assert'
 import streamToIter from '../streamToIter'
 import {queryTypes, resultTypes} from '../qrtypes'
-
+import {vIntersectMut} from '../version'
 import sel from '../sel'
 
 
@@ -45,19 +45,6 @@ type Route = {
 
 export const prefixToRange = (prefix: string): [Sel, Sel] => [sel(prefix), sel(prefix+'~')]
 export const ALL = prefixToRange('')
-
-const intersectVersionsMut = (dest: I.FullVersionRange, src: I.FullVersionRange) => {
-  for (let source in src) {
-    const {from: fromSrc, to: toSrc} = src[source]
-    if (dest[source] == null) dest[source] = {from: fromSrc, to: toSrc}
-    else {
-      const {from:fromDest, to:toDest} = dest[source]
-      if (fromSrc > toDest || toSrc < fromDest) return null
-      dest[source] = {from: Math.max(fromDest, fromSrc), to: Math.min(toDest, toSrc)}
-    }
-  }
-  return dest
-}
 
 const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string) => {
   assert(k.startsWith(fromPrefix))
@@ -455,7 +442,7 @@ export default function router(): Router {
       const innerResults = await Promise.all(byStore.map(async ([store, q, routes]) => {
         const r = await store.fetch({type: qtype, q} as I.Query, opts)
 
-        const newVersions = intersectVersionsMut(versions, r.versions)
+        const newVersions = vIntersectMut(versions, r.versions)
         if (newVersions == null) throw Error('Incompatible versions in results not yet implemented')
         versions = newVersions
 
@@ -488,7 +475,7 @@ export default function router(): Router {
         const {ops, versions} = await store.getOps({type:query.type, q} as I.Query, queryVersions, opts)
         
         // We'll just map the keys back here.
-        const newValidRange = intersectVersionsMut(validRange, versions)
+        const newValidRange = vIntersectMut(validRange, versions)
         // I think this should never happen in real life. It probably
         // indicates a bug in the backend stores.
         if (newValidRange == null) throw Error('Conflicting valid version ranges in getOps')
