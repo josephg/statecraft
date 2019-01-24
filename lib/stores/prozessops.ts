@@ -10,6 +10,7 @@ import * as I from '../interfaces'
 import err from '../err'
 import {encodeTxn, decodeTxn, decodeEvent, sendTxn} from '../prozess'
 import {queryTypes} from '../qrtypes'
+import {V64, v64ToNum} from '../version'
 
 // const codec = msgpack.createCodec({usemap: true})
 
@@ -35,7 +36,7 @@ const prozessStore = (conn: PClient): I.OpStore => {
       if (type !== 'kv') throw new err.UnsupportedTypeError()
       const txn = _txn as I.KVTxn
 
-      const version = await sendTxn(conn, txn, opts.meta || {}, (versions && versions[source]) || -1, {})
+      const version = await sendTxn(conn, txn, opts.meta || {}, (versions && versions[source]) || new Uint8Array(), {})
       return {[source]: version!}
     },
 
@@ -50,7 +51,7 @@ const prozessStore = (conn: PClient): I.OpStore => {
 
       const {from, to} = vs
 
-      const data = await conn.getEvents(from + 1, to, {})
+      const data = await conn.getEvents(from.length ? v64ToNum(from) + 1 : 0, to.length ? v64ToNum(to) : -1, {})
       // console.log('client.getEvents', from+1, to, data)
 
       // Filter events by query.
@@ -66,7 +67,7 @@ const prozessStore = (conn: PClient): I.OpStore => {
 
       return {
         ops,
-        versions: {[source]: {from:data!.v_start - 1, to: data!.v_end - 1}}
+        versions: {[source]: {from:V64(data!.v_start - 1), to: V64(data!.v_end - 1)}}
       }
     },
 
@@ -88,7 +89,7 @@ const prozessStore = (conn: PClient): I.OpStore => {
             const [txn, meta] = decodeTxn(event.data)
 
             const nextVersion = event.version - 1 + event.batch_size
-            store.onTxn!(source, event.version - 1, nextVersion, 'kv', txn, null, meta)
+            store.onTxn!(source, V64(event.version - 1), V64(nextVersion), 'kv', txn, null, meta)
 
             expectVersion = nextVersion
           })
@@ -98,7 +99,7 @@ const prozessStore = (conn: PClient): I.OpStore => {
       return new Promise((resolve, reject) => {
         const vs = v == null ? null : v[source]
         // Should this be vs or vs+1 or something?
-        conn.subscribe(vs == null ? -1 : vs + 1, {}, (err, subdata) => {
+        conn.subscribe(vs == null ? -1 : v64ToNum(vs) + 1, {}, (err, subdata) => {
           if (err) {
             // I'm not sure what to do here. It'll depend on the error
             console.error('Error subscribing to prozess store')
@@ -106,7 +107,7 @@ const prozessStore = (conn: PClient): I.OpStore => {
           }
           
           // The events will all be emitted via the onevent callback. We'll do catchup there.
-          resolve({[source]: subdata!.v_end + 1}) // +1 ??? 
+          resolve({[source]: V64(subdata!.v_end + 1)}) // +1 ??? 
         })
       })
     }

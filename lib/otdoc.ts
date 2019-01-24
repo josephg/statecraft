@@ -63,7 +63,7 @@ const otDoc = async <Op>(
   // TODO: knownDocs
   const sub = store.subscribe({type: 'single', q: true}, {
     fromVersion: opts.initial
-      ? (typeof opts.initial.version === 'number'
+      ? (opts.initial.version instanceof Uint8Array
         ? {[source]: opts.initial.version}
         : opts.initial.version
       ) : undefined,
@@ -73,8 +73,8 @@ const otDoc = async <Op>(
   let doc: any = initial ? initial.val : null
 
   let version = initial
-    ? (typeof initial.version === 'object' ? initial.version[source] : initial.version)
-    : -1
+    ? (initial.version instanceof Uint8Array ? initial.version : initial.version[source])
+    : new Uint8Array()
 
   // Written assuming the type has a compose() function.
   let pendingTxn: Op | null = null
@@ -88,7 +88,7 @@ const otDoc = async <Op>(
   const ready = opts.initial ? Promise.resolve(opts.initial.val) : new Promise(resolve => readyResolve = resolve)
 
 
-  const processTxn = (serverOp: I.SingleOp | null, newVersion: number) => {
+  const processTxn = (serverOp: I.SingleOp | null, newVersion: I.Version) => {
     // if (false /* TODO */) { return } // If its mine, we're done.
 
     if (inflightTxn) [inflightTxn, serverOp] = xf(type, inflightTxn, serverOp)

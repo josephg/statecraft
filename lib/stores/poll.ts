@@ -5,7 +5,7 @@ import readonly from './readonly'
 
 export interface PollOpts {
   periodMS?: number,
-  initialVersion?: I.Version,
+  initialVersion?: number,
   source?: I.Source,
 }
 

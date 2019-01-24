@@ -16,6 +16,7 @@ import debugLib from 'debug'
 import fieldOps from '../types/field'
 import {queryTypes} from '../qrtypes'
 import sel from '../sel'
+import {vMax} from '../version'
 
 import * as I from '../interfaces'
 import err from '../err'
@@ -24,13 +25,13 @@ import err from '../err'
 const debug = debugLib('statecraft')
 const CONFIG_KEY = Buffer.from('\x01config')
 const VERSION_KEY = Buffer.from('\x01v')
-const encodeVersion = (v: I.Version) => {
-  const buf = Buffer.allocUnsafe(8)
-  buf.writeUInt32LE(0, 0)
-  buf.writeUInt32LE(v, 4)
-  return buf
-}
-const decodeVersion = (buf: Buffer) => buf.readUInt32LE(4)
+// const encodeVersion = (v: number) => {
+//   const buf = Buffer.allocUnsafe(8)
+//   buf.writeUInt32LE(0, 0)
+//   buf.writeUInt32LE(v, 4)
+//   return buf
+// }
+// const decodeVersion = (buf: Buffer) => buf.readUInt32LE(4)
 
 // Valid keys are in the [0x02, 0xff) range.
 const START_KEY = '\x02'
@@ -38,6 +39,7 @@ const END_KEY = '\xff'
 
 const START_SEL = sel(START_KEY, false)
 const END_SEL = sel(END_KEY, false)
+const V_ZERO = new Uint8Array(8)
 
 // We take ownership of the PClient, so don't use it elsewhere after passing it to lmdbstore.
 //
@@ -65,11 +67,11 @@ const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> =
 
   // Note: I'm using 'native' Prozess version numbers, so the local store
   // starts at version 0 and event 1 moves us to version 1.
-  let version: I.Version = 0
+  let version: I.Version = new Uint8Array()
 
   const setVersion = (txn: lmdb.Txn, v: I.Version) => {
     version = v
-    txn.putBinary(dbi, VERSION_KEY, encodeVersion(version))
+    txn.putBinary(dbi, VERSION_KEY, Buffer.from(version))
   }
 
   // Ok, first do catchup.
@@ -77,14 +79,14 @@ const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> =
     const txn = env.beginTxn()
     const configBytes = txn.getBinary(dbi, CONFIG_KEY)
     if (configBytes == null) {
-      console.log('Database was created - no config!')
+      // console.log('Database was created - no config!')
       txn.putBinary(dbi, CONFIG_KEY, msgpack.encode({sc_ver: 1, source}))
-      setVersion(txn, 0)
+      setVersion(txn, new Uint8Array(8))
     } else {
       const {sc_ver, source:dbSource} = msgpack.decode(configBytes)
       assert(sc_ver === 1, 'LDMB database was set up using invalid or old statecraft version.')
       assert(dbSource === source, `LDMB database at ${location} is invalid. Delete and restart`)
-      version = decodeVersion(txn.getBinary(dbi, VERSION_KEY))
+      version = new Uint8Array(txn.getBinary(dbi, VERSION_KEY))
     }
     txn.commit()
   }
@@ -98,33 +100,40 @@ const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> =
 
   const ready = inner.start!({[source]: version})
 
-  const decode = (bytes: Buffer | null): [I.Version, any] => bytes == null ? [0, null] : msgpack.decode(bytes)
+  const decode = (bytes: Buffer | null): [Uint8Array, any] => {
+    if (bytes == null) return [V_ZERO, null]
+    else {
+      const [vBuf, data] = msgpack.decode(bytes)
+      return [new Uint8Array(vBuf), data]
+    }
+  }
+
   const rawGet = (txn: lmdb.Txn, k: I.Key) => decode(txn.getBinaryUnsafe(dbi, k))
 
   // TODO: Probably cleaner to write this as iterators? This is simpler / more
   // understandable though.
   const getKVResults = (dbTxn: lmdb.Txn, query: Iterable<I.Key>, opts: I.FetchOpts, resultsOut: Map<I.Key, I.Val>) => {
-    let maxVersion = 0
+    let maxVersion = V_ZERO
 
     for (let k of query) {
       const [lastMod, doc] = rawGet(dbTxn, k)
       if (doc != null) resultsOut.set(k, opts.noDocs ? 1 : doc)
       // Note we update maxVersion even if the document is null.
-      maxVersion = Math.max(maxVersion, lastMod)
+      maxVersion = vMax(maxVersion, lastMod)
     }
 
     return maxVersion
   }
 
   const getAllResults = (dbTxn: lmdb.Txn, opts: I.FetchOpts, resultsOut: Map<I.Key, I.Val>) => {
-    let maxVersion = 0
+    let maxVersion = V_ZERO
     const cursor = new lmdb.Cursor(dbTxn, dbi)
     let k = cursor.goToRange('\x02') // positioned right after config key
     while (k != null) {
       const bytes = cursor.getCurrentBinaryUnsafe()
       const [lastMod, doc] = msgpack.decode(bytes)
       if (doc != null) resultsOut.set(k as string, opts.noDocs ? 1 : doc)
-      maxVersion = Math.max(maxVersion, lastMod)
+      maxVersion = vMax(maxVersion, lastMod)
 
       k = cursor.goToNext()
     }
@@ -247,7 +256,7 @@ const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> =
       const dbTxn = env.beginTxn({readOnly: true})
       for (const [k, op] of txn) {
         const [v, data] = rawGet(dbTxn, k)
-        if (expectedVersion !== -1 && v > expectedVersion) {
+        if (expectedVersion.length && v > expectedVersion) {
           dbTxn.abort()
           return Promise.reject(new err.WriteConflictError('Write conflict in key ' + k))
         }
@@ -274,8 +283,7 @@ const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> =
     },
 
     fetch(query, opts = {}) {
-      // TODO: Allow range queries too.
-      // if (!capabilities.queryTypes.has(query.type)) return Promise.reject(new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`))
+      if (!capabilities.queryTypes.has(query.type)) return Promise.reject(new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`))
       const qops = queryTypes[query.type]
       let bakedQuery: I.Query | undefined
 
@@ -284,7 +292,7 @@ const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> =
 
         let results: I.ResultData
         // KV txn. Query is a set of keys.
-        let maxVersion: number
+        let maxVersion: I.Version
 
         switch (query.type) {
           case 'kv':
@@ -300,13 +308,13 @@ const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> =
             bakedQuery = {type: 'static range', q: query.q.slice()}
           case 'static range': {
             const q = query.q as I.RangeQuery // | I.StaticRangeQuery
-            maxVersion = 0
+            maxVersion = V_ZERO
             results = q.map((range) => {
               const staticRange = (query.type === 'range') ? bakeRange(dbTxn, range) : (range as I.StaticRange)
               const docs = [] // A map might be nicer.
               for (const [k, bytes] of rangeContentIter(dbTxn, staticRange)) {
                 const [lastMod, doc] = decode(bytes)
-                maxVersion = Math.max(maxVersion, lastMod)
+                maxVersion = vMax(maxVersion, lastMod)
                 docs.push([k, doc])
               }
               return docs
@@ -346,7 +354,7 @@ const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> =
   // efficiency, but onTxn will be called for each transaction in the block.
   // So we'll make a txn and throw it away at the end of the event loop...
   let evtTxn: lmdb.Txn | null = null
-  let nextVersion = -1
+  let nextVersion = new Uint8Array()
 
   inner.onTxn = (source, fromV, toV, type, txn, _view, meta) => {
     if (evtTxn == null) {
@@ -371,7 +379,7 @@ const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> =
       // null so fetch will correctly report last modified versions.
       // This can be stripped with a periodically updating baseVersion if
       // thats useful.
-      evtTxn.putBinary(dbi, k, msgpack.encode([toV, newData]))
+      evtTxn.putBinary(dbi, k, msgpack.encode([Buffer.from(toV), newData]))
 
       view.set(k, newData)
     }

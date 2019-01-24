@@ -5,7 +5,7 @@
 export type QueryType = 'single' | 'allkv' | 'kv' | 'range' | 'static range'
 export type ResultType = 'single' | 'kv' | 'range'
 
-export type Version = number
+export type Version = Uint8Array
 export type Source = string
 export type Key = string // TODO: Relax this restriction.
 export type Val = any

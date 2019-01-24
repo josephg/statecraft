@@ -3,6 +3,7 @@ import 'mocha'
 import assert from 'assert'
 import {queryTypes} from '../lib/qrtypes'
 import sel from '../lib/sel'
+import {vDec} from '../lib/version'
 
 import {inspect} from 'util'
 const ins = (x: any) => inspect(x, {depth: null, colors: true})
@@ -25,11 +26,11 @@ type SimpleResult = {
 const rangeContainsVersion = (range: I.VersionRange, v: I.Version) => v >= range.from && v <= range.to
 const rangeContainsRange = (r1: I.VersionRange, r2: I.VersionRange) => r1.from <= r2.from && r1.to >= r2.to
 const rangeContainsV = (range: I.VersionRange, v: I.Version | I.VersionRange) =>
-  typeof v === 'number' ? rangeContainsVersion(range, v) : rangeContainsRange(range, v)
+  v instanceof Uint8Array ? rangeContainsVersion(range, v) : rangeContainsRange(range, v)
 const versionAtLeast = (v1: I.Version, v2: I.Version | I.VersionRange) =>
-  typeof v2 === 'number' ? v2 >= v1 : v2.from >= v1
+  v2 instanceof Uint8Array ? v2 >= v1 : v2.from >= v1
 const versionSatisfies = (v1: I.Version | I.VersionRange, v2: I.Version | I.VersionRange) =>
-  typeof v1 === 'number' ? versionAtLeast(v1, v2) : rangeContainsV(v1, v2)
+  v1 instanceof Uint8Array ? versionAtLeast(v1, v2) : rangeContainsV(v1, v2)
 
 const fullVersionSatisfies = (r1: I.FullVersion | I.FullVersionRange, r2: I.FullVersion | I.FullVersionRange) => {
   for (let source in r1) {
@@ -257,7 +258,7 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
       // The version we get back here should contain exactly 1 source with a
       // single integer version.
       assert.strictEqual(Object.keys(vs!).length, 1)
-      assert.strictEqual(typeof Object.values(vs!)[0], 'number')
+      assert(Object.values(vs!)[0] instanceof Uint8Array)
 
       await assertKVResults(this.store, ['a'], [['a', 'hi there']], vs!)
     })
@@ -276,8 +277,8 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
       const {version} = await delSingle(this.store, 'a')
       const r = await getSingle(this.store, 'a')
       assert.equal(r.value, null)
-      assert.strictEqual(version, r.version.from)
-      assert.strictEqual(version, r.version.to)
+      assert.deepStrictEqual(version, r.version.from)
+      assert.deepStrictEqual(version, r.version.to)
     })
 
     // This test relies on the full version semantics of statecraft's native stores.
@@ -296,7 +297,7 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
       // TODO: Make a parallel version of this function.
       const {source, version} = await getVersionForKeys(this.store, 'a')
       const v = version.to
-      assert(v >= 0) // The version should be defined - normally 0.
+      assert(v >= new Uint8Array()) // The version should be defined - normally 0.
 
       // Now set it. This should succeed...
       await setSingle(this.store, 'a', 1, {[source]:v})
@@ -320,7 +321,7 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
       const {value, version: v2} = await getSingle(this.store, 'a', {noDocs:true})
 
       assert(value === true || value === 1, 'Store should not fetch document')
-      assert.strictEqual(v1, v2.to)
+      assert.deepStrictEqual(v1, v2.to)
     })
 
 
@@ -385,7 +386,7 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
         ]
 
         this.allVersions = <I.FullVersionRange>{
-          [this.source]: {from: this.v1-1, to: this.v4}
+          [this.source]: {from: vDec(this.v1), to: this.v4}
         }
       })
 
@@ -401,14 +402,14 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
         assert.deepStrictEqual(result, emptyOpsResult)
       })
 
-      it('gets all ops when the top range is infinite', async function() {
-        const result = await getOpsBoth(this.store, ['a', 'b'], {[this.source]: {from:this.v1-1, to:Infinity}})
+      it('gets all ops when the top range is unbound', async function() {
+        const result = await getOpsBoth(this.store, ['a', 'b'], {[this.source]: {from:vDec(this.v1), to:new Uint8Array()}})
         assert.deepStrictEqual(result.versions, this.allVersions)
         assert.deepStrictEqual(result.ops, this.expectedOps)
       })
 
       it('filters the operations based on the query', async function() {
-        const result = await getOpsBoth(this.store, ['a'], {[this.source]: {from:this.v1-1, to:this.v4}})
+        const result = await getOpsBoth(this.store, ['a'], {[this.source]: {from:vDec(this.v1), to:this.v4}})
         assert.deepStrictEqual(result.versions, this.allVersions)
         assert.deepStrictEqual(result.ops, [this.expectedOps[0], this.expectedOps[2]])
       })

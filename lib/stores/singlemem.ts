@@ -3,6 +3,7 @@ import * as I from '../interfaces'
 import fieldOps from '../types/field'
 import genSource from '../gensource'
 import err from '../err'
+import {V64} from '../version'
 
 const capabilities = {
   queryTypes: new Set<I.QueryType>(['single']),
@@ -10,8 +11,8 @@ const capabilities = {
   // ops: <I.OpsSupport>'none',
 }
 
-const singleStore = (initialValue: any = null, source: I.Source = genSource(), initialVersion: I.Version = 0): I.SimpleStore => {
-  let version: number = initialVersion
+const singleStore = (initialValue: any = null, source: I.Source = genSource(), initialVersionNum: number = 0): I.SimpleStore => {
+  let version: number = initialVersionNum
   let data = initialValue
 
   const store: I.SimpleStore = {
@@ -25,7 +26,7 @@ const singleStore = (initialValue: any = null, source: I.Source = genSource(), i
       return {
         results: data,
         queryRun: query,
-        versions: {[source]: {from:version, to:version}},
+        versions: {[source]: {from:V64(version), to:V64(version)}},
       }
     },
 
@@ -34,13 +35,14 @@ const singleStore = (initialValue: any = null, source: I.Source = genSource(), i
       const op = txn as I.Op
 
       const expectv = versions && versions[source]
-      if (expectv != null && expectv < version) throw new err.VersionTooOldError()
+      const currentv = V64(version)
+      if (expectv != null && expectv < currentv) throw new err.VersionTooOldError()
 
       if (op) data = fieldOps.apply(data, op)
-      const opv = ++version
+      const newv = V64(++version)
 
-      store.onTxn && store.onTxn(source, opv - 1, opv, type, op, data, opts.meta || {})
-      return {[source]: opv}
+      store.onTxn && store.onTxn(source, currentv, newv, type, op, data, opts.meta || {})
+      return {[source]: newv}
     },
 
     close() {},

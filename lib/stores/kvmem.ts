@@ -4,7 +4,7 @@ import genSource from '../gensource'
 import err from '../err'
 import resultMap from '../types/map'
 import {queryTypes} from '../qrtypes'
-
+import {V64, v64ToNum} from '../version'
 import {findRangeStatic} from '../types/range'
 
 
@@ -74,10 +74,10 @@ export default function singleStore(
     // initialVersion: I.Version = 0
 ): MemStore {
   const data: Map<I.Key, I.Val> = _data == null ? new Map() : _data
-  const lastModVersion = new Map<I.Key, I.Version>()
+  const lastModVersion = new Map<I.Key, number>()
 
   const source = storeOpts.source || genSource()
-  const initialVersion = storeOpts.initialVersion || 0
+  const initialVersion = (storeOpts.initialVersion || 0) as number
 
   let version: number = initialVersion
 
@@ -90,7 +90,7 @@ export default function singleStore(
       // console.log('fetch query', query)
 
       let results: Map<I.Key, I.Val> | I.RangeResult
-      let lowerRange: I.Version = initialVersion
+      let lowerRange: number = initialVersion
       let bakedQuery: I.Query | undefined
       const tag = (k: I.Key) => {
         const v = lastModVersion.get(k)
@@ -150,7 +150,7 @@ export default function singleStore(
         // this is a bit inefficient.... ehhhh
         bakedQuery,
         results: opts.noDocs ? queryTypes[query.type].resultType.map(results, () => true) : results,
-        versions: {[source]: {from:lowerRange, to:version}},
+        versions: {[source]: {from:V64(lowerRange), to:V64(version)}},
       })
     },
 
@@ -161,8 +161,8 @@ export default function singleStore(
       for (const [k, op] of txn) lastModVersion.set(k, opv)
       if (!preapplied) resultMap.applyMut!(data, txn)
 
-      if (this.onTxn != null) this.onTxn(source, fromv, opv, 'kv', txn, data, meta)
-      return opv
+      if (this.onTxn != null) this.onTxn(source, V64(fromv), V64(opv), 'kv', txn, data, meta)
+      return V64(opv)
     },
 
     mutate(type, _txn, versions, opts = {}) {
@@ -172,7 +172,7 @@ export default function singleStore(
 
       const txn = _txn as I.KVTxn
 
-      const expectv = (!versions || versions[source] == null) ? version : versions[source]
+      const expectv = (!versions || versions[source] == null) ? version : v64ToNum(versions[source])
       if (expectv < initialVersion) return Promise.reject(new err.VersionTooOldError())
 
       // 1. Preflight. Check versions and (ideally) that the operations are valid.

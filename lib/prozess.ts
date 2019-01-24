@@ -5,6 +5,7 @@ import * as I from './interfaces'
 import {Event, PClient, SubCbData, VersionConflictError} from 'prozess-client'
 import msgpack from 'msgpack-lite'
 import err from './err'
+import {V64, v64ToNum} from './version'
 
 export const encodeTxn = (txn: I.KVTxn, meta: I.Metadata) => msgpack.encode([Array.from(txn), meta])
 export const decodeTxn = (data: Buffer): [I.KVTxn, I.Metadata] => {
@@ -15,7 +16,7 @@ export const decodeTxn = (data: Buffer): [I.KVTxn, I.Metadata] => {
 // TODO: This should work with batches.
 export const decodeEvent = (event: Event, source: I.Source): I.TxnWithMeta => {
   const [txn, meta] = decodeTxn(event.data)
-  return { versions: {[source]: event.version}, txn, meta }
+  return { versions: {[source]: V64(event.version)}, txn, meta }
 }
 
 export function sendTxn(client: PClient,
@@ -29,9 +30,9 @@ export function sendTxn(client: PClient,
   // TODO: Add read conflict keys through opts.
   return client.send(data, {
     // targetVersion: expectedVersion === -1 ? -1 : expectedVersion + 1,
-    targetVersion: expectedVersion + 1,
+    targetVersion: v64ToNum(expectedVersion) + 1,
     conflictKeys: Array.from(txn.keys()),
-  }).catch(e => {
+  }).then(V64).catch(e => {
     // console.warn('WARNING: prozess detected conflict', e.stack)
     return Promise.reject(e instanceof VersionConflictError
       ? new err.WriteConflictError(e.message)

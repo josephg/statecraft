@@ -59,7 +59,7 @@ const otStore = (inner: I.Store /*, filter: (key: I.Key) => boolean */): I.Store
           if (queryTypes[q.type].resultType.name !== type) throw Error(`Mismatched query types unsupported ${queryTypes[q.type].resultType.name} != ${type}`)
 
           const catchupVersions: I.FullVersionRange = {}
-          for (const s in versions) { catchupVersions[s] = {from: versions[s], to: -1}}
+          for (const s in versions) { catchupVersions[s] = {from: versions[s], to: new Uint8Array()}} // empty to version = all.
           const {ops} = await inner.getOps(q, catchupVersions)
           if (ops.length === 0) throw e // Can't make progress.
 

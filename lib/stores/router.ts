@@ -12,7 +12,7 @@ import streamToIter from '../streamToIter'
 import {queryTypes, resultTypes} from '../qrtypes'
 import {vIntersectMut} from '../version'
 import sel from '../sel'
-
+import {vMax, vMin} from '../version'
 
 // import {inspect} from 'util'
 // const ins = (x: any) => inspect(x, {depth: null, colors: true})
@@ -247,7 +247,7 @@ const mergeCatchups = (qtype: I.QueryType, cd: I.CatchupData[], res: any): I.Cat
       if (src.replace) {
         const srv = src.replace.versions
         for (const s in srv) {
-          acc[s] = acc[s] == null ? srv[s] : Math.max(acc[s], srv[s])
+          acc[s] = acc[s] == null ? srv[s] : vMax(acc[s], srv[s])
         }
       }
 
@@ -531,7 +531,7 @@ export default function router(): Router {
 
           if (versions.length === 0) break // We're done.
 
-          const minVersion = Math.min(...versions)
+          const minVersion = versions.reduce(vMin)
           const toMerge = filtered.map(item => item != null && item.length > 0 && item[0].v === minVersion
             ? item.shift()!.txn : null)
 
@@ -611,7 +611,7 @@ export default function router(): Router {
           }
 
           for (const s in catchup.toVersion) {
-            fromVersion[s] = Math.max(fromVersion[s], catchup.toVersion[s])
+            fromVersion[s] = vMax(fromVersion[s], catchup.toVersion[s])
           }
           catchups.push(catchup)
         }

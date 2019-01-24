@@ -12,7 +12,7 @@ import err from '../err'
 
 import fs from 'fs'
 import chokidar from 'chokidar'
-
+import {V64, vEq, vInc} from '../version'
 
 const capabilities = {
   queryTypes: new Set<I.QueryType>(['single']),
@@ -49,10 +49,10 @@ const fileStore = (filename: string, sourceIn?: string): I.SimpleStore => {
     // - File does not exist (esp on first call)
     if (fs.existsSync(filename)) {
       const newcontent = fs.readFileSync(filename, 'utf8')
-      let newversion = fs.statSync(filename).mtime.getTime()
+      let newversion = V64(fs.statSync(filename).mtime.getTime())
       try {
         // console.log('xxxx newcontent', newcontent)
-        if (newcontent === strcontent && newversion === version) return false
+        if (newcontent === strcontent && vEq(newversion, version)) return false
 
         if (newcontent !== strcontent) {
           strcontent = newcontent
@@ -62,7 +62,7 @@ const fileStore = (filename: string, sourceIn?: string): I.SimpleStore => {
         // mtimeMs is also available on node 8.
         if (newversion <= version) {
           console.warn('WARNING: mtime not increased. Forcing version bump.')
-          newversion = version + 1
+          newversion = vInc(version)
         }
         onchange(newversion)
         // TODO: Consider re-checking file content at this point, to avoid a
@@ -76,7 +76,7 @@ const fileStore = (filename: string, sourceIn?: string): I.SimpleStore => {
       data = {}
       fs.writeFileSync(filename, JSON.stringify(data))
       state = 'ok'
-      onchange(Date.now())
+      onchange(V64(Date.now()))
     } else {
       // The file was moved away or deleted.
       state = 'error'
@@ -102,7 +102,7 @@ const fileStore = (filename: string, sourceIn?: string): I.SimpleStore => {
       return Promise.resolve({
         results: data,
         queryRun: query,
-        versions: {[source]: {from:version, to:Date.now()}},
+        versions: {[source]: {from:version, to:V64(Date.now())}},
       })
     },
 

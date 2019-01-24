@@ -17,7 +17,10 @@ interface OpsEntry {
   txn: I.Txn,
   meta: I.Metadata,
 }
-const cmp = (item: OpsEntry, v: I.Version) => item.toV - v
+const vCmp = (a: Uint8Array, b: Uint8Array) => (
+  a < b ? -1 : a > b ? 1 : 0
+)
+const cmp = (item: OpsEntry, v: I.Version) => vCmp(item.toV, v)
 
 const opcache = (opts: OpCacheOpts): {
   onOp(source: I.Source, fromV: I.Version, toV: I.Version, type: I.ResultType, txn: I.Txn, meta: I.Metadata): void,
@@ -37,7 +40,7 @@ const opcache = (opts: OpCacheOpts): {
   return {
     onOp(source, fromV, toV, type, txn, meta) {
       const ops = getOpsForSource(source)
-      if (ops.length) assert(ops[ops.length - 1].toV === fromV, 'Emitted versions don\'t match')
+      if (ops.length) assert.deepStrictEqual(ops[ops.length - 1].toV, fromV, 'Emitted versions don\'t match')
       ops.push({fromV, toV, txn, meta})
       while (maxNum !== 0 && ops.length > maxNum) ops.shift()
     },
@@ -62,7 +65,7 @@ const opcache = (opts: OpCacheOpts): {
 
         const {from, to} = vs
         let fromidx: number
-        if (from === -1) fromidx = 0 // From version known.
+        if (from.length === 0) fromidx = 0 // From version known.
         else {
           const searchidx = binsearch(ops, <any>from, <any>cmp)
           fromidx = searchidx < 0 ? ~searchidx : searchidx + 1
@@ -76,7 +79,7 @@ const opcache = (opts: OpCacheOpts): {
 
         for (let i = fromidx; i < ops.length; i++) {
           const item = ops[i]
-          if (to != -1 && item.toV > to) break
+          if (to.length && item.toV > to) break
 
           // The transaction will be null if the operation doesn't match
           // the supplied query.

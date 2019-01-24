@@ -2,6 +2,7 @@ import * as I from './interfaces'
 import streamToIter, {Stream} from './streamToIter'
 import err from './err'
 import {queryTypes, resultTypes} from './qrtypes'
+import {vEq, V_EMPTY} from './version'
 
 const splitFullVersions = (v: I.FullVersionRange): [I.FullVersion, I.FullVersion] => {
   const from: I.FullVersion = {}
@@ -106,10 +107,10 @@ export default class SubGroup {
       const getOps = this.getOps!
 
       // _other is used for any other sources we run into in getOps.
-      const versions: I.FullVersionRange = {_other: {from:0, to: -1}}
+      const versions: I.FullVersionRange = {_other: {from:V_EMPTY, to: V_EMPTY}}
 
       if (fromVersion) for (const source in fromVersion) {
-        versions[source] = {from:fromVersion[source], to: -1}
+        versions[source] = {from:fromVersion[source], to: V_EMPTY}
       }
       const {ops: txns, versions: opVersions} = await getOps(query, versions, {bestEffort: opts.bestEffort})
       const toVersion = splitFullVersions(opVersions)[1]
@@ -134,7 +135,7 @@ export default class SubGroup {
         if (sub.q == null) throw Error('Invalid state')
 
         if (isVersion(sub.expectVersion)) {
-          if (sub.expectVersion![source] !== fromV) {
+          if (!vEq(sub.expectVersion![source], fromV)) {
             throw Error(`Invalid version from source: from/to versions mismatch: ${sub.expectVersion[source]} != ${fromV}`)
           }
 
