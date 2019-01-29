@@ -170,7 +170,7 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
   // elem.disabled = false
   // elem.focus()
 
-  ;['textInput', 'keydown', 'keyup', 'select', 'cut', 'paste'].forEach(eventName => {
+  ;['textInput', 'keydown', 'keyup', 'select', 'cut', 'paste', 'input'].forEach(eventName => {
     elem.addEventListener(eventName, e => {
       setTimeout(() => {
         if (elem.value !== prevvalue) {
