@@ -5,7 +5,11 @@ import * as I from '../interfaces'
 import * as N from './netmessages'
 import {errToJSON, errFromJSON} from '../err'
 
-import {queryToNet, queryFromNet} from './util'
+import {
+  queryToNet, queryFromNet,
+  fullVersionToNet, fullVersionFromNet,
+  fullVersionRangeToNet, fullVersionRangeFromNet,
+} from './util'
 import {
   queryTypes, resultTypes,
   wrapQuery
@@ -30,7 +34,7 @@ const parseStoreInfo = (helloMsg: N.HelloMsg): I.StoreInfo => ({
 const parseTxnsWithMeta = (type: I.ResultOps<any, I.Txn>, data: N.NetTxnWithMeta[]): I.TxnWithMeta[] => (
   data.map(([op, v, meta]) => (<I.TxnWithMeta>{
     txn: type.opFromJSON(op),
-    versions: v,
+    versions: fullVersionFromNet(v),
     meta
   }))
 )
@@ -141,7 +145,7 @@ function storeFromStreams(reader: TinyReader<N.SCMsg>,
         resolve(<I.FetchResults>{
           results: type.resultType.snapFromJSON(results),
           bakedQuery: bakedQuery ? queryFromNet(bakedQuery) : undefined,
-          versions
+          versions: fullVersionRangeFromNet(versions)
         })
         break
       }
@@ -152,7 +156,7 @@ function storeFromStreams(reader: TinyReader<N.SCMsg>,
         const type = queryTypes[q.type]!
         resolve(<I.GetOpsResult>{
           ops: parseTxnsWithMeta(type.resultType, ops),
-          versions: v,
+          versions: fullVersionRangeFromNet(v),
         })
         break
       }
@@ -186,16 +190,18 @@ function storeFromStreams(reader: TinyReader<N.SCMsg>,
 
         const type = queryTypes[sub.query.type]
 
+        const toVersion = fullVersionFromNet(tv)
+
         const update: I.CatchupData = {
           replace: r == null ? undefined : {
             q: queryFromNet(q!) as I.ReplaceQuery,
             with: type.resultType.snapFromJSON(r),
-            versions: rv!,
+            versions: fullVersionFromNet(rv!),
           },
 
           txns: parseTxnsWithMeta(type.resultType, txns),
 
-          toVersion: tv,
+          toVersion: toVersion,
         }
 
         // Update fromVersion so if we need to resubscribe we'll request
@@ -205,7 +211,7 @@ function storeFromStreams(reader: TinyReader<N.SCMsg>,
         // thing to do.
         const fv = sub.opts.fromVersion
         if (fv == null) sub.opts.fromVersion = update.toVersion
-        else if (fv !== 'current') for (const s in tv) fv[s] = tv[s]
+        else if (fv !== 'current') for (const s in tv) fv[s] = toVersion[s]
 
         sub.stream.append(update)
         break
@@ -239,7 +245,9 @@ function storeFromStreams(reader: TinyReader<N.SCMsg>,
     const netOpts: N.SubscribeOpts = {
       // TODO more here.
       st: Array.from(opts.supportedTypes || supportedTypes),
-      fv: opts.fromVersion === 'current' ? 'c' : opts.fromVersion,
+      fv: opts.fromVersion === 'current' ? 'c'
+        : opts.fromVersion == null ? undefined
+        : fullVersionToNet(opts.fromVersion),
     }
 
     // Advertise that the subscription has been created, but don't wait
@@ -259,13 +267,13 @@ function storeFromStreams(reader: TinyReader<N.SCMsg>,
     getOps: (ref: number, query: I.Query, versions: I.FullVersionRange, opts: I.GetOpsOptions = {}) => ({
       a: N.Action.GetOps, ref,
       query: queryToNet(query),
-      v: versions, opts
+      v: fullVersionRangeToNet(versions), opts
     }),
 
     mutate: (ref: number, mtype: I.ResultType, txn: I.Txn, versions: I.FullVersion = {}, opts: I.MutateOptions = {}) => ({
       a: N.Action.Mutate, ref, mtype,
       txn: resultTypes[mtype].opToJSON(txn),
-      v: versions, opts
+      v: fullVersionToNet(versions), opts
     })
   }
 

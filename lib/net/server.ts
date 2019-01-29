@@ -1,7 +1,11 @@
 import * as I from '../interfaces'
 import * as N from './netmessages'
 
-import {queryToNet, queryFromNet} from './util'
+import {
+  queryToNet, queryFromNet,
+  fullVersionToNet, fullVersionFromNet,
+  fullVersionRangeToNet, fullVersionRangeFromNet,
+} from './util'
 import {queryTypes, resultTypes} from '../qrtypes'
 import {TinyReader, TinyWriter} from './tinystream'
 import errs, {errToJSON, errFromJSON} from '../err'
@@ -19,7 +23,7 @@ const capabilitiesToJSON = (c: I.Capabilities): any[] => {
 const txnsWithMetaToNet = (type: I.ResultOps<any, I.Txn>, txns: I.TxnWithMeta[]): N.NetTxnWithMeta[] => (
   txns.map(txn => (<N.NetTxnWithMeta>[
     type.opToJSON(txn.txn),
-    txn.versions,
+    fullVersionToNet(txn.versions),
     txn.meta,
   ]))
 )
@@ -80,7 +84,7 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
             ref,
             results: type.resultType.snapToJSON(data!.results),
             bakedQuery: data.bakedQuery ? queryToNet(data.bakedQuery) : undefined,
-            versions: data!.versions
+            versions: fullVersionRangeToNet(data!.versions)
           })
         }, err => {
           writeErr(ref, err)
@@ -100,12 +104,12 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
         const type = queryTypes[qtype]
         if (!type) return writeErr(ref, new errs.InvalidDataError('Invalid query type'))
 
-        store.getOps(query, v, opts).then(data => {
+        store.getOps(query, fullVersionRangeFromNet(v), opts).then(data => {
           write({
             a: N.Action.GetOps,
             ref,
             ops: txnsWithMetaToNet(type.resultType, data!.ops),
-            v: data!.versions
+            v: fullVersionRangeToNet(data!.versions)
           })
         }, err => {
           writeErr(ref, err)
@@ -123,8 +127,8 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
         const type = resultTypes[mtype]
         assert(type)
 
-        store.mutate(mtype, type.opFromJSON(txn), v, opts).then(v => {
-          write({a: N.Action.Mutate, ref, v:v!})
+        store.mutate(mtype, type.opFromJSON(txn), fullVersionFromNet(v), opts).then(v => {
+          write({a: N.Action.Mutate, ref, v:fullVersionToNet(v!)})
         }, err => {
           // console.log('... in mutate', err.stack)
           writeErr(ref, err)
@@ -137,7 +141,9 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
         const query = queryFromNet(netQuery) as I.Query
         const innerOpts: I.SubscribeOpts = {
           supportedTypes: opts.st ? new Set(opts.st) : undefined,
-          fromVersion: opts.fv === 'c' ? 'current' : opts.fv,
+          fromVersion: opts.fv === 'c' ? 'current'
+            : opts.fv == null ? undefined
+            : fullVersionFromNet(opts.fv),
         }
         const sub = store.subscribe(query, innerOpts)
         const type = queryTypes[query.type]
@@ -151,12 +157,12 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
               const msg: N.SCMsg = {
                 a: N.Action.SubUpdate, ref,
                 txns: txnsWithMetaToNet(type.resultType, update.txns),
-                tv: update.toVersion,
+                tv: fullVersionToNet(update.toVersion),
               }
               if (update.replace) {
                 msg.q = queryToNet(update.replace.q)
                 msg.r = type.resultType.snapToJSON(update.replace.with)
-                msg.rv = update.replace.versions
+                msg.rv = fullVersionToNet(update.replace.versions)
               }
               write(msg)
             }

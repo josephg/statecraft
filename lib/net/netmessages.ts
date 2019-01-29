@@ -8,10 +8,15 @@ export type NetTxn = I.SingleTxn | NetKVTxn
 
 export type NetQuery = 'single' | 'allkv' | [I.QueryType, any]
 
+export type NetVersion = number[] // This makes me really sad. Not needed with msgpack; only for json.
+export type NetVersionRange = [NetVersion, NetVersion]
+export type NetFullVersion = [I.Source, NetVersion][]
+export type NetFullVersionRange = [I.Source, NetVersionRange][]
+
 export type SubscribeOpts = {
   // TODO: Add all the rest!!!
   st?: string[]
-  fv?: I.FullVersion | 'c', // known at versions
+  fv?: NetFullVersion | 'c', // known at versions
 }
 
 export const enum Action {
@@ -40,7 +45,7 @@ export interface GetOpsRequest {
   a: Action.GetOps,
   ref: Ref,
   query: NetQuery,
-  v: I.FullVersionRange,
+  v: NetFullVersionRange,
   opts: I.GetOpsOptions,
 }
 
@@ -49,7 +54,7 @@ export interface MutateRequest {
   ref: Ref,
   mtype: I.ResultType,
   txn: any,
-  v: I.FullVersion,
+  v: NetFullVersion,
   opts: I.MutateOptions,
 }
 
@@ -89,23 +94,23 @@ export interface FetchResponse {
   results: any, // Dependant on query.
 
   bakedQuery?: NetQuery,
-  versions: I.FullVersionRange, // Range across which version is valid.
+  versions: NetFullVersionRange, // Range across which version is valid.
 }
 
 // txn, version, meta.
-export type NetTxnWithMeta = [any, I.FullVersion, any]
+export type NetTxnWithMeta = [any, NetFullVersion, any]
 
 export interface GetOpsResponse {
   a: Action.GetOps,
   ref: Ref,
   ops: NetTxnWithMeta[],
-  v: I.FullVersionRange
+  v: NetFullVersionRange
 }
 
 export interface MutateResponse {
   a: Action.Mutate,
   ref: Ref,
-  v: I.FullVersion,
+  v: NetFullVersion,
 }
 
 export interface ResponseErr { // Used for fetch, mutate and getops
@@ -121,11 +126,11 @@ export interface SubUpdate {
   // Replace data. If r exists, q must exist too.
   q?: NetQuery, // active query diff
   r?: any, // replacement
-  rv?: I.FullVersion,
+  rv?: NetFullVersion,
 
   txns: NetTxnWithMeta[], // updates on top of replacement
   
-  tv: I.FullVersion, // version diff
+  tv: NetFullVersion, // version diff
 }
 
 // The subscription has closed

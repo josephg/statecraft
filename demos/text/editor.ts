@@ -124,11 +124,13 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
     await store.mutate('single', {type: 'set', data: ''})
   }
 
-  const initialVersions: I.FullVersion = {}
-  for (const s in config.initialVersions) initialVersions[s] = Uint8Array.from(config.initialVersions[s])
+  // The version is sent as an array of numbers. Base64 would be better, but
+  // we can't have nice things because of browser vendors. Eh, this is fine.
+  const v0: I.FullVersion = {}
+  for (const s in config.initialVersions) v0[s] = Uint8Array.from(config.initialVersions[s])
 
   const otdoc = await otDoc<TextOp>(store, 'text-unicode', {
-    initial: { val: config.initialValue, version: initialVersions }
+    initial: { val: config.initialValue, version: v0 }
     // knownAtVersions: config.initialVersions,
   }, (txn, val) => {
     console.log('listener', txn, val)
