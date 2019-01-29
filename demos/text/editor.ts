@@ -17,7 +17,7 @@ register(texttype)
 declare const config: {
   key: string,
   initialValue: string | null,
-  initialVersions: I.FullVersion,
+  initialVersions: {[k: string]: number[]},
 }
 
 // document.body.appendChild(html`<h1>oh hi</h1>`)
@@ -124,8 +124,11 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
     await store.mutate('single', {type: 'set', data: ''})
   }
 
+  const initialVersions: I.FullVersion = {}
+  for (const s in config.initialVersions) initialVersions[s] = Uint8Array.from(config.initialVersions[s])
+
   const otdoc = await otDoc<TextOp>(store, 'text-unicode', {
-    initial: { val: config.initialValue, version: config.initialVersions }
+    initial: { val: config.initialValue, version: initialVersions }
     // knownAtVersions: config.initialVersions,
   }, (txn, val) => {
     console.log('listener', txn, val)

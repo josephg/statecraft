@@ -79,6 +79,15 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
     data: string | Buffer,
   }
 
+  const bakeVersions = (v: I.FullVersion) => {
+    // I'd love to use base64, but omg what a giant tire fire in the browser. I'm floored.
+    // const result: {[k: string]: string} = {}
+    // for (const s in v) result[s] = Buffer.from(v[s]).toString('base64')
+    const result: {[k: string]: number[]} = {}
+    for (const s in v) result[s] = Array.from(v[s])
+    return result
+  }
+
   const renderEditor = (value: string | null, key: I.Key, versions: I.FullVersion): HTMLDocData => (
     {
       headers: {
@@ -95,7 +104,7 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
   const config = ${jsesc({
     key,
     initialValue: value,
-    initialVersions: versions
+    initialVersions: bakeVersions(versions)
   } as any)}
   </script>
   <script src="/bundle.js"></script>
