@@ -3,7 +3,7 @@ import 'mocha'
 import assert from 'assert'
 import {queryTypes} from '../lib/qrtypes'
 import sel from '../lib/sel'
-import {vDec} from '../lib/version'
+import {vCmp, vDec} from '../lib/version'
 
 import {inspect} from 'util'
 const ins = (x: any) => inspect(x, {depth: null, colors: true})
@@ -23,8 +23,8 @@ type SimpleResult = {
   versions: I.FullVersionRange,
 }
 
-const rangeContainsVersion = (range: I.VersionRange, v: I.Version) => v >= range.from && v <= range.to
-const rangeContainsRange = (r1: I.VersionRange, r2: I.VersionRange) => r1.from <= r2.from && r1.to >= r2.to
+const rangeContainsVersion = (range: I.VersionRange, v: I.Version) => vCmp(v, range.from) >= 0 && vCmp(v, range.to) <= 0
+const rangeContainsRange = (r1: I.VersionRange, r2: I.VersionRange) => vCmp(r1.from, r2.from) <= 0 && vCmp(r1.to, r2.to) >= 0
 const rangeContainsV = (range: I.VersionRange, v: I.Version | I.VersionRange) =>
   v instanceof Uint8Array ? rangeContainsVersion(range, v) : rangeContainsRange(range, v)
 const versionAtLeast = (v1: I.Version, v2: I.Version | I.VersionRange) =>
@@ -266,10 +266,11 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
     it('allows you to delete a key', async function() {
       const v1 = (await setSingle(this.store, 'a', 1)).version
       const v2 = (await delSingle(this.store, 'a')).version
-      assert(v2 > v1)
+      assert(vCmp(v2, v1) > 0)
 
       const r = await getSingle(this.store, 'a')
       const expected: SingleValue = {source: r.source, version: {from: v2, to: v2}, value: null}
+
       assert.deepStrictEqual(r, expected)
     })
 
@@ -288,10 +289,9 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
       const v2 = (await setSingle(this.store, 'b', 2)).version
       const v3 = (await setSingle(this.store, 'c', 3)).version
 
-      assert(v1 < v2 && v2 < v3)
+      assert(vCmp(v1, v2) < 0 && vCmp(v2, v3) < 0)
       await assertKVResults(this.store, ['a'], [['a', 1]], {[source]: {from:v1, to:v3}})
     })
-
 
     it('makes conflicting edits to the same key collide', async function() {
       // TODO: Make a parallel version of this function.
@@ -404,6 +404,12 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
 
       it('gets all ops when the top range is unbound', async function() {
         const result = await getOpsBoth(this.store, ['a', 'b'], {[this.source]: {from:vDec(this.v1), to:new Uint8Array()}})
+        assert.deepStrictEqual(result.versions, this.allVersions)
+        assert.deepStrictEqual(result.ops, this.expectedOps)
+      })
+
+      it('gets all ops when the range is explicit', async function() {
+        const result = await getOpsBoth(this.store, ['a', 'b', 'c', 'd'], {[this.source]: {from:vDec(this.v1), to:this.v4}})
         assert.deepStrictEqual(result.versions, this.allVersions)
         assert.deepStrictEqual(result.ops, this.expectedOps)
       })

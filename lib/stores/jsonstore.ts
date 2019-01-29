@@ -12,7 +12,7 @@ import err from '../err'
 
 import fs from 'fs'
 import chokidar from 'chokidar'
-import {V64, vEq, vInc} from '../version'
+import {V64, vEq, vInc, vCmp} from '../version'
 
 const capabilities = {
   queryTypes: new Set<I.QueryType>(['single']),
@@ -60,7 +60,7 @@ const fileStore = (filename: string, sourceIn?: string): I.SimpleStore => {
         }
         state = 'ok'
         // mtimeMs is also available on node 8.
-        if (newversion <= version) {
+        if (vCmp(newversion, version) <= 0) {
           console.warn('WARNING: mtime not increased. Forcing version bump.')
           newversion = vInc(version)
         }
@@ -111,7 +111,7 @@ const fileStore = (filename: string, sourceIn?: string): I.SimpleStore => {
       const op = txn as I.Op
 
       const expectv = versions && versions[source]
-      if (expectv != null && expectv < version) return Promise.reject(new err.VersionTooOldError())
+      if (expectv != null && vCmp(expectv, version) < 0) return Promise.reject(new err.VersionTooOldError())
 
       if (op) data = fieldOps.apply(data, op)
       // console.log('fs.writefilesync')

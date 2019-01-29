@@ -43,9 +43,22 @@ export const vDecMut = (v: Uint8Array) => {
 }
 export const vDec = (v: Uint8Array) => vDecMut(new Uint8Array(v))
 
-export const vMax = (a: Uint8Array, b: Uint8Array) => a > b ? a : b
-export const vMin = (a: Uint8Array, b: Uint8Array) => a > b ? b : a
-export const vEq = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a <= b && b <= a
+// Lexographical comparison, though in reality versions should probably always
+// have the same length. This is included so we don't need to bundle all of
+// Buffer in the browser.
+export const vCmp = (a: Uint8Array, b: Uint8Array) => {
+  let i
+  for (i = 0; i < a.length; i++) {
+    if (i >= b.length) return 1
+    const v = a[i] - b[i]
+    if (v) return v
+  }
+  return (i < b.length) ? -1 : 0
+}
+
+export const vMax = (a: Uint8Array, b: Uint8Array) => vCmp(a, b) > 0 ? a : b
+export const vMin = (a: Uint8Array, b: Uint8Array) => vCmp(a, b) > 0 ? b : a
+export const vEq = (a: Uint8Array, b: Uint8Array) => vCmp(a, b) === 0
 
 export const vIntersectMut = (dest: I.FullVersionRange, src: I.FullVersionRange) => {
   for (let source in src) {
@@ -53,7 +66,7 @@ export const vIntersectMut = (dest: I.FullVersionRange, src: I.FullVersionRange)
     if (dest[source] == null) dest[source] = {from: fromSrc, to: toSrc}
     else {
       const {from:fromDest, to:toDest} = dest[source]
-      if (fromSrc > toDest || toSrc < fromDest) return null
+      if (vCmp(fromSrc, toDest) > 0 || vCmp(toSrc, fromDest) < 0) return null
       dest[source] = {from: vMax(fromDest, fromSrc), to: vMin(toDest, toSrc)}
     }
   }

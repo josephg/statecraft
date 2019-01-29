@@ -8,30 +8,17 @@ import fs from 'fs'
 import msgpack from 'msgpack-lite'
 import debugLib from 'debug'
 
-// Its very sad that this has a direct dependancy on prozess client. It'd be
-// way better to abstract this out into some generic op stream interface.
-// import {PClient} from 'prozess-client'
-// import {encodeTxn, decodeTxn, decodeEvent, sendTxn} from '../prozess'
-
 import fieldOps from '../types/field'
 import {queryTypes} from '../qrtypes'
 import sel from '../sel'
-import {vMax} from '../version'
+import {vMax, vCmp} from '../version'
 
 import * as I from '../interfaces'
 import err from '../err'
 
-
 const debug = debugLib('statecraft')
 const CONFIG_KEY = Buffer.from('\x01config')
 const VERSION_KEY = Buffer.from('\x01v')
-// const encodeVersion = (v: number) => {
-//   const buf = Buffer.allocUnsafe(8)
-//   buf.writeUInt32LE(0, 0)
-//   buf.writeUInt32LE(v, 4)
-//   return buf
-// }
-// const decodeVersion = (buf: Buffer) => buf.readUInt32LE(4)
 
 // Valid keys are in the [0x02, 0xff) range.
 const START_KEY = '\x02'
@@ -256,7 +243,7 @@ const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> =
       const dbTxn = env.beginTxn({readOnly: true})
       for (const [k, op] of txn) {
         const [v, data] = rawGet(dbTxn, k)
-        if (expectedVersion.length && v > expectedVersion) {
+        if (expectedVersion.length && vCmp(v, expectedVersion) > 0) {
           dbTxn.abort()
           return Promise.reject(new err.WriteConflictError('Write conflict in key ' + k))
         }

@@ -12,7 +12,7 @@ import streamToIter from '../streamToIter'
 import {queryTypes, resultTypes} from '../qrtypes'
 import {vIntersectMut} from '../version'
 import sel from '../sel'
-import {vMax, vMin} from '../version'
+import {vMax, vMin, vCmp} from '../version'
 
 // import {inspect} from 'util'
 // const ins = (x: any) => inspect(x, {depth: null, colors: true})
@@ -370,7 +370,7 @@ export default function router(): Router {
   const isBefore = (v: I.FullVersion, other: I.FullVersion) => {
     for (const s in v) {
       assert(other[s] != null)
-      if (v[s] < other[s]) return true
+      if (vCmp(v[s], other[s]) < 0) return true
     }
     return false
   }
@@ -611,7 +611,9 @@ export default function router(): Router {
           }
 
           for (const s in catchup.toVersion) {
-            fromVersion[s] = vMax(fromVersion[s], catchup.toVersion[s])
+            fromVersion[s] = fromVersion[s] == null
+              ? catchup.toVersion[s]
+              : vMax(fromVersion[s], catchup.toVersion[s])
           }
           catchups.push(catchup)
         }
@@ -631,7 +633,7 @@ export default function router(): Router {
               composeCatchupsMut(qtype, catchups[i], value)
 
               for (const s in catchups[i].toVersion) {
-                if (catchups[i].toVersion[s] > fromVersion[s]) {
+                if (vCmp(catchups[i].toVersion[s], fromVersion[s]) > 0) {
                   throw new Error('Skipped target version. Handling this is NYI')
                 }
               }

@@ -173,6 +173,8 @@ export default function singleStore(
       const txn = _txn as I.KVTxn
 
       const expectv = (!versions || versions[source] == null) ? version : v64ToNum(versions[source])
+
+      // These are both numbers here, so this comparison is ok.
       if (expectv < initialVersion) return Promise.reject(new err.VersionTooOldError())
 
       // 1. Preflight. Check versions and (ideally) that the operations are valid.

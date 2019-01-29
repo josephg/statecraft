@@ -2,7 +2,7 @@ import * as I from './interfaces'
 import streamToIter, {Stream} from './streamToIter'
 import err from './err'
 import {queryTypes, resultTypes} from './qrtypes'
-import {vEq, V_EMPTY} from './version'
+import {vEq, vCmp, V_EMPTY} from './version'
 
 const splitFullVersions = (v: I.FullVersionRange): [I.FullVersion, I.FullVersion] => {
   const from: I.FullVersion = {}
@@ -122,7 +122,7 @@ export default class SubGroup {
       fromV: I.Version, toV: I.Version,
       type: I.ResultType, txn: I.Txn, resultingView: any,
       meta: I.Metadata) {
-    // console.log('sg onOp', fromV, toV)
+    if (vCmp(fromV, toV) >= 0) throw Error('Invalid op - goes backwards in time')
     for (const sub of this.allSubs) {
       // console.log('onOp version', sub.id, 'fv', fromV, 'tv', toV, 'buf', sub.opsBuffer, 'sub ev', sub.expectVersion)
       // First filter out any op types we don't know about here
@@ -130,13 +130,21 @@ export default class SubGroup {
         ? resultTypes[type].filterSupportedOps(txn, resultingView, sub.supportedTypes)
         : txn
 
+      // console.log('sg onOp', fromV, toV, !!sub.opsBuffer)
       if (sub.opsBuffer) sub.opsBuffer.push({source, fromV, toV, txn: _txn, meta})
       else {
         if (sub.q == null) throw Error('Invalid state')
 
         if (isVersion(sub.expectVersion)) {
           if (!vEq(sub.expectVersion![source], fromV)) {
-            throw Error(`Invalid version from source: from/to versions mismatch: ${sub.expectVersion[source]} != ${fromV}`)
+            // This can happen if you fetch / mutate and get a future-ish
+            // version, then try to subscribe to that version before that
+            // version is propogated through the subscription channel. This
+            // happens reliably with the fdb unit tests.
+            //
+            // Implemented this way we provide cover for bugs, its more correct.
+            continue
+            // throw Error(`Invalid version from source: from/to versions mismatch: ${sub.expectVersion[source]} != ${fromV}`)
           }
 
           sub.expectVersion[source] = toV
@@ -163,7 +171,6 @@ export default class SubGroup {
     if (query.type === 'range' && opts.fromVersion != null) {
       throw new err.UnsupportedTypeError('Can only subscribe to full range queries with no version specified')
     }
-    // debugger
 
     const fromCurrent = opts.fromVersion === 'current'
     const qtype = queryTypes[query.type]
@@ -186,7 +193,7 @@ export default class SubGroup {
       stream,
       id: nextId++,
     }
-    // console.log('created sub', query, sub)
+    // console.log('created sub', 'expect version', sub.expectVersion, 'fromCurrent', fromCurrent, 'q', query, sub)
     this.allSubs.add(sub)
 
     // console.log('Creating sub', sub.id, 'fv', opts.fromVersion, sub.expectVersion, sub.opsBuffer)
@@ -207,7 +214,7 @@ export default class SubGroup {
         type: query.type,
         q: qtype.updateQuery(sub.q == null ? null : sub.q.q, catchup.replace.q.q)
       } as I.Query
-      // console.log('catchup -> ', catchup, sub.expectVersion, sub.q, query.type)
+      // console.log('catchup -> ', catchupVersion, catchup, sub.expectVersion, sub.q, query.type)
       
       if (sub.opsBuffer == null) throw Error('Invalid internal state in subgroup')
 
@@ -215,11 +222,17 @@ export default class SubGroup {
       for (let i = 0; i < sub.opsBuffer.length; i++) {
         const {source, fromV, toV, txn, meta} = sub.opsBuffer[i]
         const v = catchupVersion[source]
+
+        // If the buffered op is behind the catchup version, discard it and continue.
+        if (v != null && vCmp(toV, v) <= 0) continue
+
         const filteredTxn = qtype.adaptTxn(txn, sub.q!.q)
-        if (v === fromV) {
+        if (v === fromV || vCmp(v, fromV) === 0) {
           if (filteredTxn != null) catchup.txns.push({versions:{[source]: toV}, txn: filteredTxn, meta})
           catchupVersion[source] = toV
-        } else if (v != null && v > toV) {
+        } else if (v != null) {
+          // ... TODO: If the catchup fetched version is in between 
+          // console.log('v', v, 'fromV', fromV, 'toV', toV)
           throw Error('Invalid operation data - version span incoherent')
         }
       }

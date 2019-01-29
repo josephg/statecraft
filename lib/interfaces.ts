@@ -183,8 +183,10 @@ export interface GetOpsOptions {
 export type GetOpsResult = {
   ops: TxnWithMeta[],
 
-  // This should return the range (from, to] of the returned set for each source.
-  // ... which will be the same as the input if all ops are available, and there are no limits.
+  // This should return the range (from, to] of the returned set for each
+  // source, across which the results are valid. This will be the same as
+  // the input if all ops are available and included in the query, and there
+  // are no limits.
   versions: FullVersionRange,
 }
 

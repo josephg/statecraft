@@ -3,7 +3,7 @@ import * as I from '../interfaces'
 import fieldOps from '../types/field'
 import genSource from '../gensource'
 import err from '../err'
-import {V64} from '../version'
+import {V64, vCmp} from '../version'
 
 const capabilities = {
   queryTypes: new Set<I.QueryType>(['single']),
@@ -36,7 +36,7 @@ const singleStore = (initialValue: any = null, source: I.Source = genSource(), i
 
       const expectv = versions && versions[source]
       const currentv = V64(version)
-      if (expectv != null && expectv < currentv) throw new err.VersionTooOldError()
+      if (expectv != null && vCmp(expectv, currentv) < 0) throw new err.VersionTooOldError()
 
       if (op) data = fieldOps.apply(data, op)
       const newv = V64(++version)

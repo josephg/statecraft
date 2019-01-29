@@ -4,6 +4,7 @@ import {queryTypes} from './qrtypes'
 
 import binsearch from 'binary-search'
 import assert from 'assert'
+import {vCmp} from './version'
 
 export interface OpCacheOpts {
   readonly qtype?: I.QueryType,
@@ -17,9 +18,6 @@ interface OpsEntry {
   txn: I.Txn,
   meta: I.Metadata,
 }
-const vCmp = (a: Uint8Array, b: Uint8Array) => (
-  a < b ? -1 : a > b ? 1 : 0
-)
 const cmp = (item: OpsEntry, v: I.Version) => vCmp(item.toV, v)
 
 const opcache = (opts: OpCacheOpts): {
@@ -79,7 +77,7 @@ const opcache = (opts: OpCacheOpts): {
 
         for (let i = fromidx; i < ops.length; i++) {
           const item = ops[i]
-          if (to.length && item.toV > to) break
+          if (to.length && vCmp(item.toV, to) > 0) break
 
           // The transaction will be null if the operation doesn't match
           // the supplied query.
@@ -89,7 +87,7 @@ const opcache = (opts: OpCacheOpts): {
           vTo = item.toV
           if (limitOps > 0 && --limitOps === 0) break
         }
-        if (vTo !== vFrom) vOut[source] = {from: vFrom, to: <I.Version>vTo}
+        if (vTo !== vFrom) vOut[source] = {from: vFrom, to: vTo}
 
         if (limitOps === 0) break
       }
