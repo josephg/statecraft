@@ -35,7 +35,7 @@ textarea:focus {
   font-family: monospace;
   font-size: 16px;
   font-weight: bold;
-  background-color: #f44cff;
+  background-color: rgba(244, 76, 255, 0.6);
 }
 
 #connstatus.waiting {

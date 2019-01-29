@@ -7,6 +7,10 @@ import runTests from './common'
 import * as I from '../lib/interfaces'
 import {AddressInfo} from 'net'
 
+// TODO: This is currently using a simple TCP server & client and sending
+// messages over msgpack. We should also test the JSON encoding path, because
+// there are a bunch of errors which can show up there that we don't catch
+// here. (Eg, version encoding bugs)
 describe('net', () => {
   const serverForStore = new WeakMap<I.Store, any>()
   runTests(() => new Promise((resolve, reject) => {
