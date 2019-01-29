@@ -7,9 +7,13 @@
 // - Security around the editing capability
 
 import * as I from '../../lib/interfaces'
-import lmdbStore from '../../lib/stores/lmdb'
 
-import {reconnecter, PClient} from 'prozess-client'
+// import lmdbStore from '../../lib/stores/lmdb'
+// import {reconnecter, PClient} from 'prozess-client'
+
+import * as fdb from 'foundationdb'
+import fdbStore from '../../lib/stores/fdb'
+
 import kvStore from '../../lib/stores/kvmem'
 
 import augment from '../../lib/augment'
@@ -36,6 +40,8 @@ import html from 'nanohtml'
 
 process.on('unhandledRejection', err => { throw err })
 
+fdb.setAPIVersion(600)
+
 register(texttype)
 
 const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
@@ -47,15 +53,18 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
 ;(async () => {
   // const backend = kvStore()
 
-  const pclient = await new Promise<PClient>((resolve, reject) => {
-    const pclient = reconnecter(9999, 'localhost', err => {
-      if (err) reject(err)
-      else resolve(pclient)
-    })
-  })
+  // const pclient = await new Promise<PClient>((resolve, reject) => {
+  //   const pclient = reconnecter(9999, 'localhost', err => {
+  //     if (err) reject(err)
+  //     else resolve(pclient)
+  //   })
+  // })
 
-  const LMDBPATH = process.env.LMDBPATH || 'textdemo_db'
-  const backend = await lmdbStore(prozessOps(pclient), LMDBPATH)
+  // const LMDBPATH = process.env.LMDBPATH || 'textdemo_db'
+  // const backend = await lmdbStore(prozessOps(pclient), LMDBPATH)
+
+  const fdbConn = fdb.openSync().at('textdemo') // TODO: Directory layer stuff.
+  const backend = await fdbStore(fdbConn)
 
   // const backend = lmdbStore(
   const rootStore = otStore(augment(backend))

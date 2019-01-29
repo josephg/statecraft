@@ -74,12 +74,17 @@ const unpackVersion = (data: Buffer): [Buffer, any] => [
   data.length > 10 ? msgpack.decode(data.slice(10)) : undefined
 ]
 
+const max = (a: Buffer, b: Buffer) => Buffer.compare(a, b) > 0 ? a : b
+const min = (a: Buffer, b: Buffer) => Buffer.compare(a, b) > 0 ? b : a
+const clamp = (x: Buffer, low: Buffer, high: Buffer) => min(max(x, low), high)
+
 const staticKStoFDBSel = ({k, isAfter}: I.StaticKeySelector) => (
-  isAfter ? keySelector.firstGreaterThan(k) : keySelector.firstGreaterOrEqual(k)
+  // isAfter ? keySelector.firstGreaterThan(k) : keySelector.firstGreaterOrEqual(k)
+  keySelector(clamp(Buffer.from(k, 'utf8'), START_KEY, END_KEY), isAfter, 1)
 )
 
 const kStoFDBSel = ({k, isAfter, offset}: I.KeySelector) => (
-  keySelector(k, isAfter, (offset || 0) + 1)
+  keySelector(clamp(Buffer.from(k, 'utf8'), START_KEY, END_KEY), isAfter, (offset || 0) + 1)
 )
 
 
