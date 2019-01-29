@@ -1548,6 +1548,14 @@ forwarded@~0.1.2:
   resolved "https://registry.yarnpkg.com/forwarded/-/forwarded-0.1.2.tgz#98c23dab1175657b8c0573e8ceccd91b0ff18c84"
   integrity sha1-mMI9qxF1ZXuMBXPozszZGw/xjIQ=
 
+foundationdb@^0.8.0:
+  version "0.8.0"
+  resolved "https://registry.yarnpkg.com/foundationdb/-/foundationdb-0.8.0.tgz#b223c6ad1bef5fc8876fd280e7c83e0a37d95b65"
+  integrity sha512-osvUT2DikizQYV2m6LLB3uktZ4lFCiGclpd7aWbGwiZDxZkzxnrO0d2Lt7QxbD5bHXqy0vp/VN0JWQXscmfGwA==
+  dependencies:
+    nan "^2.10.0"
+    node-gyp-build "^3.3.0"
+
 fragment-cache@^0.2.1:
   version "0.2.1"
   resolved "https://registry.yarnpkg.com/fragment-cache/-/fragment-cache-0.2.1.tgz#4290fad27f13e89be7f33799c6bc5a0abfff0d19"
@@ -2551,6 +2559,11 @@ no-case@^2.2.0:
   integrity sha512-rmTZ9kz+f3rCvK2TD1Ue/oZlns7OGoIWP4fc3llxxRXlOkHKoWPPWJOfFYpITabSow43QJbRIoHQXtt10VldyQ==
   dependencies:
     lower-case "^1.1.1"
+
+node-gyp-build@^3.3.0:
+  version "3.8.0"
+  resolved "https://registry.yarnpkg.com/node-gyp-build/-/node-gyp-build-3.8.0.tgz#0f57efeb1971f404dfcbfab975c284de7c70f14a"
+  integrity sha512-bYbpIHyRqZ7sVWXxGpz8QIRug5JZc/hzZH4GbdT9HTZi6WmKCZ8GLvP8OZ9TTiIBvwPFKgtGrlWQSXDAvYdsPw==
 
 node-lmdb@^0.6.0:
   version "0.6.0"
