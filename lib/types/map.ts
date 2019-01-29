@@ -124,7 +124,9 @@ const type: I.ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
         else s.delete(k)
       }
       return s
-    } else return q.q ? data : s // allkv.
+    } else return data // allkv.
+    // I'm not sure if we should look at q.q for this ??
+    // } else return q.q ? data : s // allkv.
   },
 }
 export default type

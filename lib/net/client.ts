@@ -124,6 +124,7 @@ function storeFromStreams(reader: TinyReader<N.SCMsg>,
     for (const {reject} of detailsByRef.values()) {
       reject(Error('Store closed before results returned'))
     }
+
     detailsByRef.clear()
   }
 
@@ -135,7 +136,10 @@ function storeFromStreams(reader: TinyReader<N.SCMsg>,
   }
 
   reader.onmessage = msg => {
-    // console.log('got SC data', msg)
+    // This is needed because we call detailsByRef.clear() in cleanup.
+    if (closed) return
+
+    // console.log('S->C data', msg)
 
     switch (msg.a) {
       case N.Action.Fetch: {
@@ -164,7 +168,7 @@ function storeFromStreams(reader: TinyReader<N.SCMsg>,
       case N.Action.Mutate: {
         const {ref, v} = <N.MutateResponse>msg
         const {resolve} = takeCallback(ref)
-        resolve(v)
+        resolve(<I.FullVersion>fullVersionFromNet(v))
         break
       }
 

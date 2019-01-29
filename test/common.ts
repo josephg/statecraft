@@ -97,7 +97,7 @@ const eachFetchMethod = async (store: I.Store, query: I.Query, keys: Set<I.Key>)
 
       // We'll just pull off the first update.
       const update = (await sub.next()).value!
-      // console.log('catchup update', ins(update))
+      // console.log('catchup update', qtype, rtype.name, ins(update))
 
       if (update.replace) {
         // console.log('r1', ins(r), ins(update))
@@ -127,7 +127,7 @@ const eachFetchMethod = async (store: I.Store, query: I.Query, keys: Set<I.Key>)
 
   while (results.length > 1) {
     const x = results.shift()!
-    // console.log('x', x, results[0])
+    // console.log('qtype', qtype, 'x', x, results[0])
     assertEqualResults(x, results[0], false)
   }
   return results[0]
@@ -311,6 +311,7 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
       // The version we get back here should contain exactly 1 source with a
       // single integer version.
       assert.strictEqual(Object.keys(vs!).length, 1)
+
       assert(Object.values(vs!)[0] instanceof Uint8Array)
 
       await assertKVResults(this.store, ['a'], [['a', 'hi there']], vs!)

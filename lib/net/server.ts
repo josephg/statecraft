@@ -65,7 +65,8 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
   })
 
   reader.onmessage = (msg: N.CSMsg) => {
-    // console.log('Got CS data', msg)
+    // console.log('C->S data', msg)
+    
     switch (msg.a) {
       case N.Action.Fetch: {
         const {ref, query: netQuery, opts} = (msg as N.FetchRequest)

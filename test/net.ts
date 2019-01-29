@@ -22,6 +22,7 @@ describe('net', () => {
         serverForStore.set(remoteStore!, server)
         resolve(remoteStore!)
       }, err => {
+        console.error('ERROR: Could not connect to local server', err)
         server.close()
         return reject(err)
       })
