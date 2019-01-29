@@ -118,7 +118,7 @@ const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> =
     let k = cursor.goToRange('\x02') // positioned right after config key
     while (k != null) {
       const bytes = cursor.getCurrentBinaryUnsafe()
-      const [lastMod, doc] = msgpack.decode(bytes)
+      const [lastMod, doc] = decode(bytes)
       if (doc != null) resultsOut.set(k as string, opts.noDocs ? 1 : doc)
       maxVersion = vMax(maxVersion, lastMod)
 

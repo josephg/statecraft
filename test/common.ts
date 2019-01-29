@@ -40,7 +40,8 @@ const fullVersionSatisfies = (r1: I.FullVersion | I.FullVersionRange, r2: I.Full
   return true
 }
 
-const assertEqualResults = (actual: SimpleResult, expected: SimpleResult, strictVersionCheck: boolean = true) => {
+const assertEqualResults = (actual: SimpleResult, expected: SimpleResult, strictVersionCheck: boolean = false) => {
+  // console.log('ev', expected.versions, 'av', actual.versions)
   // assert.deepStrictEqual(actual.versions, expected.versions)
   if (strictVersionCheck) assert.deepStrictEqual(actual.versions, expected.versions)
   else assert(fullVersionSatisfies(expected.versions, actual.versions))
@@ -50,20 +51,29 @@ const assertEqualResults = (actual: SimpleResult, expected: SimpleResult, strict
 
 const id = <T>(x: T) => x
 const flatMap = <X, Y>(arr: X[], f: (a: X) => Y[]): Y[] => ([] as Y[]).concat.apply([], arr.map(f))
-const toKVMap = <T>(m: Map<I.Key, T> | [I.Key, T][][]): Map<I.Key, T> => (
-  (m instanceof Map)
-    ? m
-    : new Map(flatMap(m, id))
+const filter = <K, V>(orig: Map<K, V>, keep: Set<K>) => {
+  const result = new Map<K, V>()
+  for (const k of keep) {
+    const v = orig.get(k)
+    if (v !== undefined) result.set(k, v)
+  }
+  return result
+}
+const toKVMap = <T>(qtype: I.QueryType, keys: Set<I.Key>, m: Map<I.Key, T> | [I.Key, T][][]): Map<I.Key, T> => (
+  !(m instanceof Map)
+    ? new Map(flatMap(m, id))
+    : qtype === 'kv' ? m
+    : filter(m, keys)
 )
 
 // Fetch using fetch() and through subscribe.
-const eachFetchMethod = async (store: I.Store, query: I.Query): Promise<SimpleResult> => {
+const eachFetchMethod = async (store: I.Store, query: I.Query, keys: Set<I.Key>): Promise<SimpleResult> => {
   const qtype = query.type
   assert(store.storeInfo.capabilities.queryTypes.has(qtype),
     `${qtype} queries not supported by store`)
 
   const results: SimpleResult[] = await Promise.all([
-    store.fetch(query).then(({results, versions}) => ({results: toKVMap(results), versions})),
+    store.fetch(query).then(({results, versions}) => ({results: toKVMap(query.type, keys, results), versions})),
     // new Promise<SimpleResult>((resolve, reject) => {
     (async () => {
       const rtype = queryTypes[qtype].resultType
@@ -94,27 +104,32 @@ const eachFetchMethod = async (store: I.Store, query: I.Query): Promise<SimpleRe
       }
 
       sub.return()
-      return {results: toKVMap(r), versions}
+      return {results: toKVMap(query.type, keys, r), versions}
     })()
   ])
 
   // console.log('r fetch', query.type, results[0])
   // console.log('r sub', query.type, results[1])
-  assertEqualResults(results[0], results[1], false)
+  // assertEqualResults(results[0], results[1], false)
+
+  while (results.length > 1) {
+    const x = results.shift()!
+    assertEqualResults(x, results[0], false)
+  }
   return results[0]
 }
 
 async function runBothKVQueries<T>(
     store: I.Store,
     keys: I.KVQuery,
-    fn: (q: I.Query) => Promise<T>,
-    cleanup: (r: T) => T,
-    checkEq: (a: T, b: T) => void): Promise<T> {
+    fn: (q: I.Query, keys: I.KVQuery) => Promise<T>,
+    // checkEq: (a: T, b: T) => void
+): Promise<T[]> {
 
   assert(store.storeInfo.capabilities.queryTypes.has('kv'))
 
   // TODO: Add regular ranges here as well.
-  const promises = (['kv', 'static range'] as ('kv' | 'static range')[])
+  const promises = (['kv', 'allkv', 'static range'] as I.QueryType[])
   .filter(qtype => store.storeInfo.capabilities.queryTypes.has(qtype))
   .map(qtype => {
     const query = qtype === 'static range'
@@ -122,58 +137,77 @@ async function runBothKVQueries<T>(
           low: sel(k, false),
           high: sel(k, true),
         }))
-      : keys
+      : qtype === 'kv' ? keys
+      : true
 
-    return fn({type: qtype, q: query} as I.Query)
+    return fn({type: qtype, q: query} as I.Query, keys)
   }) //.filter(x => x != null)
 
-  const vals = (await Promise.all(promises)).map(cleanup)
+  const vals = await Promise.all(promises)
 
   // console.log('vals', ins(vals))
-
-  while (vals.length > 1) {
-    const x = vals.shift()!
-    checkEq(x, vals[0])
-  }
-
-  return vals[0]
+  return vals
 }
 
 async function assertKVResults(
     store: I.Store,
     keys: I.Key[],
-    expectedVals: I.Val[],
+    expectedVals: [I.Key, I.Val][],
     expectedVers?: I.FullVersion | I.FullVersionRange) {
 
-  const result = await runBothKVQueries<SimpleResult>(store, new Set(keys),
-    (query) => eachFetchMethod(store, query),
-    id,
-    assertEqualResults
+  const results = await runBothKVQueries<SimpleResult>(
+    store,
+    new Set(keys),
+    (query, keys) => eachFetchMethod(store, query, keys),
+    // assertEqualResults
   )
   // console.log('expected', ins(expectedVals), ins(expectedVers))
   // console.log('actual', ins(result))
 
-  expectedVals.forEach(([k, v]) => {
-    assert.deepStrictEqual(result.results.get(k), v)
+  results.forEach(r => {
+    assert.deepStrictEqual(r.results, new Map(expectedVals))
+    // console.log('rv', r.versions)
+    // console.log('ev', expectedVers)
+    // if (expectedVers) console.log('satisfies', fullVersionSatisfies(expectedVers, r.versions))
+    if (expectedVers != null) assert(fullVersionSatisfies(expectedVers, r.versions))
   })
 
   // TODO: Then take the queryRun and pass it back into the store & check we
   // get the same thing.
 
-  if (expectedVers != null) assert(fullVersionSatisfies(expectedVers, result.versions))
 }
 
-const getOpsBoth = (store: I.Store, keys: I.Key[], versions: I.FullVersionRange, opts: I.GetOpsOptions = {}) => {
-  return runBothKVQueries<I.GetOpsResult>(
+const getOpsBoth = async (store: I.Store, keys: I.Key[], versions: I.FullVersionRange, opts: I.GetOpsOptions = {}) => {
+  const vals = await runBothKVQueries<I.GetOpsResult>(
     store,
     new Set(keys),
-    (query) => store.getOps(query, versions, opts),
-    r => {
-      r.ops.forEach(op => op.txn = toKVMap(op.txn as I.KVTxn | I.RangeTxn))
-      return r
+    async (query, keys) => {
+      let results = await store.getOps(query, versions, opts)
+      if (query.type === 'allkv') {
+        results.ops.filter(txn => {
+          const txn_ = queryTypes.kv.adaptTxn(txn.txn, keys)
+          if (txn_ == null) return false
+          else {
+            txn.txn = txn_
+            return true
+          }
+        })
+      }
+      results.ops = results.ops.filter(op => {
+        op.txn = toKVMap(query.type, keys, op.txn as I.KVTxn | I.RangeTxn)
+        return op.txn.size > 0
+      })
+      return results
     },
-    assert.deepStrictEqual
+    // assert.deepStrictEqual
   )
+
+  while (vals.length > 1) {
+    const x = vals.shift()!
+    assert.deepStrictEqual(x, vals[0])
+  }
+
+  return vals[0]
 }
 
 type SingleVersion = {source: I.Source, version: I.Version}

@@ -31,14 +31,20 @@ import {V_EMPTY, vEq, vMax, vCmp} from '../version'
 
 // Statecraft manages anything starting in \0x00 in the keyspace. We could
 // instead prefix all content. Ideally, SC would create two directories with
-// the directory layer, one for content and the other for configuration.
+// the directory layer, one for content and the other for configuration. But
+// that has to wait for node-foundationdb to implement directories.
+// Issue: https://github.com/josephg/node-foundationdb/issues/12
 
 // Note as well that FDB versionstamps are 10 byte big endian values. We're
-// using & passing them throughout the system as-is because JS doesn't support
-// integers bigger than 53 bits, let alone 80 bits.
-const CONFIG_KEY = Buffer.from('\x01config')
-const VERSION_KEY = Buffer.from('\x00v')
-const OP_PREFIX = Buffer.from('\x00op')
+// using & passing them throughout the system as binary values because JS
+// doesn't support integers bigger than 53 bits, let alone 80 bits.
+const CONFIG_KEY = Buffer.from('\x00config', 'ascii')
+const VERSION_KEY = Buffer.from('\x00v', 'ascii')
+const OP_PREFIX = Buffer.from('\x00op', 'ascii')
+
+// Remove this when porting this code to the directory layer.
+const START_KEY = Buffer.from('\x01', 'ascii')
+const END_KEY = Buffer.from('\xff', 'ascii')
 
 const BUF_EMPTY = Buffer.alloc(0)
 // const NULL_VERSION = new Uint8Array(10) //Buffer.alloc(10)
@@ -61,6 +67,13 @@ type OpEntry = [
   I.Metadata
 ]
 
+// I'm using a decoder because otherwise there's no good way to read
+// stamp/value pairs out of ranges.
+const unpackVersion = (data: Buffer): [Buffer, any] => [
+  data.slice(0, 10),
+  data.length > 10 ? msgpack.decode(data.slice(10)) : undefined
+]
+
 export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
   // Does it make sense to prefix like this? Once the directory layer is in,
   // we'll use that instead.
@@ -80,7 +93,7 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
   const source = await db.doTn(async tn => {
     const config = await tn.get(CONFIG_KEY) as Config | null
     if (config == null) {
-      console.log('Database was created - no config!')
+      debug('Database was created - no config!')
       const source = genSource()
       tn.set(CONFIG_KEY, {sc_ver: 1, source})
       return source
@@ -167,15 +180,22 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
       let maxVersion: Uint8Array | null = null
       let results: I.ResultData
 
-      const vs = await db.doTn(async tn => {
+      const vs = await rawDb.doTn(async rawTn => {
+        // This could be way cleaner.
+        const tn = rawTn.scopedTo(rawDb.withValueEncoding({
+          pack() {throw Error('Cannot write')},
+          unpack: unpackVersion
+        }))
+
         switch (query.type) {
           case 'kv': {
             results = new Map<I.Key, I.Val>()
             await Promise.all(Array.from(query.q).map(async k => {
-              const result = await tn.getVersionstampPrefixedValue(k)
+              const result = await tn.get(k)
               if (result) {
-                if (result.value != null) results.set(k, opts.noDocs ? 1 : result.value)
-                maxVersion = maxVersion ? vMax(maxVersion, result.stamp) : result.stamp
+                const [stamp, value] = result
+                if (value != null) results.set(k, opts.noDocs ? 1 : value)
+                maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
               }
             }))
             break
@@ -188,7 +208,7 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
           default: throw new err.UnsupportedTypeError(`${query.type} not supported by fdb store`)
         }
 
-        return rawDb.getVersionstampPrefixedValue(VERSION_KEY)
+        return rawTn.getVersionstampPrefixedValue(VERSION_KEY)
       })
 
       return {
