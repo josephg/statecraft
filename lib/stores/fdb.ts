@@ -111,7 +111,7 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
 
   const capabilities = {
     // queryTypes: new Set<I.QueryType>(['allkv', 'kv', 'static range', 'range']),
-    queryTypes: new Set<I.QueryType>(['kv']),
+    queryTypes: new Set<I.QueryType>(['allkv', 'kv']),
     mutationTypes: new Set<I.ResultType>(['kv']),
   }
 
@@ -202,7 +202,25 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
           }
 
           case 'allkv': {
-            throw new Error('Not implemented')
+            // TODO: Make this work with larger databases (>5mb). Currently
+            // this is trying to fetch the whole db contents using a single
+            // txn, which will cause problems if the database is nontrivial.
+
+            // There's a couple strategies here:
+            //
+            // - Lean on fdb's MVCC implementation and create a series of
+            //   transactions at the same version
+            // - Use a series of transactions at incrementing versions, then
+            //   fetch all the operations in the range and run catchup on any
+            //   old data that was returned
+
+            const resultsList = await tn.getRangeAll(START_KEY, END_KEY)
+            results = new Map<I.Key, I.Val>()
+            for (const [kbuf, [stamp, value]] of resultsList) {
+              results.set(kbuf.toString('utf8'), opts.noDocs ? 1 : value)
+              maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
+            }
+            break
           }
 
           default: throw new err.UnsupportedTypeError(`${query.type} not supported by fdb store`)
