@@ -18,7 +18,8 @@ body {
 html {
   /* Change default typefaces here */
   font-family: serif;
-  font-size: 137.5%;
+  /*font-size: 137.5%;*/
+  font-size: 115.5%;
   color: #1e1e1e;
   -webkit-font-smoothing: antialiased;
 }
