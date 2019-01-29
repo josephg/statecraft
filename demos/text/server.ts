@@ -232,7 +232,8 @@ a {
 }
 </style>
 <body>
-${result.results[0].map(([k, v]: [string, string]) => html`<a href=/${changePrefix(k, 'raw/', 'edit/')}>${v}</a>`)}
+${result.results[0]
+  .map(([k, v]: [string, string]) => html`<a href=/${changePrefix(k, 'raw/', 'edit/')}>${v}</a>`).join('')}
 `)
   })
 

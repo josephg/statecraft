@@ -83,9 +83,9 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
           write({
             a: N.Action.Fetch,
             ref,
-            results: type.resultType.snapToJSON(data!.results),
+            results: type.resultType.snapToJSON(data.results),
             bakedQuery: data.bakedQuery ? queryToNet(data.bakedQuery) : undefined,
-            versions: fullVersionRangeToNet(data!.versions)
+            versions: fullVersionRangeToNet(data.versions)
           })
         }, err => {
           writeErr(ref, err)
@@ -109,8 +109,8 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
           write({
             a: N.Action.GetOps,
             ref,
-            ops: txnsWithMetaToNet(type.resultType, data!.ops),
-            v: fullVersionRangeToNet(data!.versions)
+            ops: txnsWithMetaToNet(type.resultType, data.ops),
+            v: fullVersionRangeToNet(data.versions)
           })
         }, err => {
           writeErr(ref, err)
@@ -129,7 +129,7 @@ export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.
         assert(type)
 
         store.mutate(mtype, type.opFromJSON(txn), fullVersionFromNet(v), opts).then(v => {
-          write({a: N.Action.Mutate, ref, v:fullVersionToNet(v!)})
+          write({a: N.Action.Mutate, ref, v:fullVersionToNet(v)})
         }, err => {
           // console.log('... in mutate', err.stack)
           writeErr(ref, err)

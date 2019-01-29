@@ -39,6 +39,13 @@ import {V_EMPTY, vEq, vMax, vCmp} from '../version'
 // using & passing them throughout the system as binary values because JS
 // doesn't support integers bigger than 53 bits, let alone 80 bits.
 const CONFIG_KEY = Buffer.from('\x00config', 'ascii')
+
+// Using a single key like this will cause thrashing on a single node in the
+// FDB cluster, but its somewhat unavoidable given the design. A different
+// approach would be to make multiple sources backed by the same FDB store;
+// but you can kind of already do that by just making multiple fdb client
+// instances and glueing them together with router.
+
 const VERSION_KEY = Buffer.from('\x00v', 'ascii')
 const OP_PREFIX = Buffer.from('\x00op', 'ascii')
 
@@ -175,7 +182,8 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
 
         // Bump the global version. We don't want to conflict here. We really
         // sort of want to set it to MAX(current value, new commit) but the
-        // new version will always be higher than the old.
+        // new version will always be higher than the old anyway so it doesn't
+        // matter.
         tn.setOption(TransactionOptionCode.NextWriteNoWriteConflictRange)
         tn.setVersionstampPrefixedValue(VERSION_KEY)
 
@@ -249,7 +257,7 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
               return (await tn.getRangeAll(staticKStoFDBSel(low), staticKStoFDBSel(high), {reverse: reverse}))
                 .map(([kbuf, [stamp, value]]) => {
                   maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
-                  return [kbuf.toString('utf8'), value] as [I.Key, I.Val]
+                  return [kbuf.toString('utf8'), opts.noDocs ? 1 : value] as [I.Key, I.Val]
                 }) //.filter(([k, v]) => v != undefined)
             }))
             break
@@ -265,7 +273,7 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
                 .map(([kbuf, [stamp, value]]) => {
                   maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
                   // console.log('arr entry', [kbuf.toString('utf8'), value])
-                  return [kbuf.toString('utf8'), value] as [I.Key, I.Val]
+                  return [kbuf.toString('utf8'), opts.noDocs ? 1 : value] as [I.Key, I.Val]
                 }) //.filter(([k, v]) => v != undefined)
 
               // Note: These aren't tested thoroughly yet. Probably a bit broken.
