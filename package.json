@@ -43,7 +43,7 @@
     "browserify": "^16.2.3",
     "commonmark": "^0.28.1",
     "express": "^4.16.3",
-    "foundationdb": "^0.8.0",
+    "foundationdb": "^0.8.1",
     "fresh": "^0.5.2",
     "memdown": "^1.2.0",
     "mocha": "^5.2.0",

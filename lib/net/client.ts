@@ -215,7 +215,7 @@ function storeFromStreams(reader: TinyReader<N.SCMsg>,
         // thing to do.
         const fv = sub.opts.fromVersion
         if (fv == null) sub.opts.fromVersion = update.toVersion
-        else if (fv !== 'current') for (const s in tv) fv[s] = toVersion[s]
+        else if (fv !== 'current') for (const s in toVersion) fv[s] = toVersion[s]
 
         sub.stream.append(update)
         break

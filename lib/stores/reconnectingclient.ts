@@ -62,6 +62,7 @@ const reconnector = (connect: (() => [TinyReader<N.SCMsg>, TinyWriter<N.CSMsg>])
 
             setSingle(status, 'waiting')
             await wait(5000)
+            console.log('done waiting')
           }
         })()
       },
