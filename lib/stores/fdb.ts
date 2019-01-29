@@ -74,6 +74,15 @@ const unpackVersion = (data: Buffer): [Buffer, any] => [
   data.length > 10 ? msgpack.decode(data.slice(10)) : undefined
 ]
 
+const staticKStoFDBSel = ({k, isAfter}: I.StaticKeySelector) => (
+  isAfter ? keySelector.firstGreaterThan(k) : keySelector.firstGreaterOrEqual(k)
+)
+
+const kStoFDBSel = ({k, isAfter, offset}: I.KeySelector) => (
+  keySelector(k, isAfter, (offset || 0) + 1)
+)
+
+
 export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
   // Does it make sense to prefix like this? Once the directory layer is in,
   // we'll use that instead.
@@ -111,7 +120,7 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
 
   const capabilities = {
     // queryTypes: new Set<I.QueryType>(['allkv', 'kv', 'static range', 'range']),
-    queryTypes: new Set<I.QueryType>(['allkv', 'kv']),
+    queryTypes: new Set<I.QueryType>(['allkv', 'kv', 'static range', 'range']),
     mutationTypes: new Set<I.ResultType>(['kv']),
   }
 
@@ -206,13 +215,17 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
             // this is trying to fetch the whole db contents using a single
             // txn, which will cause problems if the database is nontrivial.
 
-            // There's a couple strategies here:
+            // There's a few strategies we could implement here:
             //
             // - Lean on fdb's MVCC implementation and create a series of
             //   transactions at the same version
             // - Use a series of transactions at incrementing versions, then
             //   fetch all the operations in the range and run catchup on any
             //   old data that was returned
+            // - Implement maxDocs and force the client to implement the 
+            //   iterative retry logic
+
+            // Whatever we do should also work on static ranges.
 
             const resultsList = await tn.getRangeAll(START_KEY, END_KEY)
             results = new Map<I.Key, I.Val>()
@@ -223,6 +236,52 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
             break
           }
 
+          case 'static range': {
+            // const q = query.q as I.RangeQuery
+            results = await Promise.all(query.q.map(async ({low, high, reverse}) => {
+              // This is so clean. Its almost like I designed statecraft with
+              // foundationdb in mind... ;)
+              return (await tn.getRangeAll(staticKStoFDBSel(low), staticKStoFDBSel(high), {reverse: reverse}))
+                .map(([kbuf, [stamp, value]]) => {
+                  maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
+                  return [kbuf.toString('utf8'), value] as [I.Key, I.Val]
+                }) //.filter(([k, v]) => v != undefined)
+            }))
+            break
+          }
+
+          case 'range': {
+            // There's a bunch of ways I could write this, but a bit of copy + pasta is the simplest.
+            // bakedQuery = {type: 'static range', q:[]}
+            const baked: I.StaticRangeQuery = []
+            results = await Promise.all(query.q.map(async ({low, high, reverse, limit}, i) => {
+              // console.log('range results', (await tn.getRangeAll(kStoFDBSel(low), kStoFDBSel(high), {reverse: reverse, limit: limit})).length)
+              const vals = (await tn.getRangeAll(kStoFDBSel(low), kStoFDBSel(high), {reverse: reverse, limit: limit}))
+                .map(([kbuf, [stamp, value]]) => {
+                  maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
+                  // console.log('arr entry', [kbuf.toString('utf8'), value])
+                  return [kbuf.toString('utf8'), value] as [I.Key, I.Val]
+                }) //.filter(([k, v]) => v != undefined)
+
+              // Note: These aren't tested thoroughly yet. Probably a bit broken.
+              baked[i] = vals.length ? {
+                low: {k: reverse ? vals[vals.length-1][0] : vals[0][0], isAfter: !!reverse},
+                high: {k: reverse ? vals[0][0] : vals[vals.length-1][0], isAfter: !reverse},
+                reverse
+              } : {
+                low: {k: low.k, isAfter: low.isAfter},
+                high: {k: low.k, isAfter: low.isAfter},
+                reverse
+              }
+
+              // console.log('range ->', vals)
+              return vals
+            }))
+            // console.log('range query ->', results)
+            bakedQuery = {type: 'static range', q: baked}
+            break
+          }
+
           default: throw new err.UnsupportedTypeError(`${query.type} not supported by fdb store`)
         }
 
@@ -230,7 +289,7 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
       })
 
       return {
-        bakedQuery: undefined,
+        bakedQuery,
         results,
         versions: {[source]: {
           from: maxVersion || NULL_VERSION,

@@ -151,7 +151,8 @@ const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> =
     // This is a bit ugly, and I'm sure there's a nicer way to write this.
 
     // This function could instead be written to just return a key.
-    let {k, isAfter, offset} = sel
+    let {k, isAfter} = sel
+    let offset = sel.offset || 0
 
     if (k < START_KEY) { k = START_KEY; isAfter = false }
     else if (k >= END_KEY) { k = END_KEY; isAfter = false }

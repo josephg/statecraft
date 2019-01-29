@@ -175,6 +175,34 @@ const type: I.ResultOps<I.RangeResult, I.RangeTxn> = {
     )
   },
 
+  updateResults(snapshot: I.RangeResult, _q, data: I.RangeResult[]) {
+    if (_q.type !== 'static range') throw new TypeError('Invalid data type in updateResults: ' + _q.type)
+    const q = _q.q
+  
+    // console.log('snap', ins(snapshot), ins(q), ins(data))
+    // This is a bit dirty, but on the first updateResults we don't have the
+    // result length populated. I'll just fill it in from the other data...
+    if (snapshot.length === 0) snapshot.length = q.length
+    if (snapshot.length !== q.length || snapshot.length !== data.length) throw new err.InvalidDataError()
+
+    for (let i = 0; i < snapshot.length; i++) {
+      let si = snapshot[i], qq = q[i], dd = data[i]
+      if (si == null) snapshot[i] = si = []
+
+      // For each qq/dd pair, we need to replace that range in si with the entry in dd.
+      if (qq.length !== dd.length) throw new err.InvalidDataError()
+      for (let k = 0; k < qq.length; k++) {
+        const qqq = qq[i], ddd = dd[i]
+
+        const [start, end] = findRangeStatic(qqq, si.map(x => x[0]))
+        if (end < start) throw new err.InvalidDataError() // It might make sense to just skip?
+        si.splice(start, end-start, ...ddd)
+      }
+    }
+
+    return snapshot
+  }
+
   // isStaticRange(q: StaticRange | Range): q is StaticRange {
   //   if ((q as Range).limit) return false
   // },

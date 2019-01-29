@@ -127,7 +127,9 @@ const type: ResultOps<any, Op> = {
     }
   },
 
-  composeResultsMut(a, b) { return b }
+  composeResultsMut(a, b) { return b },
+
+  updateResults: (s, q, data) => data,
 }
 
 export default type

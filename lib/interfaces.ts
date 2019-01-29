@@ -36,13 +36,14 @@ export type StaticRange = {
   low: StaticKeySelector,
   high: StaticKeySelector,
   // If true, results will be returned in reverse lexicographical
-  // order beginning with range.to.
+  // order beginning with range.high.
   reverse?: boolean, // default false.
 }
 export type Range = {
   low: KeySelector,
   high: KeySelector,
-  reverse?: boolean, // default false.
+  reverse?: boolean, // as above, default false.
+
   // If non-zero, limits the number of documents returned. TODO: Add marker in
   // results somehow showing that there are more results after the limit.
   limit?: number, // default 0.
@@ -500,6 +501,8 @@ export interface ResultOps<R, Txn> extends Type<R, Txn> {
   // Replace fancy types with {set} if they're not supported.
   filterSupportedOps(txn: Txn, view: any, supportedTypes: Set<string>): Txn
 
+  updateResults(snapshot: ResultData, q: ReplaceQuery, data: ReplaceData): ResultData
+
   // TODO: replace.
 }
 
@@ -527,8 +530,6 @@ export interface QueryOps<Q> {
 
   // Consumes q and snapshot
   updateQuery(q: Q | null, op: ReplaceQueryData): Q
-  // TODO: Move this into ResultOps.
-  updateResults(snapshot: ResultData, q: ReplaceQueryData, data: ReplaceData): ResultData
 
   resultType: ResultOps<any, Txn>
 }

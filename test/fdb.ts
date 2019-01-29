@@ -16,7 +16,7 @@ const storeDb = new Map<I.Store, fdb.Database>()
 const create = async () => {
   const prefix = TEST_PREFIX + _dbid++
   const db = fdb.openSync().at(prefix)
-  await db.clearRange('', '') // Hope there's no bugs in this one!
+  await db.clearRange('', Buffer.from([0xff])) // Hope there's no bugs in this one!
   const store = augment(await fdbStore(db))
   // console.log('got store at prefix', prefix)
   storeDb.set(store, db)
@@ -25,9 +25,9 @@ const create = async () => {
 
 const teardown = (store: I.Store) => { // teardown. Nuke it.
   const db = storeDb.get(store)!
-  db.clearRange('', '')
   storeDb.delete(store)
   store.close()
+  db.clearRange('', Buffer.from([0xff]))
   // TODO: And close the database.
 }
 

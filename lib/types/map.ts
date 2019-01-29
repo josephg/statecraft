@@ -116,5 +116,15 @@ const type: I.ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
       fieldOps.filterSupportedOps(o, view.get(k), supportedTypes))
     )
   },
+
+  updateResults(s: Map<I.Key, I.Val>, q, data: Map<I.Key, I.Val>) {
+    if (q.type === 'kv') {
+      for (const k of q.q) {
+        if (data.has(k)) s.set(k, data.get(k))
+        else s.delete(k)
+      }
+      return s
+    } else return q.q ? data : s // allkv.
+  },
 }
 export default type

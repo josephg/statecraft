@@ -26,8 +26,8 @@ const findRangeAndBake = (range: I.Range, keys: ArrayLike<I.Key>): [number, numb
 
   const [sposraw, eposraw] = findRangeStatic(range as I.StaticRange, keys)
 
-  let spos = sposraw + range.low.offset
-  let epos = eposraw + range.high.offset
+  let spos = sposraw + (range.low.offset || 0)
+  let epos = eposraw + (range.high.offset || 0)
 
   const l = limit || 0
   if (l > 0) {
@@ -87,7 +87,7 @@ export default function singleStore(
       sources: [source],
     },
     fetch(query, opts = {}) {
-      // console.log('fetch query', query)
+      // console.log('fetch query', JSON.stringify(query, null, 2))
 
       let results: Map<I.Key, I.Val> | I.RangeResult
       let lowerRange: number = initialVersion

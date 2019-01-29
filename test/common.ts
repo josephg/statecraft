@@ -46,6 +46,8 @@ const assertEqualResults = (actual: SimpleResult, expected: SimpleResult, strict
   if (strictVersionCheck) assert.deepStrictEqual(actual.versions, expected.versions)
   else assert(fullVersionSatisfies(expected.versions, actual.versions))
 
+  // console.log('ar', actual.results)
+  // console.log('er', expected.results)
   assert.deepStrictEqual(actual.results, expected.results)
 }
 
@@ -73,7 +75,17 @@ const eachFetchMethod = async (store: I.Store, query: I.Query, keys: Set<I.Key>)
     `${qtype} queries not supported by store`)
 
   const results: SimpleResult[] = await Promise.all([
-    store.fetch(query).then(({results, versions}) => ({results: toKVMap(query.type, keys, results), versions})),
+    (async () => {
+      let {results, versions, bakedQuery} = await store.fetch(query)
+
+      if (bakedQuery) {
+        const r2 = await store.fetch(bakedQuery)
+        assert.deepStrictEqual(r2.results, results)
+        // TODO: And versions?
+      }
+
+      return {results: toKVMap(query.type, keys, results), versions}
+    })(),
     // new Promise<SimpleResult>((resolve, reject) => {
     (async () => {
       const rtype = queryTypes[qtype].resultType
@@ -88,8 +100,8 @@ const eachFetchMethod = async (store: I.Store, query: I.Query, keys: Set<I.Key>)
       // console.log('catchup update', ins(update))
 
       if (update.replace) {
-        // console.log('r1', ins(r))
-        r = queryTypes[qtype].updateResults(r, update.replace.q.q, update.replace.with)
+        // console.log('r1', ins(r), ins(update))
+        r = rtype.updateResults(r, update.replace.q, update.replace.with)
         // console.log('r2', ins(r))
 
         const vs = update.replace.versions
@@ -104,6 +116,7 @@ const eachFetchMethod = async (store: I.Store, query: I.Query, keys: Set<I.Key>)
       }
 
       sub.return()
+      // console.log(query.type, 'r', r)
       return {results: toKVMap(query.type, keys, r), versions}
     })()
   ])
@@ -114,25 +127,31 @@ const eachFetchMethod = async (store: I.Store, query: I.Query, keys: Set<I.Key>)
 
   while (results.length > 1) {
     const x = results.shift()!
+    // console.log('x', x, results[0])
     assertEqualResults(x, results[0], false)
   }
   return results[0]
 }
 
-async function runBothKVQueries<T>(
+async function runAllKVQueries<T>(
     store: I.Store,
     keys: I.KVQuery,
     fn: (q: I.Query, keys: I.KVQuery) => Promise<T>,
+    allowRange: boolean
     // checkEq: (a: T, b: T) => void
 ): Promise<T[]> {
 
   assert(store.storeInfo.capabilities.queryTypes.has('kv'))
 
   // TODO: Add regular ranges here as well.
-  const promises = (['kv', 'allkv', 'static range'] as I.QueryType[])
-  .filter(qtype => store.storeInfo.capabilities.queryTypes.has(qtype))
+  // const promises = (['range'] as I.QueryType[])
+  const types: I.QueryType[] = ['kv', 'allkv', 'static range']
+  // const types: I.QueryType[] = []
+  if (allowRange) types.push('range')
+
+  const promises = types.filter(qtype => store.storeInfo.capabilities.queryTypes.has(qtype))
   .map(qtype => {
-    const query = qtype === 'static range'
+    const query = qtype === 'static range' || qtype === 'range'
       ? Array.from(keys).map(k => ({
           low: sel(k, false),
           high: sel(k, true),
@@ -155,11 +174,11 @@ async function assertKVResults(
     expectedVals: [I.Key, I.Val][],
     expectedVers?: I.FullVersion | I.FullVersionRange) {
 
-  const results = await runBothKVQueries<SimpleResult>(
+  const results = await runAllKVQueries<SimpleResult>(
     store,
     new Set(keys),
     (query, keys) => eachFetchMethod(store, query, keys),
-    // assertEqualResults
+    true
   )
   // console.log('expected', ins(expectedVals), ins(expectedVers))
   // console.log('actual', ins(result))
@@ -178,7 +197,7 @@ async function assertKVResults(
 }
 
 const getOpsBoth = async (store: I.Store, keys: I.Key[], versions: I.FullVersionRange, opts: I.GetOpsOptions = {}) => {
-  const vals = await runBothKVQueries<I.GetOpsResult>(
+  const vals = await runAllKVQueries<I.GetOpsResult>(
     store,
     new Set(keys),
     async (query, keys) => {
@@ -199,7 +218,7 @@ const getOpsBoth = async (store: I.Store, keys: I.Key[], versions: I.FullVersion
       })
       return results
     },
-    // assert.deepStrictEqual
+    false
   )
 
   while (vals.length > 1) {
