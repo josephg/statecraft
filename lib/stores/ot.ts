@@ -33,7 +33,7 @@ const otStore = (inner: I.Store /*, filter: (key: I.Key) => boolean */): I.Store
   return {
     ...inner,
 
-    async mutate(type, txn, versions, opts) {
+    async mutate(type, txn, versions, opts = {}) {
       // First try to just submit the operation directly.
       while (true) {
         try {
@@ -45,6 +45,8 @@ const otStore = (inner: I.Store /*, filter: (key: I.Key) => boolean */): I.Store
               || versions == null) {
             throw e
           }
+
+          const uid = opts.meta ? opts.meta.uid : undefined
 
           // console.log('wowooo got a write conflict')
 
@@ -65,6 +67,13 @@ const otStore = (inner: I.Store /*, filter: (key: I.Key) => boolean */): I.Store
 
           let madeProgress = false
           for (let i = 0; i < ops.length; i++) {
+            if (uid != null && ops[i].meta.uid === uid) {
+              // The transaction has actually already been applied - we just
+              // found it. We don't need to do any more work; just return as
+              // if this txn was the txn you tried to submit.
+              return ops[i].versions
+            }
+            
             txn = mapTxnWithPair(type, txn, ops[i].txn, (a, b) => {
               // The mutation we recieved has not been collapsed together.
               // This requires an M*N transform, which is not implemented.

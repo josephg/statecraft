@@ -38,7 +38,10 @@ import {type as texttype} from 'ot-text-unicode'
 import fresh from 'fresh'
 import html from 'nanohtml'
 
-process.on('unhandledRejection', err => { throw err })
+process.on('unhandledRejection', err => {
+  console.log('unhandled rejection', err.message, err.code, err.stack)
+  throw err
+})
 
 fdb.setAPIVersion(600)
 

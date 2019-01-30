@@ -205,7 +205,7 @@ function storeFromStreams(reader: TinyReader<N.SCMsg>,
 
           txns: parseTxnsWithMeta(type.resultType, txns),
 
-          toVersion: toVersion,
+          toVersion,
         }
 
         // Update fromVersion so if we need to resubscribe we'll request
@@ -214,7 +214,7 @@ function storeFromStreams(reader: TinyReader<N.SCMsg>,
         // might miss operations! I have no idea if this is the right
         // thing to do.
         const fv = sub.opts.fromVersion
-        if (fv == null) sub.opts.fromVersion = update.toVersion
+        if (fv == null) sub.opts.fromVersion = toVersion
         else if (fv !== 'current') for (const s in toVersion) fv[s] = toVersion[s]
 
         sub.stream.append(update)

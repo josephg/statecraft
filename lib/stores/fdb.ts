@@ -411,7 +411,7 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
       }
 
     } catch (e) {
-      console.error('Unhandled error in FDB operation watch process', e)
+      console.error('Unhandled error in FDB operation watch process', e.message, e.stack)
       // Throw to the global exception handler, which will normally crash the process.
       process.emit('uncaughtException', e)
     }
