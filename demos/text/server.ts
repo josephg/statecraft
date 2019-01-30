@@ -100,11 +100,16 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
     return result
   }
 
+  const genEtag = (key: string, versions: I.FullVersion): string => {
+    const sources = Object.keys(versions).sort()
+    return key + '_' + sources.map(s => `${s}-${Buffer.from(versions[s]).toString('base64')}`).join('_')
+  }
+  
   const renderEditor = (value: string | null, key: I.Key, versions: I.FullVersion): HTMLDocData => (
     {
       headers: {
-        'x-sc-version': JSON.stringify(versions),
-        // ETAG.
+        // 'x-sc-version': JSON.stringify(versions),
+        'etag': genEtag(key, versions),
         'content-type': 'text/html',
       },
       data: `<!doctype html>
@@ -129,15 +134,10 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
     'editor/', ALL, '', false
   )
 
-  const genEtag = (key: string, versions: I.FullVersion): string => {
-    const sources = Object.keys(versions).sort()
-    return key + '_' + sources.map(s => `${s}-${Buffer.from(versions[s]).toString('base64')}`).join('_')
-  }
-
   const renderMarkdown = (value: string, key: I.Key, versions: I.FullVersion): HTMLDocData => (
     {
       headers: {
-        'x-sc-version': JSON.stringify(versions),
+        // 'x-sc-version': JSON.stringify(versions), // Not currently used by anything.
         'etag': genEtag(key, versions),
         // ETAG.
         'content-type': 'text/html',
@@ -182,7 +182,6 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
         
         if (fresh(req.headers, value.headers)) return res.sendStatus(304)
         
-        console.log('headers', value.headers)
         res.set(value.headers)
         res.send(value.data)
       } catch (e) { next(e) }
@@ -207,7 +206,7 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
   //   const result = await store.fetch({type: 'kv', q: new Set([k])})
   //   const value = result.results.get(k)
   //   if (value == null) return next()
-  //   res.setHeader('x-sc-version', JSON.stringify(result.versions))
+    // res.setHeader('x-sc-version', JSON.stringify(result.versions))
   //   res.setHeader('content-type', 'text/html')
   //   res.send(`<!doctype html>
   // <div id=content>${value}</div>
@@ -220,14 +219,14 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
     const result = await store.fetch({type: 'kv', q: new Set([k])})
     const value = result.results.get(k)
     if (value == null) return next()
-    res.setHeader('x-sc-version', JSON.stringify(result.versions))
+    // res.setHeader('x-sc-version', JSON.stringify(result.versions))
     res.setHeader('content-type', 'text/plain')
     res.send(value)
   })
 
   app.get('/', async (req, res) => {
     const result = await store.fetch({type: 'static range', q: [{low: sel('raw/'), high: sel('raw/~')}]})
-    res.setHeader('x-sc-version', JSON.stringify(result.versions))
+    // res.setHeader('x-sc-version', JSON.stringify(result.versions))
     res.setHeader('content-type', 'text/html')
     res.send(`<!doctype html>
 <title>Blag</title>

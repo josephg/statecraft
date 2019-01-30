@@ -39,7 +39,10 @@ export default function handler(store: I.Store, optsIn?: HttpOpts) {
     const value = result.results.get(key)
     // console.log('key', key, 'value', value, result)
 
-    res.setHeader('x-sc-version', JSON.stringify(result.versions))
+    // TODO: Clean this up.
+    // res.setHeader('x-sc-version', JSON.stringify(result.versions))
+
+    // TODO: Add etag. Steal code from text demo for it.
 
     const {mimeType, content} = opts.valToHttp!(value, key, req)
 
