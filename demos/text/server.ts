@@ -131,7 +131,7 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
 
   const genEtag = (key: string, versions: I.FullVersion): string => {
     const sources = Object.keys(versions).sort()
-    return key + '_' + sources.map(s => `${s}-${versions[s]}`).join('_')
+    return key + '_' + sources.map(s => `${s}-${Buffer.from(versions[s]).toString('base64')}`).join('_')
   }
 
   const renderMarkdown = (value: string, key: I.Key, versions: I.FullVersion): HTMLDocData => (
@@ -172,17 +172,20 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
       getKey: (params: any) => string,
       getDefault?: (params: any, versions: I.FullVersionRange) => HTMLDocData | null): express.RequestHandler => (
     async (req, res, next) => {
-      const k = getKey(req.params)
-      const result = await store.fetch({type: 'kv', q: new Set([k])})
-      // console.log('Got result from', k, result.results)
-      let value = result.results.get(k)
-      if (value == null && getDefault) value = getDefault(req.params, result.versions)
-      if (value == null) return next()
-      
-      if (fresh(req.headers, value.headers)) return res.sendStatus(304)
-      
-      res.set(value.headers)
-      res.send(value.data)
+      try {
+        const k = getKey(req.params)
+        const result = await store.fetch({type: 'kv', q: new Set([k])})
+        // console.log('Got result from', k, result.results)
+        let value = result.results.get(k)
+        if (value == null && getDefault) value = getDefault(req.params, result.versions)
+        if (value == null) return next()
+        
+        if (fresh(req.headers, value.headers)) return res.sendStatus(304)
+        
+        console.log('headers', value.headers)
+        res.set(value.headers)
+        res.send(value.data)
+      } catch (e) { next(e) }
     }
   )
 

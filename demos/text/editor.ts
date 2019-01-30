@@ -130,11 +130,14 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
   const v0: I.FullVersion = {}
   for (const s in config.initialVersions) v0[s] = Uint8Array.from(config.initialVersions[s])
 
+  // This is needed to prevent the browser from storing the text content on back / forwards navigations.
+  elem.value = config.initialValue || ''
+
   const otdoc = await otDoc<TextOp>(store, 'text-unicode', {
     initial: { val: config.initialValue, version: v0 }
     // knownAtVersions: config.initialVersions,
   }, (txn, val) => {
-    console.log('listener', txn, val)
+    // console.log('listener', txn, val)
 
     switch (txn.type) {
       case 'set':
