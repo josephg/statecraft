@@ -48,7 +48,7 @@
     "memdown": "^1.2.0",
     "mocha": "^5.2.0",
     "tinyify": "^2.5.0",
-    "ts-node": "^7.0.1",
+    "ts-node": "^8.0.2",
     "tsify": "^4.0.0",
     "typescript": "^3.2.2",
     "watchify": "^3.11.0"
