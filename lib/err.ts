@@ -5,9 +5,8 @@ class WriteConflictError extends ExtendableError {}
 class UnsupportedTypeError extends ExtendableError {}
 class AccessDeniedError extends ExtendableError {}
 class InvalidDataError extends ExtendableError {}
-class TxnConflictError extends ExtendableError {}
 
-const constructors = {VersionTooOldError, WriteConflictError, UnsupportedTypeError, AccessDeniedError, InvalidDataError, TxnConflictError}
+const constructors = {VersionTooOldError, WriteConflictError, UnsupportedTypeError, AccessDeniedError, InvalidDataError}
 export default constructors
 
 export interface ErrJson {msg: string, name: string}

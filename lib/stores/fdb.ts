@@ -136,6 +136,8 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
     mutationTypes: new Set<I.ResultType>(['kv']),
   }
 
+  // let mid = 0
+
   const store: I.SimpleStore = {
     storeInfo: {
       sources: [source],
@@ -146,7 +148,8 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
       if (type !== 'kv') throw new err.UnsupportedTypeError()
       const txn = _txn as I.KVTxn
 
-      debug('mutate', txn)
+      // const m = mid++
+      // debug('mutate', m, versions && versions[source], txn)
 
       // Could be easily, just haven't done it.
       if (opts.conflictKeys && opts.conflictKeys.length) throw Error('conflictKeys not implemented')
@@ -161,7 +164,9 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
         await Promise.all(Array.from(txn.entries()).map(async ([k, op]) => {
           const oldValue = await tn.getVersionstampPrefixedValue(k)
 
+          // console.log(m, 'oldvalue stamp', oldValue && oldValue.stamp, 'v', v, 'conflict', (oldValue && v) ? vCmp(oldValue.stamp, v) > 0 : 'no compare')
           if (v != null && oldValue != null && vCmp(oldValue.stamp, v) > 0) {
+            // console.log('throwing write conflict', m)
             throw new err.WriteConflictError('Write conflict in key ' + k)
           }
 
@@ -173,7 +178,7 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
           // thats useful.
 
           // if (newVal === undefined) tn.clear(k)
-          // console.log('setting', k, newVal)
+          // console.log(m, 'setting', k, newVal)
           tn.setVersionstampPrefixedValue(k, newVal)
         }))
 
@@ -189,6 +194,8 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
 
         return tn.getVersionstamp()
       })).promise
+
+      // debug('mutate complete', m)
 
       // console.log('mutate -> resulting version', vs)
       return {[source]: vs}
@@ -340,6 +347,7 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
         const [version, [txnArr, meta]] = ops[i]
         // console.log('ops', version, txnArr, meta)
         const txn = qops.adaptTxn(new Map<I.Key, I.Val>(txnArr), query.q)
+        // console.log('txn', txn)
         if (txn != null) result.push({txn, meta, versions: {[source]: version}})
       }
 
@@ -364,6 +372,7 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
   const opwatcher = async () => {
     try {
       // running++
+      // await new Promise(resolve => setTimeout(resolve, 1000))
 
       let v0 = (await rawDb.get(VERSION_KEY)) || BUF_EMPTY
       // console.log('initial version', v0)

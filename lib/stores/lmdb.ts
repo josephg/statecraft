@@ -28,8 +28,6 @@ const START_SEL = sel(START_KEY, false)
 const END_SEL = sel(END_KEY, false)
 const V_ZERO = new Uint8Array(8)
 
-// We take ownership of the PClient, so don't use it elsewhere after passing it to lmdbstore.
-//
 // ... At some point it'll make sense for the caller to get more detailed notifications about catchup state.
 // For now the promise won't be called until catchup is complete.
 const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> => {
@@ -240,7 +238,7 @@ const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> =
 
       const expectedVersion = (versions && versions[source] != null) ? versions[source] : version
 
-      // First check that the transaction applies cleanly.
+      // Check that the transaction applies cleanly.
       const dbTxn = env.beginTxn({readOnly: true})
       for (const [k, op] of txn) {
         const [v, data] = rawGet(dbTxn, k)
@@ -264,7 +262,7 @@ const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> =
       // const resultVersion = await sendTxn(client, txn, opts.meta || {}, version, {})
       
       // We know its valid at the current version, so we're ok to pass that here.
-      const result = await inner.mutate('kv', txn, {[source]: version}, opts)
+      const result = await inner.mutate('kv', txn, {...versions, [source]: version}, opts)
 
       debug('mutate cb', result.resultVersion)
       return result

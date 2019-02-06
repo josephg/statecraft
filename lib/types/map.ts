@@ -117,7 +117,7 @@ const type: I.ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
     )
   },
 
-  updateResults(s: Map<I.Key, I.Val>, q, data: Map<I.Key, I.Val>) {
+  updateResults(s: Map<I.Key, I.Val>, q: I.ReplaceQuery, data: Map<I.Key, I.Val>) {
     if (q.type === 'kv') {
       for (const k of q.q) {
         if (data.has(k)) s.set(k, data.get(k))

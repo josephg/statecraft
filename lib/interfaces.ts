@@ -127,7 +127,15 @@ export type TxnWithMeta = {
 
 export type FetchOpts = {
   // Don't actually return any data. Useful for figuring out the version. Default: false
-  readonly noDocs?: boolean
+  readonly noDocs?: boolean,
+
+  // Request that the results returned are valid at the specified version.
+  // Stores should return VersionTooOldError if the version is too far in the
+  // past. This could take a version range instead, but I'm not sure
+  // what the stores would do with the full range information.
+  //
+  // TODO: This isn't currently tested or supported by most stores.
+  readonly atVersion?: FullVersion,
 
 
   // Results already known at specified version. Return nothing in this case.
@@ -138,7 +146,7 @@ export type FetchOpts = {
   // atLeastVersion: FullVersion
 }
 
-export type FetchResults = {
+export type FetchResults<R = ResultData> = {
   // This is returned so implementors can bake out the query into a static
   // query. Eg, a range query (with limits and offsets) will be baked out to a
   // static range query with none of that, and returned alongside the data
@@ -148,7 +156,7 @@ export type FetchResults = {
   // for KV queries if limits can be specified in the fetch options.
   bakedQuery?: Query,
 
-  results: ResultData,
+  results: R,
   versions: FullVersionRange, // Range across which version is valid.
 }
 
@@ -327,7 +335,7 @@ export type SubscribeFn = (q: Query, opts?: SubscribeOpts) => AsyncIterableItera
 
 
 export interface MutateOptions {
-  conflictKeys?: Key[],
+  conflictKeys?: Key[], // TODO: Add conflict ranges.
   meta?: Metadata,
 }
 

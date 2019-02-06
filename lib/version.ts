@@ -24,12 +24,6 @@ export const v64ToNum = (v: I.Version): number => {
   return dataview.getUint32(0) * TWO_32 + dataview.getUint32(4)
 }
 
-export const vEnd = (v: I.FullVersionRange): I.FullVersion => {
-  const result: I.FullVersion = {}
-  for (const s in v) result[s] = v[s].to
-  return result
-}
-
 export const vIncMut = (v: Uint8Array) => {
   let i = v.length
   while (i > 0 && v[--i]++ === 0xff);
@@ -72,3 +66,13 @@ export const vIntersectMut = (dest: I.FullVersionRange, src: I.FullVersionRange)
   }
   return dest
 }
+
+const objMap = <T, R>(obj: {[k: string]: T}, fn: (k: T) => R): {[k: string]: R} => {
+  const result: {[k: string]: R} = {}
+  for (const k in obj) result[k] = fn(obj[k])
+  return result
+}
+
+export const vRangeFrom = (vr: I.FullVersionRange) => objMap(vr, ({from}) => from)
+export const vRangeTo = (vr: I.FullVersionRange) => objMap(vr, ({to}) => to)
+export const vToRange = (v: I.FullVersion): I.FullVersionRange => objMap(v, v => ({from: v, to: v}))
