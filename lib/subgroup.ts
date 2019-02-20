@@ -15,10 +15,10 @@ const splitFullVersions = (v: I.FullVersionRange): [I.FullVersion, I.FullVersion
 }
 
 type BufferItem = {
-  source: I.Source, fromV: I.Version, toV: I.Version, txn: I.Txn, meta: I.Metadata
+  source: I.Source, fromV: I.Version, toV: I.Version, txn: I.Txn<any>, meta: I.Metadata
 }
 
-type Sub = {
+type Sub<Val> = {
   q: I.Query | null
   // iter: I.Subscription,
 
@@ -44,7 +44,7 @@ type Sub = {
   supportedTypes: Set<string> | null,
 
   // Stream attached to the returned subscription.
-  stream: Stream<I.CatchupData>,
+  stream: Stream<I.CatchupData<Val>>,
 
   id: number, // For debugging.
 }
@@ -55,12 +55,12 @@ const isVersion = (expectVersion: I.FullVersion | 'current' | null): expectVersi
 
 let nextId = 1
 
-export default class SubGroup {
-  private readonly allSubs = new Set<Sub>()
-  private readonly store: I.SimpleStore
+export default class SubGroup<Val> {
+  private readonly allSubs = new Set<Sub<Val>>()
+  private readonly store: I.SimpleStore<Val>
   private readonly getOps: I.GetOpsFn | null
 
-  constructor(store: I.SimpleStore, getOps?: I.GetOpsFn) {
+  constructor(store: I.SimpleStore<Val>, getOps?: I.GetOpsFn) {
     this.store = store
     this.getOps = getOps ? getOps : store.getOps ? store.getOps.bind(store) : null
 
@@ -70,7 +70,7 @@ export default class SubGroup {
     }
   }
   
-  async catchup(query: I.Query, opts: I.SubscribeOpts): Promise<I.CatchupData> {
+  async catchup(query: I.Query, opts: I.SubscribeOpts): Promise<I.CatchupData<Val>> {
     // TODO: This should look at the aggregation options to decide if a fetch
     // would be the right thing to do.
     //
@@ -120,7 +120,7 @@ export default class SubGroup {
 
   onOp(source: I.Source,
       fromV: I.Version, toV: I.Version,
-      type: I.ResultType, txn: I.Txn, resultingView: any,
+      type: I.ResultType, txn: I.Txn<Val>, resultingView: any,
       meta: I.Metadata) {
     if (vCmp(fromV, toV) >= 0) throw Error('Invalid op - goes backwards in time')
     for (const sub of this.allSubs) {
@@ -158,7 +158,7 @@ export default class SubGroup {
 
         // This is pretty verbose. Might make sense at some point to do a few MS of aggregation on these.
         if (localTxn != null || sub.alwaysNotify) sub.stream.append({
-          txns: localTxn != null ? [{versions: {[source]:toV}, txn: localTxn, meta}] : [],
+          txns: localTxn != null ? [{versions: {[source]:toV}, txn: localTxn as I.Txn<Val>, meta}] : [],
           toVersion: {[source]:toV},
         })
       }
@@ -167,7 +167,7 @@ export default class SubGroup {
     }
   }
 
-  create(query: I.Query, opts: I.SubscribeOpts = {}): I.Subscription {
+  create(query: I.Query, opts: I.SubscribeOpts = {}): I.Subscription<Val> {
     if (query.type === 'range' && opts.fromVersion != null) {
       throw new err.UnsupportedTypeError('Can only subscribe to full range queries with no version specified')
     }
@@ -175,11 +175,11 @@ export default class SubGroup {
     const fromCurrent = opts.fromVersion === 'current'
     const qtype = queryTypes[query.type]
 
-    const stream = streamToIter<I.CatchupData>(() => {
+    const stream = streamToIter<I.CatchupData<Val>>(() => {
       this.allSubs.delete(sub)
     })
 
-    var sub: Sub = {
+    var sub: Sub<Val> = {
       // Ugh this is twisty. We need the query to filter transactions as they
       // come in. But also, for range queries we want to use the baked version
       // of the query instead of the raw query. If catchup gives us

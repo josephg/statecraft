@@ -57,23 +57,23 @@ export interface KVMemOptions {
   readonly?: boolean,
 }
 
-export interface MemStore extends I.SimpleStore {
+export interface MemStore<Val> extends I.SimpleStore<Val> {
   // internalDidChange(type: I.ResultType, txn: I.Txn, versions: I.FullVersion, opts: I.MutateOptions): void
 
   // Apply and notify that a change happened in the database. This is useful
   // so if the memory store wraps an object that is edited externally, you can
   // update listeners.
-  internalDidChange(txn: I.KVTxn, meta: I.Metadata, preApplied?: boolean): I.Version
+  internalDidChange(txn: I.KVTxn<Val>, meta: I.Metadata, preApplied?: boolean): I.Version
 }
 
 
-export default function singleStore(
-    _data?: Map<I.Key, I.Val>,
+export default function singleStore<Val>(
+    _data?: Map<I.Key, Val>,
     storeOpts: KVMemOptions = {}
     // source: I.Source = genSource(),
     // initialVersion: I.Version = 0
-): MemStore {
-  const data: Map<I.Key, I.Val> = _data == null ? new Map() : _data
+): MemStore<Val> {
+  const data: Map<I.Key, Val> = _data == null ? new Map() : _data
   const lastModVersion = new Map<I.Key, number>()
 
   const source = storeOpts.source || genSource()
@@ -81,7 +81,7 @@ export default function singleStore(
 
   let version: number = initialVersion
 
-  const store: MemStore = {
+  const store: MemStore<Val> = {
     storeInfo: {
       capabilities,
       sources: [source],
@@ -89,7 +89,7 @@ export default function singleStore(
     fetch(query, opts = {}) {
       // console.log('fetch query', JSON.stringify(query, null, 2))
 
-      let results: Map<I.Key, I.Val> | I.RangeResult
+      let results: Map<I.Key, Val> | I.RangeResult<Val>
       let lowerRange: number = initialVersion
       let bakedQuery: I.Query | undefined
       const tag = (k: I.Key) => {
@@ -112,7 +112,7 @@ export default function singleStore(
           bakedQuery = {type: 'static range', q: query.q.slice()}
         case 'static range': {
           const q = query.q as I.RangeQuery
-          results = [] as I.RangeResult
+          results = [] as I.RangeResult<Val>
 
           // We're going to modify this to the baked range info.
           // Baked range info has no limit and no key offsets.
@@ -134,7 +134,7 @@ export default function singleStore(
             const vals = keys.slice(from, to).map(k => {
               // This is a bit sneaky.
               tag(k)
-              return ([k, data.get(k)] as I.KVPair)
+              return ([k, data.get(k)] as I.KVPair<Val>)
             })
             results.push(qc.reverse ? vals.reverse() : vals)
           }
@@ -170,7 +170,7 @@ export default function singleStore(
       if (storeOpts.readonly) return Promise.reject(new err.AccessDeniedError())
       // console.log('kvmem mutate')
 
-      const txn = _txn as I.KVTxn
+      const txn = _txn as I.KVTxn<Val>
 
       const expectv = (!versions || versions[source] == null) ? version : v64ToNum(versions[source])
 

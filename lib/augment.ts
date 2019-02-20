@@ -4,7 +4,7 @@ import * as I from './interfaces'
 import makeOpCache from './opcache'
 import SubGroup from './subgroup'
 
-const augment = (innerStore: I.SimpleStore, opts?: any): I.Store => {
+const augment = <Val>(innerStore: I.SimpleStore<Val>, opts?: any): I.Store<Val> => {
   const opcache = innerStore.getOps ? null : makeOpCache({})
   const getOps = innerStore.getOps || opcache!.getOps
 
@@ -14,7 +14,7 @@ const augment = (innerStore: I.SimpleStore, opts?: any): I.Store => {
     opcache && opcache.onOp(source, fromV, toV, type, txn, meta)
     subscriptions && subscriptions.onOp(source, fromV, toV, type, txn, view, meta)
   }
-  const outerStore: I.Store = {
+  const outerStore: I.Store<Val> = {
     storeInfo: innerStore.storeInfo,
     fetch: innerStore.fetch.bind(innerStore),
     catchup: innerStore.catchup ? innerStore.catchup.bind(innerStore) : undefined,
@@ -26,7 +26,7 @@ const augment = (innerStore: I.SimpleStore, opts?: any): I.Store => {
   }
 
   if (innerStore.storeInfo.capabilities.mutationTypes.has('kv')) {
-    outerStore.set = (key: I.Key, val: I.Val) => {
+    outerStore.set = (key: I.Key, val: Val) => {
       const txn = new Map([[key, {type:'set', data: val}]])
       return innerStore.mutate('kv', txn, {}, {})
     }

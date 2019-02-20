@@ -7,20 +7,20 @@ import msgpack from 'msgpack-lite'
 import err from './err'
 import {V64, v64ToNum} from './version'
 
-export const encodeTxn = (txn: I.KVTxn, meta: I.Metadata) => msgpack.encode([Array.from(txn), meta])
-export const decodeTxn = (data: Buffer): [I.KVTxn, I.Metadata] => {
+export const encodeTxn = (txn: I.KVTxn<any>, meta: I.Metadata) => msgpack.encode([Array.from(txn), meta])
+export const decodeTxn = (data: Buffer): [I.KVTxn<any>, I.Metadata] => {
   const [txn, meta] = msgpack.decode(data)
-  return [new Map<I.Key, I.Op>(txn), meta]
+  return [new Map<I.Key, I.Op<any>>(txn), meta]
 }
 
 // TODO: This should work with batches.
-export const decodeEvent = (event: Event, source: I.Source): I.TxnWithMeta => {
+export const decodeEvent = (event: Event, source: I.Source): I.TxnWithMeta<any> => {
   const [txn, meta] = decodeTxn(event.data)
   return { versions: {[source]: V64(event.version)}, txn, meta }
 }
 
 export function sendTxn(client: PClient,
-    txn: I.KVTxn,
+    txn: I.KVTxn<any>,
     meta: I.Metadata,
     expectedVersion: I.Version,
     opts: object): Promise<I.Version> {

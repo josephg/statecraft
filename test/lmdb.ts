@@ -37,7 +37,7 @@ const create = async () => {
   return store
 }
 
-const teardown = (store: I.Store) => { // teardown. Nuke it.
+const teardown = (store: I.Store<any>) => { // teardown. Nuke it.
   const path = pathOfDb.get(store)
   rmdir(path)
   pathOfDb.delete(store)

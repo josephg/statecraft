@@ -13,7 +13,7 @@ type BothMsg = N.CSMsg | N.SCMsg
 // Passes invariants inv(0) != 0, inv(inv(x)) == x.
 const inv = (x: number) => -x-1
 
-export default function connectMux(reader: TinyReader<BothMsg>, writer: TinyWriter<BothMsg>, localStore: I.Store, symmetry: boolean): Promise<I.Store> {
+export default function connectMux<LocalVal, RemoteVal>(reader: TinyReader<BothMsg>, writer: TinyWriter<BothMsg>, localStore: I.Store<LocalVal>, symmetry: boolean): Promise<I.Store<RemoteVal>> {
   // To mux them both together I'm going to use the .ref property, which is on
   // all net messages except the hello message.
 

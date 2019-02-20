@@ -8,7 +8,7 @@ import {IncomingMessage} from 'http'
 
 const isProd = process.env.NODE_ENV === 'production'
 
-export const serveWS = (wsOpts: WebSocket.ServerOptions, store: I.Store | ((ws: WebSocket, msg: IncomingMessage) => I.Store)) => {
+export const serveWS = <Val>(wsOpts: WebSocket.ServerOptions, store: I.Store<Val> | ((ws: WebSocket, msg: IncomingMessage) => I.Store<Val>)) => {
   const getStore = typeof store === 'function' ? store : () => store
 
   const wss = new WebSocket.Server(wsOpts)

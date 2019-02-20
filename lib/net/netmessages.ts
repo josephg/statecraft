@@ -3,8 +3,8 @@ import {ErrJson} from '../err'
 
 export type Ref = /*string |*/ number
 
-export type NetKVTxn = [I.Key, I.Op][]
-export type NetTxn = I.SingleTxn | NetKVTxn
+export type NetKVTxn = [I.Key, I.Op<any>][]
+export type NetTxn = I.SingleTxn<any> | NetKVTxn
 
 export type NetQuery = 'single' | 'allkv' | [I.QueryType, any]
 

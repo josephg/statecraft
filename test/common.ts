@@ -18,8 +18,8 @@ const assertThrows = async (block: () => Promise<void>, errType?: string) => {
   throw Error('Block did not throw')
 }
 
-type SimpleResult = {
-  results: any,
+type SimpleResult<Val = any> = {
+  results: Val,
   versions: I.FullVersionRange,
 }
 
@@ -69,7 +69,7 @@ const toKVMap = <T>(qtype: I.QueryType, keys: Set<I.Key>, m: Map<I.Key, T> | [I.
 )
 
 // Fetch using fetch() and through subscribe.
-const eachFetchMethod = async (store: I.Store, query: I.Query, keys: Set<I.Key>): Promise<SimpleResult> => {
+const eachFetchMethod = async <Val>(store: I.Store<Val>, query: I.Query, keys: Set<I.Key>): Promise<SimpleResult<Val>> => {
   const qtype = query.type
   assert(store.storeInfo.capabilities.queryTypes.has(qtype),
     `${qtype} queries not supported by store`)
@@ -134,7 +134,7 @@ const eachFetchMethod = async (store: I.Store, query: I.Query, keys: Set<I.Key>)
 }
 
 async function runAllKVQueries<T>(
-    store: I.Store,
+    store: I.Store<any>,
     keys: I.KVQuery,
     fn: (q: I.Query, keys: I.KVQuery) => Promise<T>,
     allowRange: boolean
@@ -168,13 +168,13 @@ async function runAllKVQueries<T>(
   return vals
 }
 
-async function assertKVResults(
-    store: I.Store,
+async function assertKVResults<Val>(
+    store: I.Store<Val>,
     keys: I.Key[],
-    expectedVals: [I.Key, I.Val][],
+    expectedVals: [I.Key, Val][],
     expectedVers?: I.FullVersion | I.FullVersionRange) {
 
-  const results = await runAllKVQueries<SimpleResult>(
+  const results = await runAllKVQueries<SimpleResult<Val>>(
     store,
     new Set(keys),
     (query, keys) => eachFetchMethod(store, query, keys),
@@ -196,7 +196,7 @@ async function assertKVResults(
 
 }
 
-const getOpsBoth = async (store: I.Store, keys: I.Key[], versions: I.FullVersionRange, opts: I.GetOpsOptions = {}) => {
+const getOpsBoth = async (store: I.Store<any>, keys: I.Key[], versions: I.FullVersionRange, opts: I.GetOpsOptions = {}) => {
   const vals = await runAllKVQueries<I.GetOpsResult>(
     store,
     new Set(keys),
@@ -213,7 +213,7 @@ const getOpsBoth = async (store: I.Store, keys: I.Key[], versions: I.FullVersion
         })
       }
       results.ops = results.ops.filter(op => {
-        op.txn = toKVMap(query.type, keys, op.txn as I.KVTxn | I.RangeTxn)
+        op.txn = toKVMap(query.type, keys, op.txn as I.KVTxn<any> | I.RangeTxn<any>)
         return op.txn.size > 0
       })
       return results
@@ -242,25 +242,25 @@ function splitSingleVersions(versions: I.FullVersion | I.FullVersionRange): Sing
   return {source, version: versions[source] as any}
 }
 
-const ssTxn = (k: I.Key, v: I.Val): I.KVTxn => new Map([[k, {type:'set', data:v}]])
-const setSingle = async (store: I.Store, key: I.Key, value: I.Val, versions: I.FullVersion = {}): Promise<SingleVersion> => {
+const ssTxn = <Val>(k: I.Key, v: Val): I.KVTxn<Val> => new Map([[k, {type:'set', data:v}]])
+const setSingle = async <Val>(store: I.Store<Val>, key: I.Key, value: Val, versions: I.FullVersion = {}): Promise<SingleVersion> => {
   // if (typeof versions === 'function') [versions, callback] = [{}, versions]
   const txn = ssTxn(key, value)
   const vs = await store.mutate('kv', txn, versions, {})
   return splitSingleVersions(vs)
 }
 
-const delSingle = async (store: I.Store, key: I.Key): Promise<SingleVersion> => {
+const delSingle = async (store: I.Store<any>, key: I.Key): Promise<SingleVersion> => {
   // if (typeof versions === 'function') [versions, callback] = [{}, versions]
   const txn = new Map([[key, {type:'rm'}]])
   const vs = await store.mutate('kv', txn, {}, {})
   return splitSingleVersions(vs)
 }
 
-type SingleValue = {source: I.Source, version: I.VersionRange, value: I.Val}
-const getSingle = async (store: I.Store, key: I.Key, opts?: I.FetchOpts) => {
+type SingleValue<Val = any> = {source: I.Source, version: I.VersionRange, value: Val}
+const getSingle = async <Val>(store: I.Store<Val>, key: I.Key, opts?: I.FetchOpts) => {
   const r = await store.fetch({type:'kv', q:new Set([key])}, opts)
-  const results = r.results as Map<I.Key, I.Val>
+  const results = r.results as Map<I.Key, Val>
   assert(results.size <= 1)
 
   // console.log('r', results.entries().next().value[1])
@@ -271,17 +271,17 @@ const getSingle = async (store: I.Store, key: I.Key, opts?: I.FetchOpts) => {
 }
 
 
-const getVersionForKeys = async (store: I.Store, _keys: I.Key[] | I.Key): Promise<SingleVersionRange> => {
+const getVersionForKeys = async (store: I.Store<any>, _keys: I.Key[] | I.Key): Promise<SingleVersionRange> => {
   const keys = Array.isArray(_keys) ? new Set(_keys) : new Set([_keys])
   const {versions} = await store.fetch({type:'kv', q:keys}, {noDocs:true})
   return splitSingleVersions(versions)
 }
 
 interface Context extends Mocha.Context {
-  store: I.Store
+  store: I.Store<any>
 }
 
-export default function runTests(createStore: () => Promise<I.Store>, teardownStore?: (store: I.Store) => void) {
+export default function runTests(createStore: () => Promise<I.Store<any>>, teardownStore?: (store: I.Store<any>) => void) {
   describe('common tests', () => {
     beforeEach(async function() {
       const store = await createStore()
@@ -495,7 +495,7 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
       })
 
       it('allows you to subscribe from the current version, specified explicitly', async function() {
-        const sub = (this.store as I.Store).subscribe({type: 'kv', q: new Set(['a'])}, {fromVersion: {[this.source]: this.v1}})
+        const sub = (this.store as I.Store<any>).subscribe({type: 'kv', q: new Set(['a'])}, {fromVersion: {[this.source]: this.v1}})
 
         // The first message will be a catchup, which should be empty.
         const {value: catchup} = await sub.next()
@@ -511,7 +511,7 @@ export default function runTests(createStore: () => Promise<I.Store>, teardownSt
       it('allows you to subscribe from the previous version, specified explicitly', async function() {
         const v2 = (await setSingle(this.store, 'a', 2)).version
 
-        const sub = (this.store as I.Store).subscribe({type: 'kv', q: new Set(['a'])}, {fromVersion: {[this.source]: this.v1}})
+        const sub = (this.store as I.Store<any>).subscribe({type: 'kv', q: new Set(['a'])}, {fromVersion: {[this.source]: this.v1}})
 
         // The first message will be a catchup, which should bring us to v2.
         const {value: catchup} = await sub.next()

@@ -30,7 +30,7 @@ const V_ZERO = new Uint8Array(8)
 
 // ... At some point it'll make sense for the caller to get more detailed notifications about catchup state.
 // For now the promise won't be called until catchup is complete.
-const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> => {
+const lmdbStore = <Val>(inner: I.OpStore<Val>, location: string): Promise<I.SimpleStore<Val>> => {
   const env = new lmdb.Env()
 
   // console.log('inner', inner)
@@ -97,7 +97,7 @@ const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> =
 
   // TODO: Probably cleaner to write this as iterators? This is simpler / more
   // understandable though.
-  const getKVResults = (dbTxn: lmdb.Txn, query: Iterable<I.Key>, opts: I.FetchOpts, resultsOut: Map<I.Key, I.Val>) => {
+  const getKVResults = (dbTxn: lmdb.Txn, query: Iterable<I.Key>, opts: I.FetchOpts, resultsOut: Map<I.Key, Val>) => {
     let maxVersion = V_ZERO
 
     for (let k of query) {
@@ -110,7 +110,7 @@ const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> =
     return maxVersion
   }
 
-  const getAllResults = (dbTxn: lmdb.Txn, opts: I.FetchOpts, resultsOut: Map<I.Key, I.Val>) => {
+  const getAllResults = (dbTxn: lmdb.Txn, opts: I.FetchOpts, resultsOut: Map<I.Key, Val>) => {
     let maxVersion = V_ZERO
     const cursor = new lmdb.Cursor(dbTxn, dbi)
     let k = cursor.goToRange('\x02') // positioned right after config key
@@ -222,7 +222,7 @@ const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> =
     cursor.close()
   }
 
-  const store: I.SimpleStore = {
+  const store: I.SimpleStore<Val> = {
     storeInfo: {
       sources: [source],
       capabilities,
@@ -230,7 +230,7 @@ const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> =
 
     async mutate(type, _txn, versions, opts = {}) {
       if (type !== 'kv') throw new err.UnsupportedTypeError()
-      const txn = _txn as I.KVTxn
+      const txn = _txn as I.KVTxn<Val>
 
       await ready
 
@@ -276,17 +276,17 @@ const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> =
       return ready.then(() => {
         const dbTxn = env.beginTxn({readOnly: true})
 
-        let results: I.ResultData
+        let results: I.ResultData<Val>
         // KV txn. Query is a set of keys.
         let maxVersion: I.Version
 
         switch (query.type) {
           case 'kv':
-            results = new Map<I.Key, I.Val>()
+            results = new Map<I.Key, Val>()
             maxVersion = getKVResults(dbTxn, query.q, opts, results)
             break
           case 'allkv':
-            results = new Map<I.Key, I.Val>()
+            results = new Map<I.Key, Val>()
             maxVersion = getAllResults(dbTxn, opts, results)
             break
 
@@ -352,8 +352,8 @@ const lmdbStore = (inner: I.OpStore, location: string): Promise<I.SimpleStore> =
       })
     }
 
-    const txn_ = txn as I.KVTxn
-    const view = new Map<I.Key, I.Val>()
+    const txn_ = txn as I.KVTxn<Val>
+    const view = new Map<I.Key, Val>()
     for (const [k, op] of txn_) {
       // const oldData = fieldOps.create(rawGet(dbTxn, k)[0], op)
       const oldData = rawGet(evtTxn, k)[1]

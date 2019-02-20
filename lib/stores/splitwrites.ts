@@ -1,7 +1,7 @@
 import * as I from '../interfaces'
 
 // This store simply sends all reads to one store, and all writes to another.
-export default function splitWrites(readStore: I.Store, writeStore: I.Store): I.Store {
+export default function splitWrites<Val>(readStore: I.Store<Val>, writeStore: I.Store<Val>): I.Store<Val> {
   return {
     storeInfo: {
       sources: readStore.storeInfo.sources,

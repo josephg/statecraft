@@ -1,7 +1,7 @@
 import {SingleOp, Op, ResultOps} from '../interfaces'
 import {typeOrThrow, supportedTypes, typeRegistry} from '../typeregistry'
 
-function appendMut(a: Op, b: SingleOp) {
+function appendMut<Val>(a: Op<Val>, b: SingleOp<Val>) {
   const {type} = b
   // Rm and set override preceding data in the stream.
   if (type === 'rm'
@@ -32,7 +32,7 @@ function appendMut(a: Op, b: SingleOp) {
 const id = <T>(x: T) => x
 const apply2 = <T, R>(x: T, fn: (x: T, y: null) => R) => fn(x, null)
 
-const type: ResultOps<any, Op> = {
+const type: ResultOps<any, any, Op<any>> = {
   name: 'single',
 
   create(data) {
@@ -40,7 +40,7 @@ const type: ResultOps<any, Op> = {
     return data
   },
 
-  apply(snapshot: any, op: Op) {
+  apply<Val>(snapshot: Val, op: Op<Val>) {
     if (Array.isArray(op)) {
       // Multi operation.
       for (let i = 0; i < op.length; i++) {

@@ -11,7 +11,7 @@ fdb.setAPIVersion(600)
 
 const TEST_PREFIX = '__test'
 let _dbid = 1
-const storeDb = new Map<I.Store, fdb.Database>()
+const storeDb = new Map<I.Store<any>, fdb.Database>()
 
 const create = async () => {
   const prefix = TEST_PREFIX + _dbid++
@@ -23,7 +23,7 @@ const create = async () => {
   return store
 }
 
-const teardown = (store: I.Store) => { // teardown. Nuke it.
+const teardown = (store: I.Store<any>) => { // teardown. Nuke it.
   const db = storeDb.get(store)!
   storeDb.delete(store)
   store.close()

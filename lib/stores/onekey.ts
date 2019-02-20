@@ -11,24 +11,24 @@ const capabilities = {
   // ops: <I.OpsSupport>'none',
 }
 
-const onekey = (innerStore: I.Store, key: I.Key): I.Store => {
+const onekey = <Val>(innerStore: I.Store<Val>, key: I.Key): I.Store<Val> => {
   const canMutate = innerStore.storeInfo.capabilities.mutationTypes.has('kv')
   // console.log('cm', canMutate, innerStore.storeInfo)
 
   const innerQuery: I.Query = {type: 'kv', q: new Set([key])}
   if (!innerStore.storeInfo.capabilities.queryTypes.has('kv')) throw new err.UnsupportedTypeError('Inner store must support KV queries')
 
-  const unwrapTxns = (txns: I.TxnWithMeta[]): I.TxnWithMeta[] => (
+  const unwrapTxns = (txns: I.TxnWithMeta<Val>[]): I.TxnWithMeta<Val>[] => (
     txns.map(txn => {
       if(!(txn.txn instanceof Map)) throw new err.InvalidDataError()
       return {
         ...txn,
         txn: txn.txn.get(key),
-      } as I.TxnWithMeta
+      } as I.TxnWithMeta<Val>
     })
   )
 
-  const unwrapCatchupData = (data: I.CatchupData): I.CatchupData => {
+  const unwrapCatchupData = (data: I.CatchupData<Val>): I.CatchupData<Val> => {
     let hasReplace = false
     if (data.replace) {
       const replaceQ = data.replace.q
@@ -73,7 +73,7 @@ const onekey = (innerStore: I.Store, key: I.Key): I.Store => {
       if (!canMutate) throw new err.UnsupportedTypeError('Underlying store is read only')
       if (type !== 'single') throw new err.UnsupportedTypeError()
 
-      const innerTxn = new Map([[key, txn as I.Op]])
+      const innerTxn = new Map([[key, txn as I.Op<Val>]])
       return await innerStore.mutate('kv', innerTxn, versions, {
         ...opts,
         // conflictKeys: opts.conflictKeys && opts.conflictKeys.includes(key) ? [''] : undefined,
@@ -115,7 +115,7 @@ const onekey = (innerStore: I.Store, key: I.Key): I.Store => {
           yield unwrapCatchupData(innerUpdates)
         }
         // TODO: Does this pass through return() correctly?
-      })() as I.AsyncIterableIteratorWithRet<I.CatchupData>
+      })() as I.AsyncIterableIteratorWithRet<I.CatchupData<Val>>
     },
 
   }

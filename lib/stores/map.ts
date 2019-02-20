@@ -4,27 +4,27 @@ import {queryTypes} from '../qrtypes'
 
 const supportedOpTypes = new Set(['rm', 'set'])
 
-export type MapFn = (v: I.Val, k: I.Key | null, version: I.FullVersion) => I.Val
+export type MapFn<In, Out> = (v: In, k: I.Key | null, version: I.FullVersion) => Out
 
-const mapValues = <K, V1, V2>(map: Map<K, V1>, fn: (v: V1, k: K) => V2): Map<K, V2> => {
-  const result = new Map<K, V2>()
+const mapValues = <K, In, Out>(map: Map<K, In>, fn: (v: In, k: K) => Out): Map<K, Out> => {
+  const result = new Map<K, Out>()
   for (const [key, val] of map.entries()) {
     result.set(key, fn(val, key))
   }
   return result
 }
 
-const mapSingleOp = (op: I.SingleOp, key: I.Key | null, version: I.FullVersion, fn: MapFn) => {
+const mapSingleOp = <In, Out>(op: I.SingleOp<In>, key: I.Key | null, version: I.FullVersion, fn: MapFn<In, Out>): I.SingleOp<Out> => {
   switch (op.type) {
-    case 'rm': return op
+    case 'rm': return op as I.SingleOp<any> as I.SingleOp<Out>
     case 'set': return {type: 'set', data: fn(op.data, key, version)}
     default: throw Error('Map function cannot process operation with type ' + op.type)
   }
 }
 
-const mapTxnWithMetas = (type: I.ResultOps<any, I.Txn>, txn: I.TxnWithMeta[], fn: MapFn) => (
+const mapTxnWithMetas = <In, Out>(type: I.ResultOps<In, any, I.Txn<In>>, txn: I.TxnWithMeta<In>[], fn: MapFn<In, Out>): I.TxnWithMeta<Out>[] => (
   txn.map(({versions, txn, meta}) => ({
-    txn: type.mapTxn(txn, (op, k) => (
+    txn: type.mapTxn(txn, (op: I.Op<In>, k) => (
       Array.isArray(op)
         ? op.map(singleOp => mapSingleOp(singleOp, k, versions, fn))
         : mapSingleOp(op, k, versions, fn)
@@ -41,7 +41,7 @@ const resultingVersion = (v: I.FullVersionRange): I.FullVersion => {
 }
 
 // Syncronous map fn
-const map = (inner: I.Store, mapfn: MapFn): I.Store => {
+const map = <In, Out>(inner: I.Store<In>, mapfn: MapFn<In, Out>): I.Store<Out> => {
   return {
     storeInfo: {
       sources: inner.storeInfo.sources,
@@ -60,11 +60,11 @@ const map = (inner: I.Store, mapfn: MapFn): I.Store => {
       const innerResults = await inner.fetch(query, opts)
 
       const version = resultingVersion(innerResults.versions)
-      const outerResults: I.FetchResults = {
+      const outerResults: I.FetchResults<Out> = {
         // In the noDocs case, inner.fetch will have already stripped the documents.
         results: (opts && opts.noDocs)
           ? innerResults.results
-          : qtype.resultType.map(innerResults.results, (v, k) => mapfn(v, k, version)),
+          : qtype.resultType.map(innerResults.results, (v, k) => mapfn(v as In, k, version)),
         bakedQuery: innerResults.bakedQuery,
         versions: innerResults.versions,
       }
@@ -117,12 +117,12 @@ const map = (inner: I.Store, mapfn: MapFn): I.Store => {
             txns: mapTxnWithMetas(qtype.resultType, innerUpdates.txns, mapfn),
             replace: innerUpdates.replace ? {
               q: innerUpdates.replace.q,
-              with: qtype.resultType.mapReplace(innerUpdates.replace.with, (v, k) => mapfn(v, k, version)),
+              with: qtype.resultType.mapReplace(innerUpdates.replace.with, (v: In, k) => mapfn(v, k, version)),
               versions: innerUpdates.replace.versions,
             } : undefined,
           }
         }
-      })() as I.AsyncIterableIteratorWithRet<I.CatchupData>
+      })() as I.AsyncIterableIteratorWithRet<I.CatchupData<Out>>
     },
 
     close() {},

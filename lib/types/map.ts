@@ -1,8 +1,8 @@
 import * as I from '../interfaces'
 import fieldOps from './field'
 
-const mapMapEntry = <T, R>(input: Map<I.Key, T>, fn: (key: I.Key, val: T) => [I.Key, R] | null) => {
-  const result = new Map<I.Key, R>()
+const mapMapEntry = <In, Out>(input: Map<I.Key, In>, fn: (key: I.Key, val: In) => [I.Key, Out] | null) => {
+  const result = new Map<I.Key, Out>()
   for (const [k, val] of input) {
     const newEntry = fn(k, val)
     if (newEntry != null) result.set(newEntry[0], newEntry[1])
@@ -11,23 +11,24 @@ const mapMapEntry = <T, R>(input: Map<I.Key, T>, fn: (key: I.Key, val: T) => [I.
 }
 
 // Could just write this in terms of mapMapEntry above.
-const mapMapVal = <T, R>(input: Map<I.Key, T>, fn: (val: T, key: I.Key) => R) => {
-  const result = new Map<I.Key, R>()
+const mapMapVal = <In, Out>(input: Map<I.Key, In>, fn: (val: In, key: I.Key) => Out) => {
+  const result = new Map<I.Key, Out>()
   for (const [k, val] of input) result.set(k, fn(val, k))
   return result
 }
 
-const mapEntryAsync = <T, R>(input: Map<I.Key, T>, fn: (key: I.Key, val: T) => Promise<[I.Key, R] | null>) => {
+const mapEntryAsync = <In, Out>(input: Map<I.Key, In>, fn: (key: I.Key, val: In) => Promise<[I.Key, Out] | null>) => {
   const entries = Array.from(input.entries())
   const mapped = entries.map(([k, v]) => fn(k, v))
-  return Promise.all(entries).then((results) => new Map(results.filter(e => e != null)))
+  return Promise.all(mapped).then((results) => new Map(results.filter(e => e != null) as [I.Key, Out][]))
 }
 
-const mapAsync = <T, R>(input: Map<I.Key, T>, fn: (val: T, key: I.Key) => Promise<R>) => (
-  mapEntryAsync(input, (k, v) => fn(v, k).then(v2 => ([k, v2] as [I.Key, R])))
+const mapAsync = <In, Out>(input: Map<I.Key, In>, fn: (val: In, key: I.Key) => Promise<Out>) => (
+  mapEntryAsync(input, (k, v) => fn(v, k).then(v2 => ([k, v2] as [I.Key, Out])))
 )
 
-const type: I.ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
+type Val = any
+const type: I.ResultOps<Val, Map<I.Key, Val>, I.KVTxn<Val>> = {
   name: 'kv',
 
   create(data) {
@@ -46,7 +47,7 @@ const type: I.ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
   },
 
   apply(snap, op) {
-    const newdata = new Map<I.Key, I.Val>(snap)
+    const newdata = new Map<I.Key, Val>(snap)
     type.applyMut!(newdata, op)
     return newdata
   },
@@ -111,13 +112,13 @@ const type: I.ResultOps<Map<I.Key, I.Val>, I.KVTxn> = {
     return {type: 'kv', q: new Set(snap.keys())}
   },
 
-  filterSupportedOps(op, view: Map<I.Key, I.Val>, supportedTypes) {
+  filterSupportedOps(op, view: Map<I.Key, Val>, supportedTypes) {
     return mapMapVal(op, (o, k) => (
       fieldOps.filterSupportedOps(o, view.get(k), supportedTypes))
     )
   },
 
-  updateResults(s: Map<I.Key, I.Val>, q: I.ReplaceQuery, data: Map<I.Key, I.Val>) {
+  updateResults(s: Map<I.Key, Val>, q: I.ReplaceQuery, data: Map<I.Key, Val>) {
     if (q.type === 'kv') {
       for (const k of q.q) {
         if (data.has(k)) s.set(k, data.get(k))

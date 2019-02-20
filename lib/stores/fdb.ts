@@ -70,7 +70,7 @@ type Config = {
 }
 
 type OpEntry = [
-  [I.Key, I.Op][],
+  [I.Key, I.Op<any>][],
   I.Metadata
 ]
 
@@ -95,7 +95,7 @@ const kStoFDBSel = ({k, isAfter, offset}: I.KeySelector) => (
 )
 
 
-export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
+export default async function fdbStore<Val>(_db?: Database): Promise<I.SimpleStore<Val>> {
   // Does it make sense to prefix like this? Once the directory layer is in,
   // we'll use that instead.
   const rawDb = _db || openSync().at('SC')
@@ -138,7 +138,7 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
 
   // let mid = 0
 
-  const store: I.SimpleStore = {
+  const store: I.SimpleStore<Val> = {
     storeInfo: {
       sources: [source],
       capabilities
@@ -146,7 +146,7 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
 
     async mutate(type, _txn, versions, opts = {}) {
       if (type !== 'kv') throw new err.UnsupportedTypeError()
-      const txn = _txn as I.KVTxn
+      const txn = _txn as I.KVTxn<Val>
 
       // const m = mid++
       // debug('mutate', m, versions && versions[source], txn)
@@ -207,7 +207,7 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
       const qops = queryTypes[query.type]
       let bakedQuery: I.Query | undefined
       let maxVersion: Uint8Array | null = null
-      let results: I.ResultData
+      let results: I.ResultData<Val>
 
       const vs = await rawDb.doTn(async rawTn => {
         // This could be way cleaner.
@@ -218,7 +218,7 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
 
         switch (query.type) {
           case 'kv': {
-            results = new Map<I.Key, I.Val>()
+            results = new Map<I.Key, Val>()
             await Promise.all(Array.from(query.q).map(async k => {
               const result = await tn.get(k)
               if (result) {
@@ -248,7 +248,7 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
             // Whatever we do should also work on static ranges.
 
             const resultsList = await tn.getRangeAll(START_KEY, END_KEY)
-            results = new Map<I.Key, I.Val>()
+            results = new Map<I.Key, Val>()
             for (const [kbuf, [stamp, value]] of resultsList) {
               results.set(kbuf.toString('utf8'), opts.noDocs ? 1 : value)
               maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
@@ -264,7 +264,7 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
               return (await tn.getRangeAll(staticKStoFDBSel(low), staticKStoFDBSel(high), {reverse: reverse}))
                 .map(([kbuf, [stamp, value]]) => {
                   maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
-                  return [kbuf.toString('utf8'), opts.noDocs ? 1 : value] as [I.Key, I.Val]
+                  return [kbuf.toString('utf8'), opts.noDocs ? 1 : value] as [I.Key, Val]
                 }) //.filter(([k, v]) => v != undefined)
             }))
             break
@@ -280,7 +280,7 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
                 .map(([kbuf, [stamp, value]]) => {
                   maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
                   // console.log('arr entry', [kbuf.toString('utf8'), value])
-                  return [kbuf.toString('utf8'), opts.noDocs ? 1 : value] as [I.Key, I.Val]
+                  return [kbuf.toString('utf8'), opts.noDocs ? 1 : value] as [I.Key, Val]
                 }) //.filter(([k, v]) => v != undefined)
 
               // Note: These aren't tested thoroughly yet. Probably a bit broken.
@@ -341,12 +341,12 @@ export default async function fdbStore(_db?: Database): Promise<I.SimpleStore> {
         keySelector.firstGreaterThan(Buffer.from(to))
       )
 
-      const result = [] as I.TxnWithMeta[]
+      const result = [] as I.TxnWithMeta<Val>[]
 
       for (let i = 0; i < ops.length; i++) {
         const [version, [txnArr, meta]] = ops[i]
         // console.log('ops', version, txnArr, meta)
-        const txn = qops.adaptTxn(new Map<I.Key, I.Val>(txnArr), query.q)
+        const txn = qops.adaptTxn(new Map<I.Key, I.Op<Val>>(txnArr), query.q)
         // console.log('txn', txn)
         if (txn != null) result.push({txn, meta, versions: {[source]: version}})
       }

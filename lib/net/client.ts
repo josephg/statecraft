@@ -31,21 +31,21 @@ const parseStoreInfo = (helloMsg: N.HelloMsg): I.StoreInfo => ({
   },
 })
 
-const parseTxnsWithMeta = (type: I.ResultOps<any, I.Txn>, data: N.NetTxnWithMeta[]): I.TxnWithMeta[] => (
-  data.map(([op, v, meta]) => (<I.TxnWithMeta>{
+const parseTxnsWithMeta = <Val>(type: I.ResultOps<any, any, I.Txn<Val>>, data: N.NetTxnWithMeta[]): I.TxnWithMeta<Val>[] => (
+  data.map(([op, v, meta]) => (<I.TxnWithMeta<Val>>{
     txn: type.opFromJSON(op),
     versions: fullVersionFromNet(v),
     meta
   }))
 )
 
-interface RemoteSub {
+interface RemoteSub<Val> {
   query: I.Query,
   // This is needed to reestablish the subscription later
   opts: I.SubscribeOpts,
 
   // The stream that the client is reading over
-  stream: Stream<I.CatchupData>,
+  stream: Stream<I.CatchupData<Val>>,
 
   // We really need to reuse the stream object between reconnection sessions,
   // but it'd be a huge hack to make the stream done function externally
@@ -69,22 +69,22 @@ type Details = {
 // contains everything needed to reestablish the connection. This is an opaque
 // structure from the outside. Just pass it back into the next client's
 // reconnect opt field.
-interface ReconnectionData {
+interface ReconnectionData<Val> {
   hello: N.HelloMsg,
-  subs: IterableIterator<RemoteSub>,
+  subs: IterableIterator<RemoteSub<Val>>,
   details: IterableIterator<Details>,
 }
 
-export interface ClientOpts {
+export interface ClientOpts<Val> {
   // preserveOnClose?: (data: ReconnectionData) => void,
   onClose?: () => void,
   preserveState?: boolean,
-  restoreFrom?: NetStore,
-  syncReady?: (store: NetStore) => void // working around await not returning syncronously.
+  restoreFrom?: NetStore<Val>,
+  syncReady?: (store: NetStore<Val>) => void // working around await not returning syncronously.
 }
 
-export type NetStore = I.Store & {
-  getState(): ReconnectionData
+export type NetStore<Val> = I.Store<Val> & {
+  getState(): ReconnectionData<Val>
 }
 
 const checkHello = (hello: N.HelloMsg, ref?: I.StoreInfo) => {
@@ -99,11 +99,11 @@ const checkHello = (hello: N.HelloMsg, ref?: I.StoreInfo) => {
   }
 }
 
-function storeFromStreams(reader: TinyReader<N.SCMsg>,
+function storeFromStreams<Val>(reader: TinyReader<N.SCMsg>,
     writer: TinyWriter<N.CSMsg>,
-    hello: N.HelloMsg, opts: ClientOpts = {}): NetStore {
+    hello: N.HelloMsg, opts: ClientOpts<Val> = {}): NetStore<Val> {
   let nextRef = 1
-  const subByRef = new Map<N.Ref, RemoteSub>()
+  const subByRef = new Map<N.Ref, RemoteSub<Val>>()
   const detailsByRef = new Map<N.Ref, Details>()
   let closed = false
 
@@ -146,7 +146,7 @@ function storeFromStreams(reader: TinyReader<N.SCMsg>,
         const {ref, results, bakedQuery, versions} = <N.FetchResponse>msg
         const {resolve, args: [q]} = takeCallback(ref)
         const type = queryTypes[q.type]!
-        resolve(<I.FetchResults>{
+        resolve(<I.FetchResults<Val>>{
           results: type.resultType.snapFromJSON(results),
           bakedQuery: bakedQuery ? queryFromNet(bakedQuery) : undefined,
           versions: fullVersionRangeFromNet(versions)
@@ -196,7 +196,7 @@ function storeFromStreams(reader: TinyReader<N.SCMsg>,
 
         const toVersion = fullVersionFromNet(tv)
 
-        const update: I.CatchupData = {
+        const update: I.CatchupData<Val> = {
           replace: r == null ? undefined : {
             q: queryFromNet(q!) as I.ReplaceQuery,
             with: type.resultType.snapFromJSON(r),
@@ -235,7 +235,7 @@ function storeFromStreams(reader: TinyReader<N.SCMsg>,
     }
   }
 
-  const registerSub = (sub: RemoteSub) => {
+  const registerSub = (sub: RemoteSub<Val>) => {
     const ref = nextRef++
 
     sub.cleanup = () => {
@@ -274,7 +274,7 @@ function storeFromStreams(reader: TinyReader<N.SCMsg>,
       v: fullVersionRangeToNet(versions), opts
     }),
 
-    mutate: (ref: number, mtype: I.ResultType, txn: I.Txn, versions: I.FullVersion = {}, opts: I.MutateOptions = {}) => ({
+    mutate: (ref: number, mtype: I.ResultType, txn: I.Txn<Val>, versions: I.FullVersion = {}, opts: I.MutateOptions = {}) => ({
       a: N.Action.Mutate, ref, mtype,
       txn: resultTypes[mtype].opToJSON(txn),
       v: fullVersionToNet(versions), opts
@@ -315,9 +315,9 @@ function storeFromStreams(reader: TinyReader<N.SCMsg>,
 
       const sub = {
         query, opts,
-      } as RemoteSub
+      } as RemoteSub<Val>
 
-      sub.stream = streamToIter<I.CatchupData>(() => sub.cleanup())
+      sub.stream = streamToIter<I.CatchupData<Val>>(() => sub.cleanup())
 
       registerSub(sub)
       return sub.stream.iter
@@ -358,10 +358,10 @@ const readNext = <T>(r: TinyReader<T>): Promise<T> => (
   })
 )
 
-export default async function createStore(
+export default async function createStore<Val>(
     reader: TinyReader<N.SCMsg>,
     writer: TinyWriter<N.CSMsg>,
-    opts: ClientOpts = {}): Promise<NetStore> {
+    opts: ClientOpts<Val> = {}): Promise<NetStore<Val>> {
 
   const hello = await readNext(reader) as N.HelloMsg
   checkHello(hello, opts.restoreFrom ? opts.restoreFrom.storeInfo : undefined)

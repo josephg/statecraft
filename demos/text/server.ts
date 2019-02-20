@@ -67,7 +67,7 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
   // const backend = await lmdbStore(prozessOps(pclient), LMDBPATH)
 
   const fdbConn = fdb.openSync().at('textdemo') // TODO: Directory layer stuff.
-  const backend = await fdbStore(fdbConn)
+  const backend = await fdbStore<string>(fdbConn)
 
   // const backend = lmdbStore(
   const rootStore = otStore(augment(backend))

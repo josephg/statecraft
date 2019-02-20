@@ -41,8 +41,10 @@ const setObj = (data: any) => {
   }
 }
 
+type World = any
+
 ;(async () => {
-  const store = onekey(await connect('ws://localhost:2000/'), config.key)
+  const store = onekey(await connect<World>('ws://localhost:2000/'), config.key)
 
   const sub = store.subscribe({type: 'single', q: true}, {
     fromVersion: config.initialVersions,
@@ -59,7 +61,7 @@ const setObj = (data: any) => {
     }
 
     update.txns.forEach(txn => {
-      last = fieldOps.apply(last, txn.txn as I.SingleTxn)
+      last = fieldOps.apply(last, txn.txn as I.SingleTxn<World>)
       setObj(last)
     })
   }

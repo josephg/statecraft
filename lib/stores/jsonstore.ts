@@ -20,7 +20,7 @@ const capabilities = {
   ops: <I.OpsSupport>'none',
 }
 
-const fileStore = (filename: string, sourceIn?: string): I.SimpleStore => {
+const fileStore = <Val>(filename: string, sourceIn?: string): I.SimpleStore<Val> => {
   const source: I.Source = sourceIn || filename
 
   // Try and load the file.
@@ -91,7 +91,7 @@ const fileStore = (filename: string, sourceIn?: string): I.SimpleStore => {
 
   // watcher.on('error', err => console.error('Watcher error', err))
 
-  const store: I.SimpleStore = {
+  const store: I.SimpleStore<Val> = {
     storeInfo: {
       capabilities,
       sources: [source],
@@ -108,7 +108,7 @@ const fileStore = (filename: string, sourceIn?: string): I.SimpleStore => {
 
     mutate(type, txn, versions, opts = {}) {
       if (type !== 'single') return Promise.reject(new err.UnsupportedTypeError())
-      const op = txn as I.Op
+      const op = txn as I.Op<Val>
 
       const expectv = versions && versions[source]
       if (expectv != null && vCmp(expectv, version) < 0) return Promise.reject(new err.VersionTooOldError())

@@ -6,7 +6,7 @@ import {TinyReader, TinyWriter, wrapReader, wrapWriter} from '../net/tinystream'
 import net from 'net'
 import msgpack from 'msgpack-lite'
 
-export default function(port: number, host: string): Promise<I.Store> {
+export default function<Val>(port: number, host: string): Promise<I.Store<Val>> {
   const socket = net.createConnection(port, host)
 
   const writer = wrapWriter<N.CSMsg>(socket, msgpack.encode)

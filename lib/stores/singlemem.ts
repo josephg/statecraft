@@ -11,11 +11,11 @@ const capabilities = {
   // ops: <I.OpsSupport>'none',
 }
 
-const singleStore = (initialValue: any = null, source: I.Source = genSource(), initialVersionNum: number = 0): I.SimpleStore => {
+const singleStore = <Val = any>(initialValue: Val, source: I.Source = genSource(), initialVersionNum: number = 0): I.SimpleStore<Val> => {
   let version: number = initialVersionNum
   let data = initialValue
 
-  const store: I.SimpleStore = {
+  const store: I.SimpleStore<Val> = {
     storeInfo: {
       capabilities,
       sources: [source]
@@ -32,7 +32,7 @@ const singleStore = (initialValue: any = null, source: I.Source = genSource(), i
 
     async mutate(type, txn, versions, opts = {}) {
       if (type !== 'single') throw new err.UnsupportedTypeError()
-      const op = txn as I.Op
+      const op = txn as I.Op<Val>
 
       const expectv = versions && versions[source]
       const currentv = V64(version)
@@ -51,7 +51,7 @@ const singleStore = (initialValue: any = null, source: I.Source = genSource(), i
   return store
 }
 
-export function setSingle(store: I.SimpleStore, value: any) {
+export function setSingle<Val>(store: I.SimpleStore<Val>, value: any) {
   return store.mutate('single', {type: 'set', data: value})
 }
 

@@ -13,9 +13,9 @@ const wait = (timeout: number) => new Promise(resolve => setTimeout(resolve, tim
 
 // Mmmmmm I wonder if this should actually also wrap a backing store to write
 // into...
-export default async function poller(
-    poll: () => Promise<any>,
-    opts: PollOpts = {}): Promise<I.SimpleStore> {
+export default async function poller<Val>(
+    poll: () => Promise<Val>,
+    opts: PollOpts = {}): Promise<I.SimpleStore<Val>> {
   const initial = await poll()
   const inner = singlemem(initial, opts.source, opts.initialVersion)
 
@@ -30,5 +30,5 @@ export default async function poller(
   })()
 
   // TODO: Read only wrapper!
-  return readonly(inner)
+  return readonly<Val, typeof inner>(inner)
 }

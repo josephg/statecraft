@@ -1,26 +1,29 @@
-// This is a simple implementation of a KV transaction on top of SC stores.
+// This is a simple implementation of key-value transactions on top of statecraft stores.
+
+// This works with any correct store. It is roughly based on foundationdb's transaction logic.
+
 import * as I from './interfaces'
 import err from './err'
 import {vRangeTo, vToRange, vIntersectMut} from './version'
 import streamToIter, {AsyncIterableIteratorWithRet} from './streamToIter'
 import rtype from './types/map'
 
-export interface TxnOpts {
+export interface TxnOpts<Val> {
   readOnly?: boolean
-  readCache?: Map<I.Key, I.Val>
+  readCache?: Map<I.Key, Val>
   v?: I.FullVersionRange
 }
 
-class Transaction {
-  _store: I.Store
-  _writeCache: Map<I.Key, I.Op>
+class Transaction<Val> {
+  _store: I.Store<Val>
+  _writeCache: Map<I.Key, I.Op<Val>>
   _v: I.FullVersionRange
   docsRead: Set<I.Key>
 
   _readOnly: boolean
-  _readCache?: Map<I.Key, I.Val>
+  _readCache?: Map<I.Key, Val>
 
-  constructor(store: I.Store, opts: TxnOpts) {
+  constructor(store: I.Store<Val>, opts: TxnOpts<Val>) {
     // Consider relaxing this constraint here and just letting things work themselves out
     if (!store.storeInfo.capabilities.queryTypes.has('kv')) {
       throw new err.UnsupportedTypeError('transaction needs a kv store')
@@ -33,7 +36,7 @@ class Transaction {
     this._readCache = opts.readCache
   }
 
-  async get(k: I.Key): Promise<I.Val> {
+  async get(k: I.Key): Promise<Val> {
     if (this._readCache) {
       const val = this._readCache.get(k)
       if (val !== undefined) {
@@ -63,12 +66,12 @@ class Transaction {
     this._v = version
     this.docsRead.add(k)
 
-    let val = (results as Map<I.Key, I.Val>).get(k) // Should be the only key.
+    let val = (results as Map<I.Key, Val>).get(k)! // Should be the only key.
     if (this._readCache) this._readCache.set(k, val)
     return val
   }
 
-  set(k: I.Key, v: I.Val) {
+  set(k: I.Key, v: Val) {
     if (this._readOnly) throw Error('Cannot write to read-only transaction')
     this._writeCache.set(k, {type: 'set', data: v})
   }
@@ -100,7 +103,7 @@ class Transaction {
   }
 }
 
-const doTxn = async <T>(store: I.Store, fn: (txn: Transaction) => Promise<T>, opts: TxnOpts = {}): Promise<I.FetchResults<T>> => {
+const doTxn = async <Val, T>(store: I.Store<Val>, fn: (txn: Transaction<Val>) => Promise<T>, opts: TxnOpts<Val> = {}): Promise<I.FetchResults<T>> => {
   const txn = new Transaction(store, opts)
   while (true) {
     try {
@@ -121,7 +124,7 @@ const doTxn = async <T>(store: I.Store, fn: (txn: Transaction) => Promise<T>, op
 }
 export default doTxn
 
-export const txnSubscribe = <T>(store: I.Store, fn: (txn: Transaction) => Promise<T>): AsyncIterableIteratorWithRet<T> => {
+export const txnSubscribe = <Val, T>(store: I.Store<Val>, fn: (txn: Transaction<Val>) => Promise<T>): AsyncIterableIteratorWithRet<T> => {
   let stop = false
   const stream = streamToIter<T>(() => {
     stop = true
@@ -129,7 +132,7 @@ export const txnSubscribe = <T>(store: I.Store, fn: (txn: Transaction) => Promis
 
   ;(async () => {
     const cache = new Map
-    let {results: [data, txn], versions} = await doTxn(store, async txn => [await fn(txn), txn] as [T, Transaction], {
+    let {results: [data, txn], versions} = await doTxn(store, async txn => [await fn(txn), txn] as [T, Transaction<Val>], {
       readOnly: true,
       readCache: cache,
     })
@@ -152,7 +155,7 @@ export const txnSubscribe = <T>(store: I.Store, fn: (txn: Transaction) => Promis
           if (catchup.replace.q.type !== 'kv') throw new err.UnsupportedTypeError('only kv subscribe txns supported')
           rtype.updateResults(cache, catchup.replace.q, catchup.replace.with)
         }
-        catchup.txns.forEach(txn => {rtype.applyMut!(cache, txn.txn as I.KVTxn)})
+        catchup.txns.forEach(txn => {rtype.applyMut!(cache, txn.txn as I.KVTxn<Val>)})
 
         // Ok; now re-run the function. If we end up fetching more / different
         // documents, we'll need to bail out and re-make the subscription.

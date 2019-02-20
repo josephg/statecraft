@@ -5,7 +5,7 @@ import {wrapReader, wrapWriter} from './tinystream'
 import net from 'net'
 import msgpack from 'msgpack-lite'
 
-export default (store: I.Store) => {
+export default <Val>(store: I.Store<Val>) => {
   // console.log('made store')
   return net.createServer(c => {
     // console.log('got connection')

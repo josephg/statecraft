@@ -11,23 +11,24 @@ const wait = (timeout: number) => new Promise(resolve => setTimeout(resolve, tim
 // - connecting
 // - waiting
 // - stopped
+type Status = string
 
-const reconnector = (connect: (() => [TinyReader<N.SCMsg>, TinyWriter<N.CSMsg>])): [I.SimpleStore, Promise<I.Store>] => {
+const reconnector = <Val>(connect: (() => [TinyReader<N.SCMsg>, TinyWriter<N.CSMsg>])): [I.SimpleStore<Status>, Promise<I.Store<Val>>] => {
   // This is a tiny store that the client can use to track & display whether
   // or not we're currently connected. Ite tempting to make a metastore be a
   // default feature.
   const status = singleMem('waiting')
-  let innerStore: NetStore | null = null
+  let innerStore: NetStore<Val> | null = null
   let shouldReconnect = true
 
   // const initialStoreP = 
   // initialStoreP.then(store => { innerStore = store; })
 
-  const ready: Promise<I.Store> = new Promise((resolve, reject) => {
+  const ready: Promise<I.Store<Val>> = new Promise((resolve, reject) => {
     // Should this return a [reader, writer] promise?
     const [r, w] = connect()
 
-    const opts: ClientOpts = {
+    const opts: ClientOpts<Val> = {
       preserveState: true,
       onClose() {
         // We don't clear innerStore yet - all requests will still go there
@@ -75,7 +76,7 @@ const reconnector = (connect: (() => [TinyReader<N.SCMsg>, TinyWriter<N.CSMsg>])
       setSingle(status, 'connected')
 
       // This is basically a proxy straight to innerStore.
-      const s: I.Store = {
+      const s: I.Store<Val> = {
         storeInfo: initialStore.storeInfo,
         fetch(...args) { return innerStore!.fetch(...args) },
         getOps(...args) { return innerStore!.getOps(...args) },

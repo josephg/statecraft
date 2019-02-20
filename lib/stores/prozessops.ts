@@ -3,18 +3,18 @@
 // The store type is raw. The 'document' is empty, and you can't
 // query anything.
 
-import {PClient, Event, SubCbData} from 'prozess-client'
+import {PClient} from 'prozess-client'
 import assert from 'assert'
 
 import * as I from '../interfaces'
 import err from '../err'
-import {encodeTxn, decodeTxn, decodeEvent, sendTxn} from '../prozess'
+import {decodeTxn, decodeEvent, sendTxn} from '../prozess'
 import {queryTypes} from '../qrtypes'
 import {V64, v64ToNum} from '../version'
 
 // const codec = msgpack.createCodec({usemap: true})
 
-const doNothing = () => {}
+// const doNothing = () => {}
 
 const capabilities = {
   // ... Except you can't fetch. :/
@@ -23,10 +23,10 @@ const capabilities = {
 }
 
 // TODO: pick a better port.
-const prozessStore = (conn: PClient): I.OpStore => {
+const prozessStore = <Val>(conn: PClient): I.OpStore<Val> => {
   const source = conn.source!
 
-  const store: I.OpStore = {
+  const store: I.OpStore<Val> = {
     storeInfo: {
       sources: [source],
       capabilities,
@@ -34,7 +34,7 @@ const prozessStore = (conn: PClient): I.OpStore => {
 
     async mutate(type, _txn, versions, opts = {}) {
       if (type !== 'kv') throw new err.UnsupportedTypeError()
-      const txn = _txn as I.KVTxn
+      const txn = _txn as I.KVTxn<Val>
 
       const version = await sendTxn(conn, txn, opts.meta || {}, (versions && versions[source]) || new Uint8Array(), {})
       return {[source]: version!}

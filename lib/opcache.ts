@@ -12,22 +12,22 @@ export interface OpCacheOpts {
   readonly maxNum?: number, // Max number of ops kept for each source.
 }
 
-interface OpsEntry {
+interface OpsEntry<Val> {
   fromV: I.Version,
   toV: I.Version,
-  txn: I.Txn,
+  txn: I.Txn<Val>,
   meta: I.Metadata,
 }
-const cmp = (item: OpsEntry, v: I.Version) => vCmp(item.toV, v)
+const cmp = (item: OpsEntry<any>, v: I.Version) => vCmp(item.toV, v)
 
-const opcache = (opts: OpCacheOpts): {
-  onOp(source: I.Source, fromV: I.Version, toV: I.Version, type: I.ResultType, txn: I.Txn, meta: I.Metadata): void,
+const opcache = <Val>(opts: OpCacheOpts): {
+  onOp(source: I.Source, fromV: I.Version, toV: I.Version, type: I.ResultType, txn: I.Txn<Val>, meta: I.Metadata): void,
   getOps: I.GetOpsFn,
 } => {
   const maxNum = opts.maxNum || 0
   // List is sorted in order and accessed using binary search.
 
-  const opsForSource: {[source: string]: OpsEntry[]} = {}
+  const opsForSource: {[source: string]: OpsEntry<Val>[]} = {}
 
   const getOpsForSource = (source: I.Source) => {
     let ops = opsForSource[source]
@@ -52,7 +52,7 @@ const opcache = (opts: OpCacheOpts): {
 
       const vOut: I.FullVersionRange = {}
 
-      const result: I.TxnWithMeta[] = []
+      const result: I.TxnWithMeta<Val>[] = []
       for (const source in opsForSource) {
         // This is a bit inefficient - if there's lots of sources
         // we're looking through all of them even if the user only

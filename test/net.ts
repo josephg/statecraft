@@ -12,7 +12,7 @@ import {AddressInfo} from 'net'
 // there are a bunch of errors which can show up there that we don't catch
 // here. (Eg, version encoding bugs)
 describe('net', () => {
-  const serverForStore = new WeakMap<I.Store, any>()
+  const serverForStore = new WeakMap<I.Store<any>, any>()
   runTests(() => new Promise((resolve, reject) => {
     const store = augment(kvStore())
     const server = createServer(store)

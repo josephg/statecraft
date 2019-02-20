@@ -20,7 +20,7 @@ const capabilitiesToJSON = (c: I.Capabilities): any[] => {
   ]
 }
 
-const txnsWithMetaToNet = (type: I.ResultOps<any, I.Txn>, txns: I.TxnWithMeta[]): N.NetTxnWithMeta[] => (
+const txnsWithMetaToNet = <Val>(type: I.ResultOps<any, any, I.Txn<Val>>, txns: I.TxnWithMeta<Val>[]): N.NetTxnWithMeta[] => (
   txns.map(txn => (<N.NetTxnWithMeta>[
     type.opToJSON(txn.txn),
     fullVersionToNet(txn.versions),
@@ -28,10 +28,10 @@ const txnsWithMetaToNet = (type: I.ResultOps<any, I.Txn>, txns: I.TxnWithMeta[])
   ]))
 )
 
-export default function serve(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.SCMsg>, store: I.Store): void {
+export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWriter<N.SCMsg>, store: I.Store<Val>): void {
   if (reader.isClosed) return
   
-  const subForRef = new Map<N.Ref, I.Subscription>()
+  const subForRef = new Map<N.Ref, I.Subscription<Val>>()
 
   const protoErr = (err: Error) => {
     console.error('Invalid client', err)

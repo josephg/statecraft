@@ -101,7 +101,7 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
 ;(async () => {
   const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws/${config.key}`
   console.log('connecting to ws', wsurl, '...')
-  const [statusStore, storeP] = createStore(() => connect(wsurl))
+  const [statusStore, storeP] = createStore<string>(() => connect(wsurl))
 
   statusStore.onTxn = (source, fromV, toV, type, txn, rv, meta) => {
     // This is a bit nasty.. Might be better to augment and then subscribe.
@@ -133,7 +133,7 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
   // This is needed to prevent the browser from storing the text content on back / forwards navigations.
   elem.value = config.initialValue || ''
 
-  const otdoc = await otDoc<TextOp>(store, 'text-unicode', {
+  const otdoc = await otDoc<string, TextOp>(store, 'text-unicode', {
     initial: { val: config.initialValue, version: v0 }
     // knownAtVersions: config.initialVersions,
   }, (txn, val) => {

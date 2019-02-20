@@ -36,7 +36,7 @@ const mapSetKeys = <T, R>(q: Set<T>, fn: (k: T, i: number) => R | null): Set<R> 
 
 const nyi = () => {throw Error('Not implemented')}
 export const queryTypes: {[name: string]: I.QueryOps<any>} = {}
-const registerQuery = (name: I.QueryType, resultType: I.ResultOps<any, I.Txn>, fields: PartialQueryOPs = {}) => {
+const registerQuery = (name: I.QueryType, resultType: I.ResultOps<any, any, I.Txn<any>>, fields: PartialQueryOPs = {}) => {
   queryTypes[name] = {
     // createEmpty: () => null,
     toJSON: id, fromJSON: id,
@@ -75,11 +75,11 @@ registerQuery('kv', resultmap, {
   toJSON(s) { return Array.from(s) },
   fromJSON(data) { return new Set(data) },
   mapKeys: mapSetKeys,
-  adaptTxn(txn: I.KVTxn, query: I.KVQuery): I.KVTxn | null {
-    let result: I.KVTxn | null = null
+  adaptTxn<Val>(txn: I.KVTxn<Val>, query: I.KVQuery): I.KVTxn<Val> | null {
+    let result: I.KVTxn<Val> | null = null
     eachIntersect<I.Key>(txn, query, k => {
-      if (result == null) result = new Map<I.Key, I.Op>()
-      result.set(k, <I.Op>txn.get(k))
+      if (result == null) result = new Map<I.Key, I.Op<Val>>()
+      result.set(k, <I.Op<Val>>txn.get(k))
     })
     return result
   },
@@ -104,12 +104,12 @@ registerQuery('kv', resultmap, {
 // bundle size. This will be especially important once we actually use binary
 // search properly.
 
-const adaptTxnToRange = (txn: I.KVTxn, query: I.StaticRangeQuery): I.RangeResult | null => {
-  let result: I.RangeResult = []
+const adaptTxnToRange = <Val>(txn: I.KVTxn<Val>, query: I.StaticRangeQuery): I.RangeTxn<Val> | null => {
+  let result: I.RangeTxn<Val> = []
   let empty = true
   for (let i = 0; i < query.length; i++) {
     const q = query[i]
-    const r: [I.Key, I.Val][] = []
+    const r: [I.Key, I.Op<Val>][] = []
     result.push(r)
 
     // We have no idea where the limit bounds are. One solution here would
@@ -139,13 +139,16 @@ const mapRangeKeys = (q: I.RangeQuery, fn: (k: I.Key, i: number) => I.Key | null
   }))
 )
 
-type CatchupRangeReplace = I.CatchupReplace<{type: 'static range', q: I.StaticRangeQuery[]}, I.RangeResult[]>
+type CatchupRangeReplace<Val> = I.CatchupReplace<Val, {
+  type: 'static range',
+  q: I.StaticRangeQuery[]
+}, I.RangeResult<Val>[]>
 
 registerQuery('static range', range, {
   // createEmpty: (q) => new Array(q.length),
   mapKeys: mapRangeKeys,
   adaptTxn: adaptTxnToRange,
-  composeCR(a: CatchupRangeReplace, b: CatchupRangeReplace) {
+  composeCR<Val>(a: CatchupRangeReplace<Val>, b: CatchupRangeReplace<Val>) {
     const aqd = a.q.q, bqd = b.q.q
     if (aqd.length !== bqd.length) throw new err.InvalidDataError()
 
@@ -161,7 +164,7 @@ registerQuery('static range', range, {
     return a
   },
 
-  fetchToReplace(q: I.StaticRangeQuery, data: I.RangeResult) {
+  fetchToReplace<Val>(q: I.StaticRangeQuery, data: I.RangeResult<Val>) {
     return {
       q: {type: 'static range', q: q.map(x => [x])},
       with: data.map(x => [x])
@@ -190,7 +193,7 @@ registerQuery('range', range, {
     throw Error('adaptTxn on full range query not supported')
   },
 
-  fetchToReplace(q: I.RangeQuery, data: I.RangeResult) {
+  fetchToReplace<Val>(q: I.RangeQuery, data: I.RangeResult<Val>) {
     return {
       q: {type: 'static range', q: q.map(x => [x])},
       with: data.map(x => [x])
@@ -198,7 +201,7 @@ registerQuery('range', range, {
   },
 })
 
-export const resultTypes: {[name: string]: I.ResultOps<any, I.Txn>} = {
+export const resultTypes: {[name: string]: I.ResultOps<any, any, I.Txn<any>>} = {
   single: field,
   kv: resultmap,
   range,

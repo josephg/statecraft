@@ -1,7 +1,7 @@
 import * as I from '../interfaces'
 import err from '../err'
 
-const nullstore: I.Store = {
+const nullstore: I.Store<any> = {
   // We don't need a source; we have no data.
   //
   // It might make sense to add a dummy hard-coded source name here - not sure.

@@ -5,9 +5,9 @@ import err from '../err'
 import {queryTypes, resultTypes} from '../qrtypes'
 import {typeOrThrow} from '../typeregistry'
 
-const mapTxnWithPair = (type: I.ResultType, a: I.Txn, b: I.Txn, fn: (a: I.SingleTxn, b: I.SingleTxn) => I.SingleTxn) => {
+const mapTxnWithPair = <Val>(type: I.ResultType, a: I.Txn<Val>, b: I.Txn<Val>, fn: (a: I.SingleTxn<Val>, b: I.SingleTxn<Val>) => I.SingleTxn<Val>) => {
   if (a instanceof Map) {
-    const result = new Map<I.Key, I.Op>()
+    const result = new Map<I.Key, I.Op<Val>>()
     if (!(b instanceof Map)) throw new err.InvalidDataError('Transactions are different types')
     for (const [k, av] of a.entries()) {
       const bv = b.get(k)
@@ -16,19 +16,19 @@ const mapTxnWithPair = (type: I.ResultType, a: I.Txn, b: I.Txn, fn: (a: I.Single
     }
     return result
   } else if (type === 'single') {
-    return fn(a as I.Op, b as I.Op)
+    return fn(a as I.Op<Val>, b as I.Op<Val>)
   } else {
     throw new err.UnsupportedTypeError('Type ' + type + ' not supported by ot store')
     // throw new err.InvalidDataError('Transactions are different types')
   }
 }
 
-const eachOp = (op: I.Op, fn: (op: I.SingleOp) => void) => {
+const eachOp = <Val>(op: I.Op<Val>, fn: (op: I.SingleOp<Val>) => void) => {
   if (Array.isArray(op)) op.forEach(fn)
   else fn(op)
 }
 
-const otStore = (inner: I.Store /*, filter: (key: I.Key) => boolean */): I.Store => {
+const otStore = <Val>(inner: I.Store<Val> /*, filter: (key: I.Key) => boolean */): I.Store<Val> => {
 
   return {
     ...inner,

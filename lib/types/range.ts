@@ -39,30 +39,31 @@ export const findRangeStatic = (range: I.StaticRange, keys: ArrayLike<I.Key>) =>
 //   }
 // }
 
-type KVPair = [I.Key, I.Val]
+type Val = any
+type KVPair = [I.Key, Val]
 
-const mapRangeEntry = <T, R>(input: [I.Key, T][][], fn: (key: I.Key, val: T) => [I.Key, R] | null) => (
+const mapRangeEntry = <In, Out>(input: [I.Key, In][][], fn: (key: I.Key, val: In) => [I.Key, Out] | null) => (
   input.map(inner =>
-    inner.map(([key, val]) => fn(key, val)).filter(e => e != null) as [I.Key, R][]
+    inner.map(([key, val]) => fn(key, val)).filter(e => e != null) as [I.Key, Out][]
   )
 )
 
 // Could be implemented in terms of the above.
-const mapRange = <T, R>(input: [I.Key, T][][], fn: (x: T, k: I.Key) => R) => (
+const mapRange = <In, Out>(input: [I.Key, In][][], fn: (x: In, k: I.Key) => Out) => (
   input.map(inner =>
-    inner.map(([key, val]) => [key, fn(val, key)] as [I.Key, R])
+    inner.map(([key, val]) => [key, fn(val, key)] as [I.Key, Out])
   )
 )
 
-const mapRangeEntryAsync = async <T, R>(input: [I.Key, T][][], fn: (key: I.Key, val: T) => Promise<[I.Key, R] | null>) => {
-  let result: I.RangeResult = []
+const mapRangeEntryAsync = async <In, Out>(input: [I.Key, In][][], fn: (key: I.Key, val: In) => Promise<[I.Key, Out] | null>) => {
+  let result: I.RangeResult<Out> = []
   for (let i = 0; i < input.length; i++) {
-    result.push((await Promise.all(input[i].map(([k, v]) => fn(k, v)))).filter(e => e != null) as [I.Key, R][])
+    result.push((await Promise.all(input[i].map(([k, v]) => fn(k, v)))).filter(e => e != null) as [I.Key, Out][])
   }
   return result
 }
-const mapRangeAsync = <T, R>(input: [I.Key, T][][], fn: (val: T, key: I.Key) => Promise<R>) => (
-  mapRangeEntryAsync(input, (k, v) => fn(v, k).then(v2 => ([k, v2] as [I.Key, R])))
+const mapRangeAsync = <In, Out>(input: [I.Key, In][][], fn: (val: In, key: I.Key) => Promise<Out>) => (
+  mapRangeEntryAsync(input, (k, v) => fn(v, k).then(v2 => ([k, v2] as [I.Key, Out])))
 )
 
 const walk2 = <T>(a: [I.Key, T][], b: [I.Key, T][], fn: (k: I.Key, a: T | null, b: T | null) => void) => {
@@ -86,13 +87,13 @@ const walk2 = <T>(a: [I.Key, T][], b: [I.Key, T][], fn: (k: I.Key, a: T | null, 
 
 const id = <T>(x: T) => x
 
-const type: I.ResultOps<I.RangeResult, I.RangeTxn> = {
+const type: I.ResultOps<Val, I.RangeResult<Val>, I.RangeTxn<Val>> = {
   name: 'range',
 
   create(data) {
     if (data == null) return []
     else if (!Array.isArray(data)) throw new err.InvalidDataError()
-    else return data as I.RangeResult
+    else return data as I.RangeResult<any>
   },
 
   applyMut(snap, op) {
@@ -128,7 +129,7 @@ const type: I.ResultOps<I.RangeResult, I.RangeTxn> = {
     // The two range result objects were created from the same query.
     if (dest.length !== src.length) throw new err.InvalidDataError()
     return dest.map((d, i) => {
-      const r: [I.Key, I.Val][] = []
+      const r: [I.Key, Val][] = []
       walk2(d, src[i], (k, a, b) => {
         r.push([k, b != null ? b : a])
       })
@@ -148,7 +149,7 @@ const type: I.ResultOps<I.RangeResult, I.RangeTxn> = {
   mapTxn: mapRange,
   mapTxnAsync: mapRangeAsync,
 
-  mapReplace: (s: I.RangeResult[], fn) => s.map(e => mapRange(e, fn)),
+  mapReplace: <In, Out>(s: I.RangeResult<In>[], fn: (v: In, k: I.Key | null) => Out) => s.map(e => mapRange(e, fn)),
 
   snapToJSON: id,
   snapFromJSON: id,
@@ -169,13 +170,13 @@ const type: I.ResultOps<I.RangeResult, I.RangeTxn> = {
     return {type: 'kv', q: keys}
   },
 
-  filterSupportedOps(op, view: Map<I.Key, I.Val>, supportedTypes) {
+  filterSupportedOps(op, view: Map<I.Key, Val>, supportedTypes) {
     return mapRange(op, (o, k) => (
       fieldOps.filterSupportedOps(o, view.get(k), supportedTypes))
     )
   },
 
-  updateResults(snapshot: I.RangeResult, _q, data: I.RangeResult[]) {
+  updateResults<Val>(snapshot: I.RangeResult<Val>, _q: I.ReplaceQuery, data: I.RangeResult<Val>[]) {
     if (_q.type !== 'static range') throw new TypeError('Invalid data type in updateResults: ' + _q.type)
     const q = _q.q
   

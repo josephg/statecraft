@@ -9,7 +9,7 @@ import fieldOps from './types/field'
 import {typeOrThrow} from './typeregistry'
 import genSource from './gensource'
 
-const xf = <Op>(type: I.AnyOTType, client: Op | null, server: I.SingleOp | null): [Op | null, I.SingleOp | null] => {
+const xf = <Val, Op>(type: I.AnyOTType, client: Op | null, server: I.SingleOp<Val> | null): [Op | null, I.SingleOp<Val> | null] => {
   if (client == null || server == null) return [client, server]
 
   // In this case, we're in for some fun. There are some local operations
@@ -37,8 +37,8 @@ const xf = <Op>(type: I.AnyOTType, client: Op | null, server: I.SingleOp | null)
   }
 }
 
-const otDoc = async <Op>(
-    store: I.Store,
+const otDoc = async <Val, Op>(
+    store: I.Store<Val>,
     typeName: string,
     opts: {
       source?: I.Source,
@@ -47,7 +47,7 @@ const otDoc = async <Op>(
         version: I.FullVersion | I.Version,
       }
     },
-    listener: (op: I.SingleOp, resultingVal: any) => void
+    listener: (op: I.SingleOp<Val>, resultingVal: any) => void
 ) => {
   const capabilities = store.storeInfo.capabilities
   if (!capabilities.queryTypes.has('single')
@@ -88,7 +88,7 @@ const otDoc = async <Op>(
   const ready = opts.initial ? Promise.resolve(opts.initial.val) : new Promise(resolve => readyResolve = resolve)
 
 
-  const processTxn = (serverOp: I.SingleOp | null, newVersion: I.Version) => {
+  const processTxn = (serverOp: I.SingleOp<Val> | null, newVersion: I.Version) => {
     // if (false /* TODO */) { return } // If its mine, we're done.
 
     if (inflightTxn) [inflightTxn, serverOp] = xf(type, inflightTxn, serverOp)
@@ -151,7 +151,7 @@ const otDoc = async <Op>(
           return
         }
 
-        const innerTxn = txn.txn as I.SingleTxn
+        const innerTxn = txn.txn as I.SingleTxn<Val>
         if (Array.isArray(innerTxn)) innerTxn.forEach(op => processTxn(op, txn.versions[source]))
         else processTxn(innerTxn, txn.versions[source])
       })

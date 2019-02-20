@@ -47,7 +47,7 @@ export function connect(wsurl: string): [TinyReader<N.SCMsg>, TinyWriter<N.CSMsg
 
 // TODO: Implement automatic reconnection and expose a simple server
 // describing the connection state
-export default function(wsurl: string): Promise<I.Store> {
+export default function<Val>(wsurl: string): Promise<I.Store<Val>> {
   const [r, w] = connect(wsurl)
   return createStore(r, w)
 }
