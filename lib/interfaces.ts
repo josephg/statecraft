@@ -155,6 +155,10 @@ export type FetchResults<Val, R = ResultData<Val>> = {
 
   results: R,
   versions: FullVersionRange, // Range across which version is valid.
+
+  // TODO: Maybe return a JSON-friendly opaque cursor structure here, which
+  // can be passed back to the store to continue the fetch results when limits
+  // are sent & applied.
 }
 
 // export type Callback<T> = (err: Error | null, results?: T) => void

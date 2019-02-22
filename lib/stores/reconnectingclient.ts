@@ -13,7 +13,7 @@ const wait = (timeout: number) => new Promise(resolve => setTimeout(resolve, tim
 // - stopped
 type Status = string
 
-const reconnector = <Val>(connect: (() => [TinyReader<N.SCMsg>, TinyWriter<N.CSMsg>])): [I.SimpleStore<Status>, Promise<I.Store<Val>>] => {
+const reconnector = <Val>(connect: (() => Promise<[TinyReader<N.SCMsg>, TinyWriter<N.CSMsg>]>)): [I.SimpleStore<Status>, Promise<I.Store<Val>>] => {
   // This is a tiny store that the client can use to track & display whether
   // or not we're currently connected. Ite tempting to make a metastore be a
   // default feature.
@@ -25,9 +25,6 @@ const reconnector = <Val>(connect: (() => [TinyReader<N.SCMsg>, TinyWriter<N.CSM
   // initialStoreP.then(store => { innerStore = store; })
 
   const ready: Promise<I.Store<Val>> = new Promise((resolve, reject) => {
-    // Should this return a [reader, writer] promise?
-    const [r, w] = connect()
-
     const opts: ClientOpts<Val> = {
       preserveState: true,
       onClose() {
@@ -39,10 +36,10 @@ const reconnector = <Val>(connect: (() => [TinyReader<N.SCMsg>, TinyWriter<N.CSM
         ;(async () => {
           while (shouldReconnect) {
             console.log('... trying to reconnect ...')
-            const [r, w] = connect()
 
             try {
               setSingle(status, 'connecting')
+              const [r, w] = await connect()
               await createStore(r, w, {
                 ...opts,
                 restoreFrom: innerStore!,
@@ -71,7 +68,9 @@ const reconnector = <Val>(connect: (() => [TinyReader<N.SCMsg>, TinyWriter<N.CSM
 
 
     setSingle(status, 'connecting')
-    createStore(r, w, opts).then(initialStore => {
+    connect()
+    .then(([r, w]) => createStore(r, w, opts))
+    .then(initialStore => {
       innerStore = initialStore
       setSingle(status, 'connected')
 

@@ -36,7 +36,7 @@ export default function connectMux<LocalVal, RemoteVal>(reader: TinyReader<BothM
     close() { writer.close() },
   }
 
-  const remoteReader = {} as TinyReader<N.SCMsg>
+  const remoteReader: TinyReader<N.SCMsg> = {isClosed: false}
   const remoteWriter: TinyWriter<N.CSMsg> = {
     write(msg) {
       if (!symmetry) msg.ref = inv(msg.ref)

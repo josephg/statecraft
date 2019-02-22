@@ -6,13 +6,10 @@ import WebSocket from 'isomorphic-ws'
 
 // const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws`
 
-export function connect(wsurl: string): [TinyReader<N.SCMsg>, TinyWriter<N.CSMsg>] {
+export const connect = <R, W>(wsurl: string): Promise<[TinyReader<R>, TinyWriter<W>]> => new Promise((resolve, reject) => {
   const ws = new WebSocket(wsurl)
 
-  ws.onopen = () => {console.log('ws opened')}
-  ws.onerror = (e) => {console.error('ws error', e)}
-
-  const reader: TinyReader<N.SCMsg> = {isClosed: false}
+  const reader: TinyReader<R> = {isClosed: false}
   ws.onmessage = (msg) => {
     const data = JSON.parse(msg.data.toString())
     console.log('received', data)
@@ -25,15 +22,15 @@ export function connect(wsurl: string): [TinyReader<N.SCMsg>, TinyWriter<N.CSMsg
     reader.onClose && reader.onClose()
   }
 
-  const writer: TinyWriter<N.CSMsg> = {
+  const writer: TinyWriter<W> = {
     write(data) {
       if (ws.readyState === ws.OPEN) {
         console.log('sending', data)
         ws.send(JSON.stringify(data))
       } else {
-        // This looks bad, but its ok in practice here because the first
+        // On regular connections this won't happen because the first
         // message sent is server -> client. So we can't send anything until
-        // the connection is open anyway.
+        // the connection is open anyway. Its a problem with clientservermux though
         console.log('websocket message discarded because ws closed')
       }
     },
@@ -42,12 +39,19 @@ export function connect(wsurl: string): [TinyReader<N.SCMsg>, TinyWriter<N.CSMsg
     },
   }
 
-  return [reader, writer]
-}
+  ws.onopen = () => {
+    console.log('ws opened')
+    resolve([reader, writer])
+  }
+  ws.onerror = (e) => {
+    console.error('ws error', e)
+    reject(e)
+  }
+})
 
 // TODO: Implement automatic reconnection and expose a simple server
 // describing the connection state
-export default function<Val>(wsurl: string): Promise<I.Store<Val>> {
-  const [r, w] = connect(wsurl)
+export default async function<Val>(wsurl: string): Promise<I.Store<Val>> {
+  const [r, w] = await connect(wsurl)
   return createStore(r, w)
 }

@@ -4,7 +4,6 @@ import singleStore from '../../lib/stores/singlemem'
 import augment from '../../lib/augment'
 import {inspect} from 'util'
 
-import {Readable, Writable} from 'stream'
 import {TinyReader, TinyWriter, wrapReader, wrapWriter} from '../../lib/net/tinystream'
 import connectMux from '../../lib/net/clientservermux'
 // import createServer from '../../lib/net/tcpserver'
@@ -16,15 +15,6 @@ const store1 = augment(singleStore('store1'))
 const store2 = augment(singleStore('store2'))
 
 const createPair = <T>(): [TinyReader<T>, TinyWriter<T>] => {
-  // const r = new Readable({objectMode: true})
-  // r._read = () => {}
-  // const w = new Writable({objectMode: true})
-  // w._write = () => {}
-  // r.pipe(w)
-
-  // const reader = wrapReader(r)
-  // const writer = wrapWriter(w)
-
   const reader: TinyReader<T> = {isClosed: false}
   const writer: TinyWriter<T> = {
     write(msg) {

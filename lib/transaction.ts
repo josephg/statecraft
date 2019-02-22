@@ -14,7 +14,7 @@ export interface TxnOpts<Val> {
   v?: I.FullVersionRange
 }
 
-class Transaction<Val> {
+export class Transaction<Val = any> {
   _store: I.Store<Val>
   _writeCache: Map<I.Key, I.Op<Val>>
   _v: I.FullVersionRange

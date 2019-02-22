@@ -3,8 +3,7 @@ import * as err from './err'
 import {queryTypes} from './qrtypes'
 
 import binsearch from 'binary-search'
-import assert from 'assert'
-import {vCmp} from './version'
+import {vCmp, vEq} from './version'
 
 export interface OpCacheOpts {
   readonly qtype?: I.QueryType,
@@ -38,7 +37,7 @@ const opcache = <Val>(opts: OpCacheOpts): {
   return {
     onOp(source, fromV, toV, type, txn, meta) {
       const ops = getOpsForSource(source)
-      if (ops.length) assert.deepStrictEqual(ops[ops.length - 1].toV, fromV, 'Emitted versions don\'t match')
+      if (ops.length && !vEq(ops[ops.length - 1].toV, fromV)) throw Error('Emitted versions don\'t match')
       ops.push({fromV, toV, txn, meta})
       while (maxNum !== 0 && ops.length > maxNum) ops.shift()
     },
@@ -46,7 +45,7 @@ const opcache = <Val>(opts: OpCacheOpts): {
     getOps(query, versions, options = {}) {
       const qtype = query.type
       const qops = queryTypes[qtype]
-      assert(qops, 'Missing qops for type ' + qtype)
+      if (qops == null) throw Error('Missing qops for type ' + qtype)
 
       let limitOps = options.limitOps || -1
 
