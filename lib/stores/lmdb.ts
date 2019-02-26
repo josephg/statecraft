@@ -229,6 +229,7 @@ const lmdbStore = <Val>(inner: I.OpStore<Val>, location: string): Promise<I.Simp
     },
 
     async mutate(type, _txn, versions, opts = {}) {
+      // TODO: Refactor this out by implementing internalDidChange
       if (type !== 'kv') throw new err.UnsupportedTypeError()
       const txn = _txn as I.KVTxn<Val>
 

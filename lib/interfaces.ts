@@ -358,8 +358,7 @@ export interface Capabilities {
 }
 
 export interface StoreInfo {
-  // If there's one, and its available.
-  // readonly source?: Source,
+  // Unique and lexographically sorted.
   readonly sources: Source[],
 
   readonly capabilities: Capabilities,
