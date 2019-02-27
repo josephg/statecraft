@@ -43,7 +43,7 @@ wss.on('connection', async (socket, req) => {
     setSingle(store, db)
   }
 
-  for await (const val of subValues(sub)) {
+  for await (const val of subValues('single', sub)) {
     // console.log(id, 'cu', val)
     db[id] = {x: val.x, y: val.y}
     // console.log('db', db)

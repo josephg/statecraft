@@ -46,7 +46,7 @@ function draw() {
   }
 
   const sub = remoteStore.subscribe({type: 'single', q:true})
-  for await (const d of subValues(sub)) {
+  for await (const d of subValues('single', sub)) {
     // console.log('d', d)
     data = d
     draw()

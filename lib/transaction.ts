@@ -103,7 +103,10 @@ export class Transaction<Val = any> {
   }
 }
 
-const doTxn = async <Val, T>(store: I.Store<Val>, fn: (txn: Transaction<Val>) => Promise<T>, opts: TxnOpts<Val> = {}): Promise<I.FetchResults<T>> => {
+export interface TxnInfo {
+  docsRead: Set<I.Key>
+}
+const doTxn = async <Val, T>(store: I.Store<Val>, fn: (txn: Transaction<Val>) => Promise<T>, opts: TxnOpts<Val> = {}): Promise<I.FetchResults<T> & TxnInfo> => {
   const txn = new Transaction(store, opts)
   while (true) {
     try {
@@ -112,6 +115,7 @@ const doTxn = async <Val, T>(store: I.Store<Val>, fn: (txn: Transaction<Val>) =>
       return {
         versions: txn._v,
         results,
+        docsRead: txn.docsRead,
       }
     } catch (e) {
       if (!(e instanceof err.VersionTooOldError || e instanceof err.WriteConflictError)) throw e

@@ -77,7 +77,8 @@ export default function singleStore<Val>(
   const lastModVersion = new Map<I.Key, number>()
 
   const source = storeOpts.source || genSource()
-  const initialVersion = (storeOpts.initialVersion || 0) as number
+  // This is nasty.
+  const initialVersion = storeOpts.initialVersion ? v64ToNum(storeOpts.initialVersion) : 0
 
   let version: number = initialVersion
 
