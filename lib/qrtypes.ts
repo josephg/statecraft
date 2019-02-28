@@ -166,6 +166,8 @@ registerQuery('static range', range, {
 
   fetchToReplace<Val>(q: I.StaticRangeQuery, data: I.RangeResult<Val>) {
     return {
+      // I'm wrapping each item in a list for a good but frustrating reason; but I can't
+      // for the life of me remember why now :(
       q: {type: 'static range', q: q.map(x => [x])},
       with: data.map(x => [x])
     }
@@ -190,7 +192,7 @@ registerQuery('range', range, {
   adaptTxn: () => {
     // TODO: Might be better to automatically try and convert the query
     // instead of bailing.
-    throw Error('adaptTxn on full range query not supported')
+    throw new Error('adaptTxn on full range query not supported')
   },
 
   fetchToReplace<Val>(q: I.RangeQuery, data: I.RangeResult<Val>) {

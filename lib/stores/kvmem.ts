@@ -13,11 +13,12 @@ const bakeSel = (sel: I.KeySelector, rawpos: number, resultpos: number, keys: Ar
   const {k, offset, isAfter} = sel
   const keylen = keys.length
 
-  if (rawpos === resultpos) {
+  if (rawpos === resultpos || keys.length === 0) {
     // We can keep the selector as-is.
     return {k, isAfter}
   } else {
     return resultpos >= keylen ? {k: keys[keylen - 1], isAfter: true}
+      : resultpos < keylen ? {k: keys[0], isAfter: false}
       : {k: keys[resultpos], isAfter: false}
   }
 }

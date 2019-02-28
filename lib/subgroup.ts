@@ -82,6 +82,7 @@ export default class SubGroup<Val> {
 
     } else if (fromVersion == null) {
       // Initialize with a full fetch.
+      // console.log('catchup with full fetch')
       const {bakedQuery, results, versions} = await this.store.fetch(query)
       const [from, to] = splitFullVersions(versions)
       return {
@@ -93,6 +94,7 @@ export default class SubGroup<Val> {
         toVersion: to,
       }
     } else if (this.store.catchup) {
+      // console.log('catchup with store.catchup()')
       // Use the provided catchup function to bring us up to date
       return await this.store.catchup(query, fromVersion, {
         supportedTypes: opts.supportedTypes,
@@ -101,8 +103,9 @@ export default class SubGroup<Val> {
         bestEffort: opts.bestEffort,
         // limitDocs, limitBytes.
       })
-
+      
     } else {
+      // console.log('catchup with store.getOps()')
       // Use getOps
       const getOps = this.getOps!
 
@@ -173,7 +176,7 @@ export default class SubGroup<Val> {
     }
 
     const fromCurrent = opts.fromVersion === 'current'
-    const qtype = queryTypes[query.type]
+    let qtype = queryTypes[query.type]
 
     const stream = streamToIter<I.CatchupData<Val>>(() => {
       this.allSubs.delete(sub)
@@ -210,10 +213,14 @@ export default class SubGroup<Val> {
 
       const catchupVersion = catchup.toVersion
 
-      if (catchup.replace) sub.q = {
-        type: query.type,
-        q: qtype.updateQuery(sub.q == null ? null : sub.q.q, catchup.replace.q.q)
-      } as I.Query
+      if (catchup.replace) {
+        // TODO: Is this right?
+        qtype = queryTypes[catchup.replace.q.type]
+        sub.q = {
+          type: catchup.replace.q.type,
+          q: qtype.updateQuery(sub.q == null ? null : sub.q.q, catchup.replace.q.q)
+        } as I.Query
+      }
       // console.log('catchup -> ', catchupVersion, catchup, sub.expectVersion, sub.q, query.type)
       
       if (sub.opsBuffer == null) throw Error('Invalid internal state in subgroup')
@@ -226,6 +233,7 @@ export default class SubGroup<Val> {
         // If the buffered op is behind the catchup version, discard it and continue.
         if (v != null && vCmp(toV, v) <= 0) continue
 
+        // console.log('adaptTxn', query.type, txn, sub.q!.q)
         const filteredTxn = qtype.adaptTxn(txn, sub.q!.q)
         if (v === fromV || vCmp(v, fromV) === 0) {
           if (filteredTxn != null) catchup.txns.push({versions:{[source]: toV}, txn: filteredTxn, meta})

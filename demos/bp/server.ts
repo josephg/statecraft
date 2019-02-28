@@ -18,7 +18,7 @@ import bodyParser from 'body-parser'
 import jsesc from 'jsesc'
 
 import mod from './rustpng'
-import opmem from 'stores/opmem';
+import opmem from '../../lib/stores/opmem';
 
 process.on('unhandledRejection', err => { throw err })
 

@@ -108,13 +108,13 @@ const type: I.ResultOps<Val, I.RangeResult<Val>, I.RangeTxn<Val>> = {
         // TODO: Rewrite this to use binary search or something. This will be
         // slow with large result sets
         let key: I.Key
-        while ((key = snapc[snapi][0]) < opk) snapi++
+        while (snapi < snapc.length && (key = snapc[snapi][0]) < opk) snapi++
 
-        if (key === opk) {
+        if (snapi < snapc.length && key! === opk) {
           snapc[snapi][1] = fieldOps.apply(snapc[snapi][1], fieldOp)
         } else {
           // Insert it into the snapshot.
-          snapc.splice(snapi, 0, fieldOps.apply(null, fieldOp))
+          snapc.splice(snapi, 0, [opk, fieldOps.apply(null, fieldOp)])
         }
         snapi++
       }

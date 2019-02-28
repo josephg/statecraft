@@ -49,6 +49,10 @@ export type Range = {
 }
 export type RangeQuery = Range[]
 export type StaticRangeQuery = StaticRange[]
+// Outside in we have:
+// 1. List of ranges
+// 2. Document item in the list
+// 3. Key / Value pair
 export type RangeResult<Val> = [Key, Val][][]
 
 // Wrapping single and allkv like this is sort of dumb, but it works better
