@@ -18,5 +18,5 @@ import assert from 'assert'
 // })
 
 describe('kvmem', () => {
-  runTests(() => Promise.resolve(augment(kvmem())))
+  runTests(() => kvmem().then(augment))
 })

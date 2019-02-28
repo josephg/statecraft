@@ -7,3 +7,5 @@ rust/Cargo.lock
 dist
 bundle.js
 *.tmp-browserify*
+oldlib
+oldtest

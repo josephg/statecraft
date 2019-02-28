@@ -4,8 +4,9 @@ import genSource from '../gensource'
 import err from '../err'
 import resultMap from '../types/map'
 import {queryTypes} from '../qrtypes'
-import {V64, v64ToNum} from '../version'
+import {V64, v64ToNum, vMax, V_EMPTY, vCmp} from '../version'
 import {findRangeStatic} from '../types/range'
+import opmem from './opmem';
 
 
 const bakeSel = (sel: I.KeySelector, rawpos: number, resultpos: number, keys: ArrayLike<I.Key>) => {
@@ -51,51 +52,43 @@ const capabilities = {
   // ops: <I.OpsSupport>'none',
 }
 
-export interface KVMemOptions {
-  initialVersion?: I.Version,
-  source?: I.Source,
+export interface KVMemOptions<Val> {
   readonly?: boolean,
+  inner?: I.OpStore<Val>
 }
 
-export interface MemStore<Val> extends I.SimpleStore<Val> {
-  // internalDidChange(type: I.ResultType, txn: I.Txn, versions: I.FullVersion, opts: I.MutateOptions): void
-
-  // Apply and notify that a change happened in the database. This is useful
-  // so if the memory store wraps an object that is edited externally, you can
-  // update listeners.
-  internalDidChange(txn: I.KVTxn<Val>, meta: I.Metadata, preApplied?: boolean): I.Version
-}
-
-
-export default function singleStore<Val>(
-    _data?: Map<I.Key, Val>,
-    storeOpts: KVMemOptions = {}
-    // source: I.Source = genSource(),
-    // initialVersion: I.Version = 0
-): MemStore<Val> {
+export default async function singleStore<Val>(
+  _data?: Map<I.Key, Val>,
+  storeOpts: KVMemOptions<Val> = {}
+  // source: I.Source = genSource(),
+  // initialVersion: I.Version = 0
+): Promise<I.SimpleStore<Val>> {
+  const inner = storeOpts.inner || opmem()
   const data: Map<I.Key, Val> = _data == null ? new Map() : _data
-  const lastModVersion = new Map<I.Key, number>()
+  const lastModVersion = new Map<I.Key, I.Version>()
 
-  const source = storeOpts.source || genSource()
   // This is nasty.
-  const initialVersion = storeOpts.initialVersion ? v64ToNum(storeOpts.initialVersion) : 0
+  // const initialVersion = storeOpts.initialVersion ? v64ToNum(storeOpts.initialVersion) : 0
 
-  let version: number = initialVersion
+  if (inner.storeInfo.sources.length !== 1) throw Error('Using an inner store with more than one source not currently supported')
+  const source = inner.storeInfo.sources[0]
+  let lastVersion: I.Version | null = null
 
-  const store: MemStore<Val> = {
+  const store: I.SimpleStore<Val> = {
     storeInfo: {
       capabilities,
-      sources: [source],
+      sources: inner.storeInfo.sources,
     },
+
     fetch(query, opts = {}) {
       // console.log('fetch query', JSON.stringify(query, null, 2))
 
       let results: Map<I.Key, Val> | I.RangeResult<Val>
-      let lowerRange: number = initialVersion
+      let lowerRange: Uint8Array = V_EMPTY
       let bakedQuery: I.Query | undefined
       const tag = (k: I.Key) => {
         const v = lastModVersion.get(k)
-        if (v !== undefined) lowerRange = Math.max(lowerRange, v)
+        if (v !== undefined) lowerRange = vMax(lowerRange, v)
       }
 
       switch (query.type) {
@@ -106,7 +99,7 @@ export default function singleStore<Val>(
 
         case 'allkv':
           results = new Map(data)
-          lowerRange = version
+          lowerRange = lastVersion! // Dodgy...
           break
 
         case 'range':
@@ -151,20 +144,10 @@ export default function singleStore<Val>(
         // this is a bit inefficient.... ehhhh
         bakedQuery,
         results: opts.noDocs ? queryTypes[query.type].resultType.map(results, () => true) : results,
-        versions: {[source]: {from:V64(lowerRange), to:V64(version)}},
+        versions: {[source]: {from:lowerRange, to:lastVersion!}},
       })
     },
 
-    internalDidChange(txn, meta, preapplied = false) {
-      const fromv = version
-      const opv = ++version
-
-      for (const [k, op] of txn) lastModVersion.set(k, opv)
-      if (!preapplied) resultMap.applyMut!(data, txn)
-
-      if (this.onTxn != null) this.onTxn(source, V64(fromv), V64(opv), 'kv', txn, data, meta)
-      return V64(opv)
-    },
 
     mutate(type, _txn, versions, opts = {}) {
       if (type !== 'kv') return Promise.reject(new err.UnsupportedTypeError())
@@ -173,26 +156,39 @@ export default function singleStore<Val>(
 
       const txn = _txn as I.KVTxn<Val>
 
-      const expectv = (!versions || versions[source] == null) ? version : v64ToNum(versions[source])
+      const expectv = (!versions || versions[source] == null) ? lastVersion! : versions[source]
 
       // These are both numbers here, so this comparison is ok.
-      if (expectv < initialVersion) return Promise.reject(new err.VersionTooOldError())
+      // if (expectv < initialVersion) return Promise.reject(new err.VersionTooOldError())
 
       // 1. Preflight. Check versions and (ideally) that the operations are valid.
       for (const [k, op] of txn) {
         const v = lastModVersion.get(k)
-        if (v !== undefined && expectv < v) return Promise.reject(new err.WriteConflictError())
+        if (v !== undefined && vCmp(expectv, v) < 0) return Promise.reject(new err.WriteConflictError())
 
         // TODO: Also check that the operation is valid for the given document,
         // if the OT type supports it.
       }
 
       // 2. Actually apply.
-      const opv = this.internalDidChange(txn, opts.meta || {}, false)
-      return Promise.resolve({[source]: opv})
+      return inner.mutate(type, txn, versions, opts)
     },
 
     close() {},
   }
+
+  inner.onTxn = (source, fromV, toV, type, _txn, view, meta) => {
+    if (type !== 'kv') throw new err.UnsupportedTypeError()
+    lastVersion = toV
+    const txn = _txn as I.KVTxn<Val>
+
+    for (const [k, op] of txn) lastModVersion.set(k, toV)
+    resultMap.applyMut!(data, txn)
+
+    if (store.onTxn != null) store.onTxn(source, fromV, toV, 'kv', txn, data, meta)
+  },
+
+  // Should we await this?
+  lastVersion = (await inner.start!())[source]
   return store
 }

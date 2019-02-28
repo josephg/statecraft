@@ -13,8 +13,8 @@ import {AddressInfo} from 'net'
 // here. (Eg, version encoding bugs)
 describe('net', () => {
   const serverForStore = new WeakMap<I.Store<any>, any>()
-  runTests(() => new Promise((resolve, reject) => {
-    const store = augment(kvStore())
+  runTests(() => new Promise((resolve, reject) => kvStore().then(s => {
+    const store = augment(s)
     const server = createServer(store)
     server.listen(0, () => {
       const port = (server.address() as AddressInfo).port
@@ -27,7 +27,7 @@ describe('net', () => {
         return reject(err)
       })
     })
-  }), (store) => serverForStore.get(store).close())
+  })), (store) => serverForStore.get(store).close())
 
   it('returns an error if connection fails before hello is received')
 })

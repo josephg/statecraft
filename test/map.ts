@@ -8,16 +8,16 @@ import assert from 'assert'
 
 describe('map', () => {
   it('maps simple values', async () => {
-    const root = augment(kvmem(new Map([['x', 5]])))
+    const root = augment(await kvmem(new Map([['x', 5]])))
     const store = map(root, x => x + 1)
     const result = await store.fetch({type: 'kv', q: new Set(['x'])})
     assert.strictEqual(result.results.get('x'), 6)
   })
 
-  runTests(() => {
-    const store = augment(kvmem())
+  runTests(async () => {
+    const store = augment(await kvmem())
     const read = map(store, i => i)
 
-    return Promise.resolve(splitWrites(read, store))
+    return splitWrites(read, store)
   })
 })

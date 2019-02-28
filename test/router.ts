@@ -6,7 +6,7 @@ import runTests from './common'
 
 describe('router', () => {
   runTests(async () => {
-    const root = augment(kvmem())
+    const root = augment(await kvmem())
     const store = router()
 
     // This is really dumb - we're just mounting it all the way through.

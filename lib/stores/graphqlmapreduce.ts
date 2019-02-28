@@ -5,13 +5,19 @@ import * as gqlTools from 'graphql-tools'
 import genSource from '../gensource'
 import doTxn, {Transaction} from '../transaction'
 import {vRangeTo} from '../version'
-import subValues from '../subvalues'
+import subValues, { subResults } from '../subvalues'
 
 import kvMem from './kvmem'
 import augment from '../augment'
 import sel from '../sel'
+import opmem from './opmem';
 
-type Ctx = {txn: Transaction, Post?: any, Author?: any}
+type MaybePromise<Val> = Val | Promise<Val>
+interface TxnLike<Val> {
+  get(k: I.Key): MaybePromise<Val>
+}
+
+type Ctx = {txn: TxnLike<any>, Post?: any, Author?: any}
 const schema = gqlTools.makeExecutableSchema({
   typeDefs: `
     type Post {
@@ -34,9 +40,9 @@ const schema = gqlTools.makeExecutableSchema({
   `,
   resolvers: {
     Post: {
-      author(post, args, {txn}: Ctx) {
-        return txn.get('authors/' + post.author)
-      }
+      author: (post, args, {txn}: Ctx) => (
+        txn.get('authors/' + post.author)
+      )
     },
 
     Query: {
@@ -89,13 +95,14 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
 
   // Slurp up everything in the underlying store
   
-  // TODO: This should use cursors and blah blah blah. This implementation is awful.
-  const query: I.StaticRangeQuery = opts.mapReduces.map(({type}) => type)
-  .map(type => opts.prefixForCollection.get(type)!)
-  .map(rangeWithPrefix)
-
-  const results = await backend.fetch({type: 'static range', q:query})
+  // This is awful - its pulling everything into memory. But it should be
+  // correct at least, as a POC.
+  const results = await backend.fetch({type: 'allkv', q:true})
   console.log(results)
+
+  // This just straight out contains the entire backend. bleh.
+  const allDocs: Map<I.Key, any> = results.results
+
   
   // Set of keys which were used to generate this output key
   const deps = new Map<I.Key, Set<I.Key>>()
@@ -105,14 +112,17 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
   const initialValues = new Map<string, any>()
 
   const render = async (key: I.Key, {type, _doc, outPrefix, reduce}: MapReduce<any>): Promise<any> => {
-    const res = await doTxn(backend, async txn => {
-      const value = txn.get(key)
-      return await gql.execute(schema, _doc!, null, {txn, [type]: value})
-    }, {
-      readOnly: true,
-      // v: results.versions
-    })
-    const mapped = reduce(res.results.data)
+    const docsRead = new Set<I.Key>()
+    const txn: TxnLike<any> = {
+      get(key) {
+        docsRead.add(key)
+        return allDocs.get(key)
+      }
+    }
+    const value = txn.get(key)
+    const res = await gql.execute(schema, _doc!, null, {txn, [type]: value})
+
+    const mapped = reduce(res.data)
     const outKey = outPrefix + key
 
     // Remove old deps
@@ -121,7 +131,7 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
       usedBy.get(k)!.delete(key)
     }
 
-    res.docsRead.forEach(k => {
+    docsRead.forEach(k => {
       let s = usedBy.get(k)
       if (s == null) {
         s = new Set()
@@ -130,15 +140,14 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
       s.add(outKey)
     })
 
-    deps.set(outKey, res.docsRead)
-    console.log('kv', key, mapped)
+    deps.set(outKey, docsRead)
+    console.log('kv', key, docsRead, mapped)
     return mapped
   }
 
   await Promise.all(opts.mapReduces.map(async (mr, i) => {
-    const docs = results.results[i]
-    const prefix = opts.prefixForCollection.get(mr.type)
-    for (const [key, value] of docs) {
+    const prefix = opts.prefixForCollection.get(mr.type)!
+    for (const [key, value] of allDocs) if (key.startsWith(prefix)) {
       const rendered = await render(key, mr)
       initialValues.set(mr.outPrefix + key, rendered)
     }
@@ -148,17 +157,20 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
   console.log('usedBy', usedBy)
 
   // The frontend store which clients can query. TODO: Make this configurable.
-  const frontend = kvMem(initialValues, {
-    source: backend.storeInfo.sources[0],
-    initialVersion: results.versions[backend.storeInfo.sources[0]].to,
+  // There should also be no problem using multiple sources here.
+  const beSource = backend.storeInfo.sources[0]
+  const frontOps = opmem({source: beSource, initialVersion: results.versions[beSource].to})
+  const frontend = await kvMem(initialValues, {
+    inner: frontOps,
     readonly: true,
   })
 
   const sub = backend.subscribe({type: 'allkv', q: true}, {fromVersion: vRangeTo(results.versions)})
   ;(async () => {
-    for await (const upd of subValues('kv', sub)) {
+    for await (const {results, versions} of subResults('kv', sub)) {
       const toUpdate = new Set()
-      for (const k of upd.keys()) {
+      for (const [k, v] of results) {
+        allDocs.set(k, v)
         const used = usedBy.get(k)
         if (used) {
           for (const k2 of used) toUpdate.add(k2)
@@ -175,7 +187,7 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
       }
 
       if (txn.size) {
-        frontend.internalDidChange(txn, {}, false)
+        frontOps.internalDidChange('kv', txn, {}, versions[beSource].to)
       }
       // This is janky because we aren't handing versions correctly. We should
       // validate that the version >= the sub version in this txn result.
@@ -189,16 +201,14 @@ export default gqlmr
 
 
 
-const backend = augment(kvMem(new Map<string, any>([
-  ['authors/auth', {fullName: 'Seph'}],
-  ['posts/post1', {title: 'Yo', content: 'omg I am clever', author: 'auth'}],
-])))
-
-
-
 process.on('unhandledRejection', err => { throw err })
 
 ;(async () => {
+  const backend = augment(await kvMem(new Map<string, any>([
+    ['authors/auth', {fullName: 'Seph'}],
+    ['posts/post1', {title: 'Yo', content: 'omg I am clever', author: 'auth'}],
+  ])))
+
   const store = await gqlmr(backend, {
     schema,
     mapReduces: [
