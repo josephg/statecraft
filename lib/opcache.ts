@@ -7,8 +7,8 @@ import {vCmp, vEq} from './version'
 
 export interface OpCacheOpts {
   readonly qtype?: I.QueryType,
-  readonly maxTime?: number,
-  readonly maxNum?: number, // Max number of ops kept for each source.
+  readonly maxTime?: number, // in milliseconds. 0 = ignore.
+  readonly maxNum?: number, // Max number of ops kept for each source. 0 = ignore
 }
 
 interface OpsEntry<Val> {
@@ -16,6 +16,7 @@ interface OpsEntry<Val> {
   toV: I.Version,
   txn: I.Txn<Val>,
   meta: I.Metadata,
+  ctime: number,
 }
 const cmp = (item: OpsEntry<any>, v: I.Version) => vCmp(item.toV, v)
 
@@ -24,6 +25,7 @@ const opcache = <Val>(opts: OpCacheOpts): {
   getOps: I.GetOpsFn,
 } => {
   const maxNum = opts.maxNum || 0
+  const maxTime = opts.maxTime || 0
   // List is sorted in order and accessed using binary search.
 
   const opsForSource: {[source: string]: OpsEntry<Val>[]} = {}
@@ -38,8 +40,12 @@ const opcache = <Val>(opts: OpCacheOpts): {
     onOp(source, fromV, toV, type, txn, meta) {
       const ops = getOpsForSource(source)
       if (ops.length && !vEq(ops[ops.length - 1].toV, fromV)) throw Error('Emitted versions don\'t match')
-      ops.push({fromV, toV, txn, meta})
+      ops.push({fromV, toV, txn, meta, ctime: Date.now()})
+
       while (maxNum !== 0 && ops.length > maxNum) ops.shift()
+
+      const now = Date.now()
+      while (maxTime !== 0 && ops.length && ops[0].ctime < now - maxTime) ops.shift()
     },
 
     getOps(query, versions, options = {}) {
