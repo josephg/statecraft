@@ -375,7 +375,8 @@ const contentful = async () => {
 
   const store = augment(await kvStore(undefined, {inner: ops}))
   const sub = store.subscribe({type: 'static range', q: [{
-    low: sel('post/'),
+    low: sel(''),
+    // low: sel('post/'),
     high: sel('post/\xff'),
   }]})
   // for await (const r of sub) {

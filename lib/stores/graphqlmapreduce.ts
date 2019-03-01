@@ -10,58 +10,23 @@ import subValues, { subResults } from '../subvalues'
 import kvMem from './kvmem'
 import augment from '../augment'
 import sel from '../sel'
-import opmem from './opmem';
+import opmem from './opmem'
+import Set2 from 'set2'
 
 type MaybePromise<Val> = Val | Promise<Val>
 interface TxnLike<Val> {
   get(k: I.Key): MaybePromise<Val>
 }
 
-type Ctx = {txn: TxnLike<any>, Post?: any, Author?: any}
-const schema = gqlTools.makeExecutableSchema({
-  typeDefs: `
-    type Post {
-      title: String,
-      content: String,
-      author: Author,
-    }
-
-    type Author {
-      fullName: String,
-    }
-
-    type Query {
-      postById(id: String!): Post
-      foo: String,
-
-      selfPost: Post,
-      selfAuthor: Author,
-    }
-  `,
-  resolvers: {
-    Post: {
-      author: (post, args, {txn}: Ctx) => (
-        txn.get('authors/' + post.author)
-      )
-    },
-
-    Query: {
-      postById: (_, {id}: {id: string}, {txn}: Ctx) => (
-        txn.get('posts/' + id)
-      ),
-
-      selfPost: (_self, _args, {Post}) => Post,
-    }
-  }
-})
-
+export type Ctx = {txn: TxnLike<any>, Post?: any, Author?: any}
 
 export interface MapReduce<Out> {
   // TODO: Also allow mapping from a synthetic set
   type: string, // eg Post
   queryStr: string,
   _doc?: gql.DocumentNode,
-  outPrefix: string,
+  // outPrefix: string,
+  getOutputKey: (k: string, result: any) => string
   reduce: (result: any) => Out
 }
 export interface GQLMROpts {
@@ -75,15 +40,15 @@ export interface GQLMROpts {
   prefixForCollection: Map<string, string>,
 }
 
-const rangeWithPrefix = (prefix: string): I.StaticRange => ({
-  low: sel(prefix, false),
-  high: sel(prefix + '\xff', true)
-})
+// const rangeWithPrefix = (prefix: string): I.StaticRange => ({
+//   low: sel(prefix, false),
+//   high: sel(prefix + '\xff', true)
+// })
 
-const stripPrefix = (key: string, prefix: string): string => {
-  if (key.indexOf(prefix) !== 0) throw Error('Key has invalid prefix')
-  return key.slice(prefix.length)
-}
+// const stripPrefix = (key: string, prefix: string): string => {
+//   if (key.indexOf(prefix) !== 0) throw Error('Key has invalid prefix')
+//   return key.slice(prefix.length)
+// }
 
 const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<any>> => {
   const schemaVer = opts.schemaVer || 0
@@ -104,14 +69,15 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
   const allDocs: Map<I.Key, any> = results.results
 
   
-  // Set of keys which were used to generate this output key
-  const deps = new Map<I.Key, Set<I.Key>>()
-  // Set of output keys generated using this input key
-  const usedBy = new Map<I.Key, Set<I.Key>>()
+  // Set of keys which were used to generate each item
+  const deps = opts.mapReduces.map(() => new Map<I.Key, Set<I.Key>>())
+  // Set of output keys generated using this input key. Set is [mr idx, input key].
+  const usedBy = new Map<I.Key, Set2<number, I.Key>>()
 
   const initialValues = new Map<string, any>()
 
-  const render = async (key: I.Key, {type, _doc, outPrefix, reduce}: MapReduce<any>): Promise<any> => {
+  const render = async (key: I.Key, mri: number): Promise<{outKey: string, result: any}> => {
+    const {type, _doc, reduce, getOutputKey} = opts.mapReduces[mri]
     const docsRead = new Set<I.Key>()
     const txn: TxnLike<any> = {
       get(key) {
@@ -120,36 +86,40 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
       }
     }
     const value = txn.get(key)
-    const res = await gql.execute(schema, _doc!, null, {txn, [type]: value})
+    const res = await gql.execute(opts.schema, _doc!, null, {txn, [type]: value})
+    docsRead.delete(key) // This is implied.
 
     const mapped = reduce(res.data)
-    const outKey = outPrefix + key
+    // const outKey = outPrefix + key
 
     // Remove old deps
-    const oldDeps = deps.get(key)
+    const oldDeps = deps[mri].get(key)
+    console.log('oldDeps', deps[mri])
+    console.log('usedBy', usedBy)
     if (oldDeps) for (const k of oldDeps) {
-      usedBy.get(k)!.delete(key)
+      usedBy.get(k)!.delete(mri, key)
     }
 
     docsRead.forEach(k => {
+      // if (k === key) return // This is implied.
       let s = usedBy.get(k)
       if (s == null) {
-        s = new Set()
+        s = new Set2()
         usedBy.set(k, s)
       }
-      s.add(outKey)
+      s.add(mri, key)
     })
 
-    deps.set(outKey, docsRead)
+    deps[mri].set(key, docsRead)
     console.log('kv', key, docsRead, mapped)
-    return mapped
+    return {outKey: getOutputKey(key, res.data), result: mapped}
   }
 
-  await Promise.all(opts.mapReduces.map(async (mr, i) => {
-    const prefix = opts.prefixForCollection.get(mr.type)!
+  await Promise.all(opts.mapReduces.map(async ({type, getOutputKey}, i) => {
+    const prefix = opts.prefixForCollection.get(type)!
     for (const [key, value] of allDocs) if (key.startsWith(prefix)) {
-      const rendered = await render(key, mr)
-      initialValues.set(mr.outPrefix + key, rendered)
+      const {outKey, result} = await render(key, i)
+      initialValues.set(outKey, result)
     }
   }))
 
@@ -167,25 +137,39 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
 
   const sub = backend.subscribe({type: 'allkv', q: true}, {fromVersion: vRangeTo(results.versions)})
   ;(async () => {
+    console.log('sub listening')
     for await (const {results, versions} of subResults('kv', sub)) {
-      const toUpdate = new Set()
+      console.log('gqlmr results', results)
+      const toUpdate = new Set2<number, I.Key>()
       for (const [k, v] of results) {
         allDocs.set(k, v)
+
+        // We need to update:
+        // - All map-reduces which include k in their primary set
+        // - Everything that depends on k
+        for (let i = 0; i < opts.mapReduces.length; i++) {
+          const mr = opts.mapReduces[i]
+          const prefix = opts.prefixForCollection.get(mr.type)!
+          if (k.startsWith(prefix)) toUpdate.add(i, k)
+        }
+
+        // And the things that depend on us...
         const used = usedBy.get(k)
         if (used) {
-          for (const k2 of used) toUpdate.add(k2)
+          for (const [mri, k2] of used) toUpdate.add(mri, k2)
           used.clear()
         }
       }
 
       console.log('toupdate', toUpdate)
       const txn = new Map<I.Key, I.Op<any>>()
-      for (const k of toUpdate) {
-        const mr = opts.mapReduces.find(mr => k.startsWith(mr.outPrefix))!
-        const rendered = await render(stripPrefix(k, mr.outPrefix), mr)
-        txn.set(k, {type: 'set', data: rendered})
+      for (const [mri, k] of toUpdate) {
+        const mr = opts.mapReduces[mri] //opts.mapReduces.find(mr => k.startsWith(mr.outPrefix))!
+        const {outKey, result} = await render(k, mri)
+        txn.set(outKey, {type: 'set', data: result})
       }
-
+      
+      console.log('usedby', usedBy)
       if (txn.size) {
         frontOps.internalDidChange('kv', txn, {}, versions[beSource].to)
       }
@@ -198,44 +182,3 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
 }
 
 export default gqlmr
-
-
-
-process.on('unhandledRejection', err => { throw err })
-
-;(async () => {
-  const backend = augment(await kvMem(new Map<string, any>([
-    ['authors/auth', {fullName: 'Seph'}],
-    ['posts/post1', {title: 'Yo', content: 'omg I am clever', author: 'auth'}],
-  ])))
-
-  const store = await gqlmr(backend, {
-    schema,
-    mapReduces: [
-      {
-        type: 'Post',
-        queryStr: `{selfPost {title, author {fullName}}}`,
-        reduce: x => x.selfPost,
-        outPrefix: 'pr/'
-      }
-    ],
-    prefixForCollection: new Map([
-      ['Post', 'posts/'],
-      ['Author', 'authors/'],
-    ]),
-  })
-
-  ;(async () => {
-    const sub = store.subscribe({type: 'allkv', q:true})
-    for await (const upd of subValues('kv', sub)) {
-      console.log('sub', upd)
-    }
-  })()
-
-  // const v = await store.fetch({type: 'allkv', q:true})
-  // console.log('v results', v.results)
-
-  await new Promise(resolve => setTimeout(resolve, 500))
-  await backend.mutate('kv', new Map([['authors/auth', {type: 'set', data:{fullName: 'rob'}}]]))
-
-})()

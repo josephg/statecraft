@@ -119,10 +119,9 @@ const adaptTxnToRange = <Val>(txn: I.KVTxn<Val>, query: I.StaticRangeQuery): I.R
     //   throw Error('adaptTxn on range query with limit not supported')
     // }
 
-    for (const entry of txn) {
-      const [k, v] = entry
+    for (const k of Array.from(txn.keys()).sort()) {
       if (sel.kWithin(k, q.low, q.high)) {
-        r.push(entry)
+        r.push([k, txn.get(k)!])
         empty = false
       }
     }
