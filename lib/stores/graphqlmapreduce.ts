@@ -73,10 +73,13 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
   const deps = opts.mapReduces.map(() => new Map<I.Key, Set<I.Key>>())
   // Set of output keys generated using this input key. Set is [mr idx, input key].
   const usedBy = new Map<I.Key, Set2<number, I.Key>>()
+  // We need to store these because the key depends on the content, and when a
+  // document is deleted we need to figure out which outKey to remove.
+  const keyFor = opts.mapReduces.map(() => new Map<I.Key, I.Key>())
 
   const initialValues = new Map<string, any>()
 
-  const render = async (key: I.Key, mri: number): Promise<{outKey: string, result: any}> => {
+  const render = async (key: I.Key, mri: number): Promise<{outKey: string, result?: any}> => {
     const {type, _doc, reduce, getOutputKey} = opts.mapReduces[mri]
     const docsRead = new Set<I.Key>()
     const txn: TxnLike<any> = {
@@ -86,10 +89,17 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
       }
     }
     const value = txn.get(key)
+    console.log('render', key, value)
+    if (value == null) {
+      return {outKey: keyFor[mri].get(key)!, result: undefined}
+    }
+    
     const res = await gql.execute(opts.schema, _doc!, null, {txn, [type]: value})
     docsRead.delete(key) // This is implied.
 
+    console.log('res data', res.data)
     const mapped = reduce(res.data)
+    const outKey = getOutputKey(key, res.data)
     // const outKey = outPrefix + key
 
     // Remove old deps
@@ -111,17 +121,18 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
     })
 
     deps[mri].set(key, docsRead)
+    keyFor[mri].set(key, outKey)
     console.log('kv', key, docsRead, mapped)
-    return {outKey: getOutputKey(key, res.data), result: mapped}
+    return {outKey, result: mapped}
   }
 
-  await Promise.all(opts.mapReduces.map(async ({type, getOutputKey}, i) => {
-    const prefix = opts.prefixForCollection.get(type)!
-    for (const [key, value] of allDocs) if (key.startsWith(prefix)) {
-      const {outKey, result} = await render(key, i)
-      initialValues.set(outKey, result)
-    }
-  }))
+  // await Promise.all(opts.mapReduces.map(async ({type, getOutputKey}, i) => {
+  //   const prefix = opts.prefixForCollection.get(type)!
+  //   for (const [key, value] of allDocs) if (key.startsWith(prefix)) {
+  //     const {outKey, result} = await render(key, i)
+  //     initialValues.set(outKey, result)
+  //   }
+  // }))
 
   console.log('deps', deps)
   console.log('usedBy', usedBy)
@@ -135,14 +146,21 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
     readonly: true,
   })
 
-  const sub = backend.subscribe({type: 'allkv', q: true}, {fromVersion: vRangeTo(results.versions)})
+  const sub = backend.subscribe({type: 'allkv', q: true}, {
+    fromVersion: vRangeTo(results.versions),
+    supportedTypes: new Set(['rm', 'set']),
+  })
   ;(async () => {
     console.log('sub listening')
-    for await (const {results, versions} of subResults('kv', sub)) {
-      console.log('gqlmr results', results)
+    const keys = new Set<string>()
+    for await (const {replace, txns, toVersion} of sub) {
+      // console.log('gqlmr results', replace, txns)
       const toUpdate = new Set2<number, I.Key>()
-      for (const [k, v] of results) {
-        allDocs.set(k, v)
+
+      const changed = (k: I.Key, v: any | null) => {
+        console.log('changed', k, v)
+        if (v == null) allDocs.delete(k)
+        else allDocs.set(k, v)
 
         // We need to update:
         // - All map-reduces which include k in their primary set
@@ -161,17 +179,31 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
         }
       }
 
-      console.log('toupdate', toUpdate)
+      // TODO: Probably pull this out into a kv-specific helper function.
+      if (replace) {
+        for (const k of replace.q.q as Set<I.Key>) {
+          const v = replace.with.get(k)
+          changed(k, v)
+        }
+      }
+      for (const _txn of txns) {
+        const txn = _txn.txn as I.KVTxn<any>
+        txn.forEach((op, k) => changed(k, (op as I.SingleOp<any>).type === 'set' ? (op as I.SingleOp<any>).data : undefined))
+      }
+
+      // console.log('toupdate', toUpdate)
       const txn = new Map<I.Key, I.Op<any>>()
       for (const [mri, k] of toUpdate) {
         const mr = opts.mapReduces[mri] //opts.mapReduces.find(mr => k.startsWith(mr.outPrefix))!
         const {outKey, result} = await render(k, mri)
-        txn.set(outKey, {type: 'set', data: result})
+        if (result === undefined) txn.set(outKey, {type: 'rm'})
+        else txn.set(outKey, {type: 'set', data: result})
       }
       
-      console.log('usedby', usedBy)
+      // console.log('usedby', usedBy)
       if (txn.size) {
-        frontOps.internalDidChange('kv', txn, {}, versions[beSource].to)
+        // console.log('gqlmr txn', txn)
+        frontOps.internalDidChange('kv', txn, {}, toVersion[beSource])
       }
       // This is janky because we aren't handing versions correctly. We should
       // validate that the version >= the sub version in this txn result.

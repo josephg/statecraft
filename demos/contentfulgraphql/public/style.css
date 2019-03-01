@@ -45,6 +45,10 @@ blockquote > *:first-child {
   margin-top: 0;
 }
 
+img {
+  max-width: 100%;
+}
+
 /*! Typebase.less v0.1.0 | MIT License */
 /* Setup */
 html {

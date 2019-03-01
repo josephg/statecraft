@@ -77,7 +77,8 @@ const genEtag = (versions: I.FullVersion): string => {
 
 ;(async () => {
   const keys = JSON.parse(fs.readFileSync('keys.json', 'utf8'))
-  const ops = createContentful({
+  const syncStore = await kvMem()
+  const ops = createContentful(syncStore, {
     space: keys.space,
     accessToken: keys.contentAPI,
 
@@ -86,16 +87,16 @@ const genEtag = (versions: I.FullVersion): string => {
   // Ideally this wouldn't return until after we get the initial sync. This is a NYI in the contentful server.
   const cfstore = augment(await kvMem(undefined, {inner: ops}))
 
-  ;(async () => {
-    const sub = cfstore.subscribe({type: 'allkv', q: true})
-    // const sub = cfstore.subscribe({type: 'static range', q: [{
-    //   low: sel('post/'),
-    //   high: sel('post/\xff'),
-    // }]})
-    for await (const r of subValues('kv', sub)) {
-      console.log('results', r)
-    }
-  })()
+  // ;(async () => {
+  //   const sub = cfstore.subscribe({type: 'allkv', q: true})
+  //   // const sub = cfstore.subscribe({type: 'static range', q: [{
+  //   //   low: sel('post/'),
+  //   //   high: sel('post/\xff'),
+  //   // }]})
+  //   for await (const r of subValues('kv', sub)) {
+  //     console.log('results', r)
+  //   }
+  // })()
 
   const store = await gqlmr(cfstore, {
     schema,

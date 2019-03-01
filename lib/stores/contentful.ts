@@ -1,11 +1,15 @@
 // This is a utility store to populate a statecraft store with content from contentful
 import * as I from '../interfaces'
 import {createClient, CreateClientParams, SyncCollection, Entry, Sys} from 'contentful'
-import { V64 } from '../version';
+import { V64, vEq, vCmp, vInc } from '../version';
+import { getKV } from '../kv';
 
+const CONTENT_TYPE_PREFIX = 'ContentType/'
 const stripLocale = (locale: string, obj: any | null) => (
   obj == null ? null : obj[locale]
 )
+
+const entryKey = (e: Entry<any>) => e.sys.contentType.sys.id + '/' + e.sys.id
 
 const flattenFields = (locale: string, obj: Entry<any>): any => {
   const data: any = {}
@@ -26,7 +30,7 @@ const flattenFields = (locale: string, obj: Entry<any>): any => {
   return data
 }
 
-const createContentfulStore = (opts: {
+const createContentfulStore = (syncState: I.SimpleStore<any>, opts: {
   query?: any,
   source?: I.Source,
   // vStore: I.Store<
@@ -35,9 +39,6 @@ const createContentfulStore = (opts: {
   const client = createClient(opts)
   const source = opts.source || opts.space
   let closed = false
-
-  // TODO: Fix me.
-  let version = 0
 
   const store: I.OpStore<any> = {
     storeInfo: {
@@ -53,10 +54,25 @@ const createContentfulStore = (opts: {
       throw new Error('Not implemented')
     },
 
-    async start(v) {
+    async start(fv) {
+      let version = V64(0)
       ;(async () => {
         let nextSyncToken = null
-        let initial = v == null
+        let initial = true
+
+        const state: {vStr: string, syncToken: string} | null = await getKV(syncState, 'state')
+
+        if (state != null && fv != null && fv[source] != null) {
+          const current_version = Buffer.from(state.vStr, 'base64')
+          if (vCmp(fv[source], current_version) <= 0) {
+            version = current_version
+            initial = false
+            nextSyncToken = state.syncToken
+          }
+        }
+        
+        if (initial) console.log('Initializing from raw state')
+        else console.log('initialized from store at version', version)
 
         // const contentTypes = await client.getContentTypes()
         // const typeForId: {[k: string]: string} = {}
@@ -67,6 +83,7 @@ const createContentfulStore = (opts: {
         // console.log('ct', typeForId)
         // return
 
+        // Could put this in the state object ... ??
         const locales = await client.getLocales()
         const defaultLocale = locales.items.find(l => l.default)!.code
         // console.log('locales', locales.items)
@@ -79,21 +96,52 @@ const createContentfulStore = (opts: {
             nextSyncToken,
           })
           initial = false
-          const {entries, assets} = result
-          nextSyncToken = result.nextSyncToken
 
+          if (result.nextSyncToken !== nextSyncToken) {
+            nextSyncToken = result.nextSyncToken
+            const {entries, assets, deletedEntries} = result
+
+            console.log('assets', assets)
           
-          if (entries.length) {
             console.log('nst', nextSyncToken, 'entries', entries.map(e => e.sys.id))
             
+            const nextVersion = vInc(version)
             const txn = new Map<I.Key, I.Op<any>>()
+            const syncTxn = new Map<I.Key, I.Op<any>>([
+              ['state', {type: 'set', data: {vStr: Buffer.from(nextVersion).toString('base64'), syncToken: nextSyncToken}}]
+            ])
+
             entries.forEach(e => {
               const fields = flattenFields(defaultLocale, e)
               // console.log('entry', e.sys.contentType, fields)
-              txn.set(e.sys.contentType.sys.id + '/' + e.sys.id, {type: 'set', data: fields})
+              txn.set(entryKey(e), {type: 'set', data: fields})
+              syncTxn.set(CONTENT_TYPE_PREFIX + e.sys.id, {type: 'set', data: e.sys.contentType.sys.id})
             })
+            
+            if (deletedEntries.length) {
+              const types = (await syncState.fetch({type: 'kv', q: new Set(deletedEntries.map(e => CONTENT_TYPE_PREFIX + e.sys.id))})).results
+              
+              for (const e of deletedEntries) {
+                const contentType = types.get(CONTENT_TYPE_PREFIX + e.sys.id)
+                if (contentType == null) console.warn('Missing entity type in CF state store')
+                else {
+                  console.log('del', e, contentType)
+                  txn.set(contentType + '/' + e.sys.id, {type: 'rm'})
+                  syncTxn.set(CONTENT_TYPE_PREFIX + e.sys.id, {type: 'rm'})
+                }
+              }
+            }
 
-            store.onTxn!(source, V64(version), V64(++version), 'kv', txn, null, {})
+            // console.log('txn', txn)
+            // console.log('synctxn', syncTxn)
+
+            store.onTxn!(source, version, nextVersion, 'kv', txn, null, {})
+            
+            // Ok, now update our sync state. Note that this happens *after* we
+            // notify upstream. Ideally we would wait until the txn was
+            // ingested before updating our sync state
+            await syncState.mutate('kv', syncTxn)
+            version = nextVersion
           }
 
           await new Promise(resolve => setTimeout(resolve, 2000))
@@ -102,7 +150,7 @@ const createContentfulStore = (opts: {
       })()
 
       // We have a problem that versions are opaque strings.
-      return {[source]: V64(version)}
+      return {[source]: version}
     },
 
     close() {}

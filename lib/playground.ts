@@ -367,7 +367,7 @@ const txnSub = async () => {
 
 const contentful = async () => {
   const keys = JSON.parse(readFileSync('keys.json', 'utf8'))
-  const ops = createContentful({
+  const ops = createContentful(await kvStore(), {
     space: keys.space,
     accessToken: keys.contentAPI,
 
