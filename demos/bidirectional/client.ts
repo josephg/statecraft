@@ -6,8 +6,13 @@ import subValues from '../../lib/subvalues'
 
 const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws`
 
-let data: any = {}
-const store = augment(singleMem(0))
+type Pos = {x: number, y: number}
+type DbVal = {[id: string]: Pos}
+
+let data: DbVal = {}
+
+// The local store that holds our mouse location
+const localStore = augment(singleMem<Pos>({x:0, y:0}))
 
 const canvas = document.getElementsByTagName('canvas')[0]
 let ctx: CanvasRenderingContext2D
@@ -38,11 +43,11 @@ function draw() {
 
 ;(async () => {
   const [reader, writer] = await connect(wsurl)
-  const remoteStore = await connectMux(reader, writer, store, true)
+  const remoteStore = await connectMux<DbVal>(reader, writer, localStore, true)
 
   document.body.onmousemove = e => {
     // console.log('setting', e.clientX)
-    setSingle(store, {x: e.clientX, y: e.clientY})
+    setSingle(localStore, {x: e.clientX, y: e.clientY})
   }
 
   const sub = remoteStore.subscribe({type: 'single', q:true})

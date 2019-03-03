@@ -16,16 +16,17 @@ export async function* subResults<Val>(type: I.ResultType, sub: I.Subscription<V
 
     if (update.replace) {
       // console.log('replace', last, update.replace)
-      rtype.updateResults(last, update.replace.q, update.replace.with)
+      last = rtype.updateResults(last, update.replace.q, update.replace.with)
       // const val = update.replace.with
       // last = val
       yield {results: last!, versions}
     }
 
     for (const txn of update.txns) {
-      // console.log('last', last)
-      // console.log('txn', txn.txn)
-      rtype.applyMut!(last, txn.txn)
+      // This is like this because I haven't implemented apply for range results
+      if (rtype.applyMut) rtype.applyMut!(last, txn.txn)
+      else (last = rtype.apply(last, txn.txn))
+
       yield {results: last!, versions}
     }
   }

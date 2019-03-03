@@ -13,7 +13,8 @@ import subValues from '../../lib/subvalues'
 type Pos = {x: number, y: number}
 type DbVal = {[id: string]: Pos}
 
-// This is a huge hack
+// This is a bit of a hack - probably better to use a KV store here with each
+// client living in a different key, then using an allkv query.
 const db: DbVal = {}
 
 const store = augment(singleMem<DbVal>(db))
@@ -30,7 +31,7 @@ wss.on('connection', async (socket, req) => {
   let id = nextId++
 
   const [reader, writer] = wrapWebSocket(socket)
-  const remoteStore = await connectMux<DbVal, Pos>(reader, writer, store, false)
+  const remoteStore = await connectMux<Pos>(reader, writer, store, false)
 
   // console.log(id, 'info', remoteStore.storeInfo)
   console.log(id, 'client connected')
