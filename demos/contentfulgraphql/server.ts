@@ -81,22 +81,9 @@ const genEtag = (versions: I.FullVersion): string => {
   const ops = createContentful(syncStore, {
     space: keys.space,
     accessToken: keys.contentAPI,
-
   })
-
-  // Ideally this wouldn't return until after we get the initial sync. This is a NYI in the contentful server.
+  // Ideally this wouldn't return until after we get the initial sync.
   const cfstore = augment(await kvMem(undefined, {inner: ops}))
-
-  // ;(async () => {
-  //   const sub = cfstore.subscribe({type: 'allkv', q: true})
-  //   // const sub = cfstore.subscribe({type: 'static range', q: [{
-  //   //   low: sel('post/'),
-  //   //   high: sel('post/\xff'),
-  //   // }]})
-  //   for await (const r of subValues('kv', sub)) {
-  //     console.log('results', r)
-  //   }
-  // })()
 
   const store = await gqlmr(cfstore, {
     schema,
@@ -117,20 +104,13 @@ const genEtag = (versions: I.FullVersion): string => {
     ]),
   })
 
-  // ;(async () => {
-  //   const sub = store.subscribe({type: 'allkv', q:true})
-  //   for await (const upd of subValues('kv', sub)) {
-  //     console.log('sub', upd)
-  //   }
-  // })()
-
   const app = express()
   app.use(express.static(`${__dirname}/public`))
 
   app.get('/post/:slug', async (req, res, next) => {
     const r = await store.fetch({type: 'kv', q: new Set([req.params.slug])})
-    const data = r.results.get(req.params.slug)
-    if (data == null) return next()
+    const html = r.results.get(req.params.slug)
+    if (html == null) return next()
     else {
       // TODO: ETag, etc.
       const headers = {
@@ -140,9 +120,7 @@ const genEtag = (versions: I.FullVersion): string => {
       if (fresh(req.headers, headers)) return res.sendStatus(304)
 
       res.set(headers)
-      res.send(`<!doctype html>
-${data}
-`)
+      res.send('<!doctype html>\n' + html)
     }
   })
 
@@ -151,11 +129,4 @@ ${data}
   server.listen(port, () => {
     console.log('listening on port', port)
   })
-
-  // await new Promise(resolve => setTimeout(resolve, 1000))
-  // const v = await store.fetch({type: 'allkv', q:true})
-  // console.log('v results', v.results)
-
-  // await backend.mutate('kv', new Map([['authors/auth', {type: 'set', data:{fullName: 'rob'}}]]))
-
 })()
