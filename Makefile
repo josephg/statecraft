@@ -1,4 +1,4 @@
-.PHONY: all clean watch-bp watch-text watch-bidirectional
+.PHONY: all clean watch-bp watch-text watch-bidirectional watch-monitor
 
 all: demos/text/public/bundle.js
 clean:
@@ -19,3 +19,6 @@ demos/bidirectional/public/bundle.js: demos/bidirectional/*.ts lib/*.ts lib/*/*.
 
 watch-bidirectional:
 	npx watchify -v -p tsify demos/bidirectional/client.ts -o demos/bidirectional/public/bundle.js
+
+watch-monitor:
+	 npx watchify -v -p tsify demos/monitor/dashboard.ts -o demos/monitor/public/bundle.js
