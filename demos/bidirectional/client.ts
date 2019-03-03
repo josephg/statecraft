@@ -9,7 +9,7 @@ const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/w
 type Pos = {x: number, y: number}
 type DbVal = {[id: string]: Pos}
 
-let data: DbVal = {}
+let data = new Map<string, Pos>()
 
 // The local store that holds our mouse location
 const localStore = augment(singleMem<Pos>({x:0, y:0}))
@@ -33,10 +33,8 @@ function draw() {
   ctx.fillRect(0, 0, canvas.width, canvas.height)
 
   ctx.fillStyle = 'red'
-  let i = 0
-  for (const id in data) {
-    const {x, y} = data[id]
-    ctx.fillStyle = colors[(i++) % colors.length]
+  for (const [id, {x, y}] of data) {
+    ctx.fillStyle = colors[parseInt(id) % colors.length]
     ctx.fillRect(x-5, y-5, 10, 10)
   }
 }
@@ -50,8 +48,8 @@ function draw() {
     setSingle(localStore, {x: e.clientX, y: e.clientY})
   }
 
-  const sub = remoteStore.subscribe({type: 'single', q:true})
-  for await (const d of subValues('single', sub)) {
+  const sub = remoteStore.subscribe({type: 'allkv', q:true})
+  for await (const d of subValues('kv', sub)) {
     // console.log('d', d)
     data = d
     draw()
