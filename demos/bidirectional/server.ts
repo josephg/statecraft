@@ -9,7 +9,7 @@ import kvMem from '../../lib/stores/kvmem'
 import augment from '../../lib/augment'
 import connectMux from '../../lib/net/clientservermux'
 import subValues from '../../lib/subvalues'
-import { delKV, setKV } from '../../lib/kv';
+import { rmKV, setKV } from '../../lib/kv';
 
 process.on('unhandledRejection', err => {
   console.error(err.stack)
@@ -20,10 +20,7 @@ process.on('unhandledRejection', err => {
   type Pos = {x: number, y: number}
   // type DbVal = {[id: string]: Pos}
 
-  // This is a bit of a hack - probably better to use a KV store here with each
-  // client living in a different key, then using an allkv query.
-  // const db: DbVal = {}
-
+  // The store is a kv store mapping from client ID (incrementing numbers) => latest position.
   const store = augment(await kvMem<Pos>())
 
   const app = express()
@@ -35,7 +32,7 @@ process.on('unhandledRejection', err => {
   let nextId = 1000
 
   wss.on('connection', async (socket, req) => {
-    let id = `${nextId++}`
+    const id = `${nextId++}`
 
     const [reader, writer] = wrapWebSocket(socket)
     const remoteStore = await connectMux<Pos>(reader, writer, store, false)
@@ -48,7 +45,7 @@ process.on('unhandledRejection', err => {
       console.log(id, 'client gone')
       // delete db[id]
       // console.log('db', db)
-      delKV(store, id)
+      rmKV(store, id)
     }
 
     for await (const val of subValues('single', sub)) {

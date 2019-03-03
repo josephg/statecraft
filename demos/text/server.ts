@@ -22,7 +22,7 @@ import prozessOps from '../../lib/stores/prozessops'
 import mapStore from '../../lib/stores/map'
 import router, {ALL} from '../../lib/stores/router'
 import onekey from '../../lib/stores/onekey'
-import createWss from '../../lib/net/wsserver'
+import serveWS from '../../lib/net/wsserver'
 import {register} from '../../lib/typeregistry'
 import sel from '../../lib/sel'
 
@@ -244,7 +244,7 @@ ${result.results[0]
 
   const server = http.createServer(app)
 
-  const wss = createWss({server}, (client, req) => {
+  const wss = serveWS({server}, (client, req) => {
     const key = changePrefix(req.url!, '/ws/')
     return onekey(store, key)
   })

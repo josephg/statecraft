@@ -51,7 +51,7 @@ const singleStore = <Val = any>(initialValue: Val, source: I.Source = genSource(
   return store
 }
 
-export function setSingle<Val>(store: I.SimpleStore<Val>, value: any) {
+export function setSingle<Val>(store: I.SimpleStore<Val>, value: Val) {
   return store.mutate('single', {type: 'set', data: value})
 }
 

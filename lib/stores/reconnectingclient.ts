@@ -85,7 +85,7 @@ const reconnector = <Val>(connect: (() => Promise<[TinyReader<N.SCMsg>, TinyWrit
           shouldReconnect = false
           innerStore!.close()
           innerStore = null // Error if we get subsequent requests
-          setSingle(status, {connected: false})
+          setSingle(status, 'closed')
           // ... And stop reconnecting.
         }
       }

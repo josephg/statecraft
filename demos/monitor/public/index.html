@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<title>Dashboard</title>
+<style>
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background-color: #484848;
+  color: #f5f5f5;
+  font-family: sans-serif;
+}
+
+.machine {
+  background-color: green;
+  padding: 1em;
+  font-size: 24px;
+  margin: 1em;
+  vertical-align: baseline;
+}
+.machine > * {
+  vertical-align: middle;
+}
+
+.disconnected {
+  background-color: red;
+}
+
+.ip {
+  font-family: monospace;
+  font-size: 70%;
+  margin-left: 15px;
+}
+
+.cpu {
+  width: 30px;
+  height: 30px;
+  background-color: blue;
+  position: relative;
+  margin-left: 1em;
+  float: right;
+}
+.cpu > :first-child {
+  width: 100%;
+  background-color: red;
+  position: absolute;
+  bottom: 0;
+  display: block;
+}
+
+h1 {
+  margin: 1em;
+}
+
+hr {
+  border: 10px solid black;
+}
+
+</style>
+<body>
+
+</body>
+<script src=bundle.js></script>

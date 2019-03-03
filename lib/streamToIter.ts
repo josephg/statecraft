@@ -75,7 +75,7 @@ export default function<T>(onDone?: () => void): Stream<T> {
       // You should clean up yourself if you call this.
       done = true
       while (resolvers.length) {
-        (resolvers.shift()!)[0]({value: undefined as any as T, done: false})
+        (resolvers.shift()!)[0]({value: undefined as any as T, done: true})
       }
     },
 

@@ -9,6 +9,8 @@ export async function* subResults<Val>(type: I.ResultType, sub: I.Subscription<V
   let versions: I.FullVersionRange = {}
 
   for await (const update of sub) {
+    // console.log('upd', update)
+    
     for (const s in update.toVersion) {
       const v = update.toVersion[s]
       versions[s] = {from: v, to: v}

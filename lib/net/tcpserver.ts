@@ -2,19 +2,22 @@ import * as I from '../interfaces'
 import serve from './server'
 import {wrapReader, wrapWriter} from './tinystream'
 
-import net from 'net'
+import net, { Socket } from 'net'
 import msgpack from 'msgpack-lite'
 
+export const serveToSocket = <Val>(store: I.Store<Val>, socket: Socket) => {
+  const writer = msgpack.createEncodeStream()
+  writer.pipe(socket)
+  
+  const reader = msgpack.createDecodeStream()
+  socket.pipe(reader)
+  
+  serve(wrapReader(reader), wrapWriter(writer), store)
+}
+
 export default <Val>(store: I.Store<Val>) => {
-  // console.log('made store')
   return net.createServer(c => {
     // console.log('got connection')
-    const writer = msgpack.createEncodeStream()
-    writer.pipe(c)
-
-    const reader = msgpack.createDecodeStream()
-    c.pipe(reader)
-
-    serve(wrapReader(reader), wrapWriter(writer), store)
+    serveToSocket(store, c)
   })
 }
