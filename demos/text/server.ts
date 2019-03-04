@@ -267,7 +267,6 @@ ${result.results[0]
       inspectOptions: {depth: null}
     })
     
-    // It'd be nice to serve store but the router currently only supports kv and static range queries
     const tcpServer = serveTCP(store)
     tcpServer.listen(2002, 'localhost')
     console.log('Debugging server listening on tcp://localhost:2002')

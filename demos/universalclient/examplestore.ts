@@ -20,9 +20,9 @@ process.on('unhandledRejection', err => {
     ['yo there', {a:10, b:30}]
   ])))
 
-  setInterval(() => {
-    setKV(store, 'x', {a: Math.random(), b: Math.random()})
-  }, 1000)
+  // setInterval(() => {
+  //   setKV(store, 'x', {a: Math.random(), b: Math.random()})
+  // }, 1000)
 
   const server = serve(store)
   server.listen(4444)

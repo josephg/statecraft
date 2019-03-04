@@ -13,6 +13,10 @@ import sel from '../../lib/sel'
 import subValues from '../../lib/subvalues';
 import {Console} from 'console'
 
+// For debugging
+import router, {ALL} from '../../lib/stores/router'
+import serveTCP from '../../lib/net/tcpserver'
+
 import Post from './post'
 import {renderToString} from 'react-dom/server'
 import fresh from 'fresh'
@@ -129,4 +133,13 @@ const genEtag = (versions: I.FullVersion): string => {
   server.listen(port, () => {
     console.log('listening on port', port)
   })
+
+  if (process.env.NODE_ENV !== 'production') {
+    const all = router<any>()
+    all.mount(cfstore, 'cf/', null, '', false)
+    all.mount(store, 'rendered/', null, '', false)
+    const tcpServer = serveTCP(all)
+    tcpServer.listen(2002, 'localhost')
+    console.log('Debugging server listening on tcp://localhost:2002')
+  }
 })()
