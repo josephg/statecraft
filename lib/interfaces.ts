@@ -269,6 +269,12 @@ export type CatchupFn<Val> = (q: Query, fromVersion: FullVersion, opts: CatchupO
 export interface SubscribeOpts {
   // Supported client-side operation types. Also forwarded to getOps.
   readonly supportedTypes?: Set<string>,
+
+  // I'd like to get rid of this. If this is set, the subscription will
+  // track the value itself to support filtering by supported types.
+  // This should be an internal implementation detail.
+  readonly trackValues?: boolean,
+
   // Ignore supportedTypes, just send full received ops. (default false)
   readonly raw?: boolean,
 
@@ -545,7 +551,7 @@ export interface ResultOps<Val, R, T> extends Type<R, T> {
   getCorrespondingQuery(snap: R): Query
 
   // Replace fancy types with {set} if they're not supported.
-  filterSupportedOps(T: T, view: any, supportedTypes: Set<string>): T
+  filterSupportedOps(T: T, values: R, supportedTypes: Set<string>): T
 
   updateResults<Val>(snapshot: ResultData<Val>, q: ReplaceQuery, data: ReplaceData<Val>): ResultData<Val>
 

@@ -43,6 +43,13 @@ type Sub<Val> = {
   alwaysNotify: boolean,
   supportedTypes: Set<string> | null,
 
+  // Do we need to store a local copy of the current subscription values? This
+  // is needed if the subscriber doesn't support the op types that the
+  // underlying store will emit.
+  // TODO: Figure out a better way of deciding when we need this.
+  trackValues: boolean,
+  value?: any,
+
   // Stream attached to the returned subscription.
   stream: Stream<I.CatchupData<Val>>,
 
@@ -70,7 +77,7 @@ export default class SubGroup<Val> {
     }
   }
   
-  async catchup(query: I.Query, opts: I.SubscribeOpts): Promise<I.CatchupData<Val>> {
+  async catchup(query: I.Query, opts: I.SubscribeOpts, trackValues: boolean): Promise<I.CatchupData<Val>> {
     // TODO: This should look at the aggregation options to decide if a fetch
     // would be the right thing to do.
     //
@@ -80,10 +87,10 @@ export default class SubGroup<Val> {
     if (fromVersion === 'current') {
       throw Error('Invalid call to catchup')
 
-    } else if (fromVersion == null) {
+    } else if (fromVersion == null || trackValues) {
       // Initialize with a full fetch.
-      // console.log('catchup with full fetch')
       const {bakedQuery, results, versions} = await this.store.fetch(query)
+      // console.log('catchup with full fetch to version', versions, results)
       const [from, to] = splitFullVersions(versions)
       return {
         replace: {
@@ -127,25 +134,29 @@ export default class SubGroup<Val> {
       meta: I.Metadata) {
     if (vCmp(fromV, toV) >= 0) throw Error('Invalid op - goes backwards in time')
     for (const sub of this.allSubs) {
-      // console.log('onOp version', sub.id, 'fv', fromV, 'tv', toV, 'buf', sub.opsBuffer, 'sub ev', sub.expectVersion)
+      // console.log(sub.id, 'onOp version', sub.id, 'fv', fromV, 'tv', toV, 'buf', sub.opsBuffer, 'sub ev', sub.expectVersion, 'val', sub.value, 'txn', txn)
+
       // First filter out any op types we don't know about here
-      let _txn = sub.supportedTypes
-        ? resultTypes[type].filterSupportedOps(txn, resultingView, sub.supportedTypes)
-        : txn
+      // let _txn = sub.supportedTypes
+      //   ? resultTypes[type].filterSupportedOps(txn, resultingView, sub.supportedTypes)
+      //   : txn
 
       // console.log('sg onOp', fromV, toV, !!sub.opsBuffer)
-      if (sub.opsBuffer) sub.opsBuffer.push({source, fromV, toV, txn: _txn, meta})
-      else {
+      if (sub.opsBuffer) {
+        // console.log('op -> opbuffer')
+        sub.opsBuffer.push({source, fromV, toV, txn, meta})
+      } else {
         if (sub.q == null) throw Error('Invalid state')
 
         if (isVersion(sub.expectVersion)) {
-          if (!vEq(sub.expectVersion![source], fromV)) {
+          if (sub.expectVersion[source] && !vEq(sub.expectVersion[source], fromV)) {
             // This can happen if you fetch / mutate and get a future-ish
             // version, then try to subscribe to that version before that
             // version is propogated through the subscription channel. This
             // happens reliably with the fdb unit tests.
             //
             // Implemented this way we provide cover for bugs, its more correct.
+            console.warn(sub.id, 'skip version', 'expect', sub.expectVersion[source], 'actual fromV', fromV, 'data', sub.value)
             continue
             // throw Error(`Invalid version from source: from/to versions mismatch: ${sub.expectVersion[source]} != ${fromV}`)
           }
@@ -154,10 +165,23 @@ export default class SubGroup<Val> {
         }
 
         const qtype = queryTypes[sub.q.type]
+        const rtype = qtype.resultType
         // console.log('qtype', sub.q)
         // if (!qtype) throw Error('Missing type ' + sub.q.type)
-        const localTxn = qtype.adaptTxn(_txn, sub.q.q)
-        // console.log('onop', txn, localTxn)
+
+        let localTxn = qtype.adaptTxn(txn, sub.q.q)
+
+        if (localTxn != null && sub.trackValues) {
+          // console.log('applyMut', sub.value, localTxn)
+          if (rtype.applyMut) rtype.applyMut!(sub.value, localTxn)
+          else (sub.value = rtype.apply(sub.value, localTxn))
+          // console.log('sub value =>', sub.value, localTxn)
+
+          // console.log('localTxn', localTxn, sub.q.q)
+          localTxn = rtype.filterSupportedOps(localTxn, sub.value, sub.supportedTypes!)
+        }
+
+        // console.log(sub.id, 'propogate op', localTxn, toV)
 
         // This is pretty verbose. Might make sense at some point to do a few MS of aggregation on these.
         if (localTxn != null || sub.alwaysNotify) sub.stream.append({
@@ -171,17 +195,20 @@ export default class SubGroup<Val> {
   }
 
   create(query: I.Query, opts: I.SubscribeOpts = {}): I.Subscription<Val> {
+    // console.log('create sub', query, opts)
+    
     if (query.type === 'range' && opts.fromVersion != null) {
       throw new err.UnsupportedTypeError('Can only subscribe to full range queries with no version specified')
     }
-
+    
     const fromCurrent = opts.fromVersion === 'current'
     let qtype = queryTypes[query.type]
-
+    
     const stream = streamToIter<I.CatchupData<Val>>(() => {
+      // console.log(sub.id, 'sub closed')
       this.allSubs.delete(sub)
     })
-
+    
     var sub: Sub<Val> = {
       // Ugh this is twisty. We need the query to filter transactions as they
       // come in. But also, for range queries we want to use the baked version
@@ -191,17 +218,23 @@ export default class SubGroup<Val> {
       q: opts.fromVersion != null ? query : null,
       alwaysNotify: opts.alwaysNotify || false,
       supportedTypes: opts.supportedTypes || null,
+      trackValues: opts.trackValues || false,
       expectVersion: opts.fromVersion || null,
       opsBuffer: fromCurrent ? null : [],
       stream,
       id: nextId++,
     }
-    // console.log('created sub', 'expect version', sub.expectVersion, 'fromCurrent', fromCurrent, 'q', query, sub)
+    // console.log(sub.id, 'created sub', 'expect version', sub.expectVersion, 'fromCurrent', fromCurrent, 'q', query)
     this.allSubs.add(sub)
+
+    if (sub.trackValues) {
+      const rtype = qtype.resultType
+      sub.value = rtype.create()
+    }
 
     // console.log('Creating sub', sub.id, 'fv', opts.fromVersion, sub.expectVersion, sub.opsBuffer)
 
-    if (!fromCurrent) this.catchup(query, opts).then(catchup => {
+    if (!fromCurrent) this.catchup(query, opts, sub.trackValues).then(catchup => {
       // debugger
       // So quite often if you're passing in a known version, this catchup
       // object will be empty. Is it still worth sending it?
@@ -220,6 +253,11 @@ export default class SubGroup<Val> {
           type: catchup.replace.q.type,
           q: qtype.updateQuery(sub.q == null ? null : sub.q.q, catchup.replace.q.q)
         } as I.Query
+
+        if (sub.trackValues) {
+          sub.value = qtype.resultType.updateResults(sub.value, catchup.replace.q, catchup.replace.with)
+          // console.log('sub.value reset to', sub.value)
+        }
       }
       // console.log('catchup -> ', catchupVersion, catchup, sub.expectVersion, sub.q, query.type)
       
@@ -228,6 +266,7 @@ export default class SubGroup<Val> {
       // Replay the operation buffer into the catchup txn
       for (let i = 0; i < sub.opsBuffer.length; i++) {
         const {source, fromV, toV, txn, meta} = sub.opsBuffer[i]
+        // console.log('pop from opbuffer', source, {fromV, toV}, txn)
         const v = catchupVersion[source]
 
         // If the buffered op is behind the catchup version, discard it and continue.
@@ -238,6 +277,13 @@ export default class SubGroup<Val> {
         if (v === fromV || vCmp(v, fromV) === 0) {
           if (filteredTxn != null) catchup.txns.push({versions:{[source]: toV}, txn: filteredTxn, meta})
           catchupVersion[source] = toV
+          
+          if (sub.trackValues) {
+            const rtype = qtype.resultType
+            if (rtype.applyMut) rtype.applyMut!(sub.value, txn)
+            else (sub.value = rtype.apply(sub.value, txn))
+            // console.log('sub value =>', sub.value, txn)
+          }
         } else if (v != null) {
           // ... TODO: If the catchup fetched version is in between 
           // console.log('v', v, 'fromV', fromV, 'toV', toV)
@@ -245,13 +291,15 @@ export default class SubGroup<Val> {
         }
       }
       
-      if (sub.expectVersion == null) sub.expectVersion = catchupVersion
+      if (sub.expectVersion == null) sub.expectVersion = {...catchupVersion}
       else if (sub.expectVersion !== 'current') {
         for (const s in catchupVersion) sub.expectVersion[s] = catchupVersion[s]
       }
       sub.opsBuffer = null
+      
+      // Object.freeze(catchupVersion)
 
-      // console.log('catchup', catchup)
+      // console.log('emitting catchup', catchup)
       stream.append(catchup)
     }).catch(err => {
       // Bubble up to create an exception in the client.

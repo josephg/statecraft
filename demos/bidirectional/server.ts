@@ -7,7 +7,7 @@ import {wrapWebSocket} from '../../lib/net/wsserver'
 import kvMem from '../../lib/stores/kvmem'
 // import singleMem, {setSingle} from '../../lib/stores/singlemem'
 import augment from '../../lib/augment'
-import connectMux from '../../lib/net/clientservermux'
+import connectMux, { BothMsg } from '../../lib/net/clientservermux'
 import subValues from '../../lib/subvalues'
 import { rmKV, setKV } from '../../lib/kv';
 
@@ -34,7 +34,7 @@ process.on('unhandledRejection', err => {
   wss.on('connection', async (socket, req) => {
     const id = `${nextId++}`
 
-    const [reader, writer] = wrapWebSocket(socket)
+    const [reader, writer] = wrapWebSocket<BothMsg, BothMsg>(socket)
     const remoteStore = await connectMux<Pos>(reader, writer, store, false)
 
     // console.log(id, 'info', remoteStore.storeInfo)

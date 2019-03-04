@@ -112,9 +112,10 @@ const type: I.ResultOps<Val, Map<I.Key, Val>, I.KVTxn<Val>> = {
     return {type: 'kv', q: new Set(snap.keys())}
   },
 
-  filterSupportedOps(op, view: Map<I.Key, Val>, supportedTypes) {
+  filterSupportedOps(op, values: Map<I.Key, Val>, supportedTypes) {
+    // console.log('fso', op, values)
     return mapMapVal(op, (o, k) => (
-      fieldOps.filterSupportedOps(o, view.get(k), supportedTypes))
+      fieldOps.filterSupportedOps(o, values.get(k), supportedTypes))
     )
   },
 

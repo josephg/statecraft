@@ -9,7 +9,8 @@
 import {Readable, Writable} from 'stream'
 
 export interface TinyReader<Msg> {
-  onmessage?: (msg: Msg) => void
+  buf: Msg[] // For messages before onmessage has been set
+  onMessage?: (msg: Msg) => void
   onClose?: () => void
   isClosed: boolean,
 }
@@ -20,10 +21,11 @@ export interface TinyWriter<Msg> {
 }
 
 export const wrapReader = <Msg>(r: Readable) => {
-  const reader: TinyReader<Msg> = {isClosed: false}
+  const reader: TinyReader<Msg> = {buf: [], isClosed: false}
 
   r.on('data', msg => {
-    reader.onmessage!(msg as any as Msg)
+    if (reader.onMessage) reader.onMessage!(msg as any as Msg)
+    else reader.buf.push(msg)
   })
   r.on('end', () => {
     reader.isClosed = true
@@ -36,6 +38,16 @@ export const wrapReader = <Msg>(r: Readable) => {
   })
   
   return reader
+}
+
+export const listen = <Msg>(r: TinyReader<Msg>, listener: (msg: Msg) => void) => {
+  r.buf.forEach(listener)
+  r.buf.length = 0
+  r.onMessage = listener
+}
+export const onMsg = <Msg>(r: TinyReader<Msg>, msg: Msg) => {
+  if (r.onMessage) r.onMessage(msg)
+  else r.buf.push(msg)
 }
 
 export const wrapWriter = <Msg>(w: Writable, encode?: (msg: Msg) => any) => {

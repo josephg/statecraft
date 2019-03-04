@@ -88,8 +88,8 @@ export default async function singleStore<Val>(
       let lowerRange: Uint8Array = V_EMPTY
       let bakedQuery: I.Query | undefined
       const tag = (k: I.Key) => {
-        const v = lastModVersion.get(k)
-        if (v !== undefined) lowerRange = vMax(lowerRange, v)
+        const v = lastModVersion.get(k) || lastVersion!
+        lowerRange = vMax(lowerRange, v)
       }
 
       switch (query.type) {
@@ -191,5 +191,6 @@ export default async function singleStore<Val>(
 
   // Should we await this?
   lastVersion = (await inner.start!())[source]
+
   return store
 }

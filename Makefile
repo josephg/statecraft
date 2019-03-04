@@ -21,4 +21,7 @@ watch-bidirectional:
 	npx watchify -v -p tsify demos/bidirectional/client.ts -o demos/bidirectional/public/bundle.js
 
 watch-monitor:
-	 npx watchify -v -p tsify demos/monitor/dashboard.ts -o demos/monitor/public/bundle.js
+	npx watchify -v -p tsify demos/monitor/dashboard.ts -o demos/monitor/public/bundle.js
+
+watch-universalclient:
+	npx watchify -v -p tsify demos/universalclient/client.ts -o demos/universalclient/public/bundle.js

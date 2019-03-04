@@ -23,6 +23,7 @@ import mapStore from '../../lib/stores/map'
 import router, {ALL} from '../../lib/stores/router'
 import onekey from '../../lib/stores/onekey'
 import serveWS from '../../lib/net/wsserver'
+import serveTCP from '../../lib/net/tcpserver'
 import {register} from '../../lib/typeregistry'
 import sel from '../../lib/sel'
 
@@ -37,6 +38,7 @@ import commonmark from 'commonmark'
 import {type as texttype} from 'ot-text-unicode'
 import fresh from 'fresh'
 import html from 'nanohtml'
+import {Console} from 'console'
 
 process.on('unhandledRejection', err => {
   console.log('unhandled rejection', err.message, err.code, err.stack)
@@ -54,7 +56,7 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
 
 
 ;(async () => {
-  // const backend = kvStore()
+  // const backend = await kvStore<string>()
 
   // const pclient = await new Promise<PClient>((resolve, reject) => {
   //   const pclient = reconnecter(9999, 'localhost', err => {
@@ -244,12 +246,30 @@ ${result.results[0]
 
   const server = http.createServer(app)
 
-  const wss = serveWS({server}, (client, req) => {
-    const key = changePrefix(req.url!, '/ws/')
-    return onekey(store, key)
+  serveWS({server}, (client, req) => {
+    if (!req.url!.startsWith('/ws/')) {
+      console.warn('client connected at invalid url', req.url)
+      client.close()
+    } else {
+      const key = changePrefix(req.url!, '/ws/')
+      return onekey(store, key)
+    }
   })
 
   const port = process.env.PORT || '2001'
   server.listen(+port)
   console.log('http server listening on port', port)
+
+  if (process.env.NODE_ENV !== 'production') {
+    global.console = new (Console as any)({
+      stdout: process.stdout,
+      stderr: process.stderr,
+      inspectOptions: {depth: null}
+    })
+    
+    // It'd be nice to serve store but the router currently only supports kv and static range queries
+    const tcpServer = serveTCP(store)
+    tcpServer.listen(2002, 'localhost')
+    console.log('Debugging server listening on tcp://localhost:2002')
+  }
 })()

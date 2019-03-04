@@ -1,6 +1,7 @@
 import * as I from '../interfaces'
 import err from '../err'
 import {queryTypes} from '../qrtypes'
+import iterGuard from '../iterGuard'
 
 const supportedOpTypes = new Set(['rm', 'set'])
 
@@ -96,11 +97,12 @@ const map = <In, Out>(inner: I.Store<In>, mapfn: MapFn<In, Out>): I.Store<Out> =
       const innerSub = inner.subscribe(q, {
         ...opts,
         supportedTypes: supportedOpTypes,
+        trackValues: true,
       })
 
       const version: I.FullVersion = {}
 
-      return (async function*() {
+      return iterGuard((async function*() {
         for await (const innerUpdates of innerSub) {
           // Note that version contains the version *after* the whole catchup
           // is applied. I'm updating it here, but note that it is not used by
@@ -112,7 +114,7 @@ const map = <In, Out>(inner: I.Store<In>, mapfn: MapFn<In, Out>): I.Store<Out> =
           // TODO: It'd be better to avoid calling the map function so often
           // here. We should really only call it at most once per object per
           // iteration.
-          yield {
+          const result = {
             ...innerUpdates,
             txns: mapTxnWithMetas(qtype.resultType, innerUpdates.txns, mapfn),
             replace: innerUpdates.replace ? {
@@ -121,8 +123,11 @@ const map = <In, Out>(inner: I.Store<In>, mapfn: MapFn<In, Out>): I.Store<Out> =
               versions: innerUpdates.replace.versions,
             } : undefined,
           }
+          // console.log('map yield', result)
+
+          yield result
         }
-      })() as I.AsyncIterableIteratorWithRet<I.CatchupData<Out>>
+      })(), innerSub.return) as I.AsyncIterableIteratorWithRet<I.CatchupData<Out>>
     },
 
     close() {},

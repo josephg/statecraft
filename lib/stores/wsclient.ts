@@ -1,7 +1,7 @@
 import * as I from '../interfaces'
 import * as N from '../net/netmessages'
 import createStore from '../net/client'
-import {TinyReader, TinyWriter} from '../net/tinystream'
+import {TinyReader, TinyWriter, onMsg} from '../net/tinystream'
 import WebSocket from 'isomorphic-ws'
 
 // const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws`
@@ -9,11 +9,11 @@ import WebSocket from 'isomorphic-ws'
 export const connect = <R, W>(wsurl: string): Promise<[TinyReader<R>, TinyWriter<W>]> => new Promise((resolve, reject) => {
   const ws = new WebSocket(wsurl)
 
-  const reader: TinyReader<R> = {isClosed: false}
+  const reader: TinyReader<R> = {buf: [], isClosed: false}
   ws.onmessage = (msg) => {
     const data = JSON.parse(msg.data.toString())
-    console.log('received', data)
-    reader.onmessage!(data)
+    // console.log('received', data)
+    onMsg(reader, data)
   }
 
   ws.onclose = () => {
@@ -52,6 +52,6 @@ export const connect = <R, W>(wsurl: string): Promise<[TinyReader<R>, TinyWriter
 // TODO: Implement automatic reconnection and expose a simple server
 // describing the connection state
 export default async function<Val>(wsurl: string): Promise<I.Store<Val>> {
-  const [r, w] = await connect(wsurl)
+  const [r, w] = await connect<N.SCMsg, N.CSMsg>(wsurl)
   return createStore(r, w)
 }

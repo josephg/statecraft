@@ -1,5 +1,5 @@
 
-import createStore from '../../lib/stores/reconnectingclient'
+import reconnecter from '../../lib/stores/reconnectingclient'
 import {connect} from '../../lib/stores/wsclient'
 import subValues from '../../lib/subvalues'
 import augment from '../../lib/augment'
@@ -30,7 +30,7 @@ const machine = (val: ClientInfo) => {
 
 const mainView = (state: any) => {
   const machines = state.machines as Map<string, ClientInfo>
-  console.log('state', state)
+  // console.log('state', state)
   return html`
     <body>
       <h1>Statecraft CPU monitoring dashboard</h1>
@@ -45,7 +45,7 @@ const mainView = (state: any) => {
 (async () => {
   const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws/`
   console.log('connecting to ws', wsurl, '...')
-  const [statusStore, storeP] = createStore<string>(() => connect(wsurl))
+  const [statusStore, storeP] = reconnecter<ClientInfo>(() => connect(wsurl))
 
   ;(async () => {
     // Using augment here is a very ... high level solution. It pulls in a lot more complexity.

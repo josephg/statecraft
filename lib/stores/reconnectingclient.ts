@@ -55,7 +55,7 @@ const reconnector = <Val>(connect: (() => Promise<[TinyReader<N.SCMsg>, TinyWrit
               })
               break
             } catch (e) {
-              console.warn('Reconnection failed', e)
+              console.warn('Reconnection failed', e.message)
             }
 
             setSingle(status, 'waiting')

@@ -130,13 +130,20 @@ const adaptTxnToRange = <Val>(txn: I.KVTxn<Val>, query: I.StaticRangeQuery): I.R
 }
 
 
-const mapRangeKeys = (q: I.RangeQuery, fn: (k: I.Key, i: number) => I.Key | null): I.RangeQuery => (
-  q.map((qc, i) => ({
-    ...qc,
-    low: {k: fn(qc.low.k, i), ...qc.low},
-    high: {k: fn(qc.high.k, i), ...qc.high},
-  }))
-)
+const mapRangeKeys = (q: I.RangeQuery, fn: (k: I.Key, i: number) => I.Key | null): I.RangeQuery => {
+  const result: I.RangeQuery = []
+  q.forEach((qc, i) => {
+    const lowK = fn(qc.low.k, i)
+    const highK = fn(qc.high.k, i)
+    
+    if (lowK != null && highK != null) result.push({
+      ...qc,
+      low: {...qc.low, k: lowK},
+      high: {...qc.high, k: highK},
+    })
+  })
+  return result
+}
 
 type CatchupRangeReplace<Val> = I.CatchupReplace<Val, {
   type: 'static range',
@@ -173,13 +180,22 @@ registerQuery('static range', range, {
   },
 
   updateQuery(q: I.StaticRangeQuery | null, op: I.StaticRangeQuery[]) {
+    // console.log('updateQuery', q, op)
     if (q == null) return op.map(x => x[0]) // TODO: Check that all the ranges have 1 item.
     else {
       if (q.length !== op.length) throw new err.InvalidDataError()
 
       for (let i = 0; i < q.length; i++) {
-        nyi()
+        let range = q[i]
+        op[i].forEach(rop => {
+          // Make range a union of range + rop
+          // console.log('rop', rop)
+          const result = sel.union(range.low, range.high, rop.low, rop.high)
+          if (result == null) throw new err.InvalidDataError('Ranges do not overlap')
+          range.low = result[0]; range.high = result[1]
+        })
       }
+      // console.log('-> q', q)
       return q
     }
   },

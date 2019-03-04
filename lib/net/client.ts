@@ -14,7 +14,7 @@ import {
   queryTypes, resultTypes,
   wrapQuery
 } from '../qrtypes'
-import {TinyReader, TinyWriter} from './tinystream'
+import {TinyReader, TinyWriter, listen} from './tinystream'
 import streamToIter, {Stream} from '../streamToIter'
 import {Readable, Writable, Duplex} from 'stream'
 import {supportedTypes} from '../typeregistry'
@@ -132,10 +132,10 @@ function storeFromStreams<Val>(reader: TinyReader<N.SCMsg>,
     if (opts.onClose) opts.onClose()
     if (!opts.preserveState) cleanup()
 
-    delete reader.onmessage
+    delete reader.onMessage
   }
 
-  reader.onmessage = msg => {
+  listen(reader, msg => {
     // This is needed because we call detailsByRef.clear() in cleanup.
     if (closed) return
 
@@ -233,7 +233,7 @@ function storeFromStreams<Val>(reader: TinyReader<N.SCMsg>,
 
       default: console.error('Invalid or unknown server->client message', msg)
     }
-  }
+  })
 
   const registerSub = (sub: RemoteSub<Val>) => {
     const ref = nextRef++
@@ -353,8 +353,14 @@ function storeFromStreams<Val>(reader: TinyReader<N.SCMsg>,
 const readNext = <T>(r: TinyReader<T>): Promise<T> => (
   // This is a bit overly simple for general use, but it should work ok for what I'm using it for.
   new Promise((resolve, reject) => {
-    r.onmessage = resolve
-    r.onClose = () => reject(new Error('Closed before handshake'))
+    if (r.buf.length) return resolve(r.buf.shift())
+    else {
+      r.onMessage = msg => {
+        resolve(msg)
+        delete r.onMessage // Let subsequent messages flow to r.buf
+      }
+      r.onClose = () => reject(new Error('Closed before handshake'))
+    }
   })
 )
 

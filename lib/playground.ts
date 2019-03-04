@@ -16,6 +16,7 @@ import prozessOps from './stores/prozessops'
 import lmdbStore from './stores/lmdb'
 import remoteStore from './stores/tcpclient'
 import poll from './stores/poll'
+import mapStore from './stores/map'
 import augment from './augment'
 import {inspect} from 'util'
 import {PClient, reconnecter} from 'prozess-client'
@@ -32,6 +33,7 @@ import createContentful from './stores/contentful';
 import { readFileSync } from 'fs';
 import subValues from './subvalues';
 import {Console} from 'console'
+import { setKV } from './kv';
 fdb.setAPIVersion(600)
 
 const ins = (x: any) => inspect(x, {depth: null, colors: true})
@@ -201,11 +203,11 @@ const testNet = async () => {
 const setSingle = <Val>(k: I.Key, v: Val): I.KVTxn<Val> => new Map([[k, {type:'set', data: v}]])
 
 const testRouter = async () => {
-  const a = augment(await kvStore(new Map([['x', 'yo']])))
+  const a = augment(await kvStore(new Map([['backa/x', 'yo']])))
   const b = augment(await kvStore<string>())
 
   const store = router<string>()
-  store.mount(a, 'a/', ALL, '', true)
+  store.mount(a, 'a/', ALL, 'backa/', true)
   store.mount(b, 'b/', ALL, '', true)
 
   const sub = store.subscribe({type: 'kv', q:new Set(['a/x', 'b/y'])}, {})
@@ -223,11 +225,11 @@ const testRouter = async () => {
 }
 
 const testRouterRange = async () => {
-  const a = augment(await kvStore(new Map([['x', 'a x'], ['y', 'a y']])))
+  const a = augment(await kvStore(new Map([['ab/x', 'a x'], ['ab/y', 'a y']])))
   const c = augment(await kvStore(new Map([['x', 'c x'], ['y', 'c y']])))
 
   const store = router()
-  store.mount(a, 'a/', ALL, '', true)
+  store.mount(a, 'a/', ALL, 'ab/', true)
   store.mount(c, 'c/', ALL, '', true)
 
   const q = {type: 'static range', q:[
@@ -387,6 +389,31 @@ const contentful = async () => {
   }
 }
 
+const reproMapRouterBug = async () => {
+  const a = augment(await kvStore(new Map([['backend/x', 'a x'], ['ab/y', 'a y']])))
+  const m = mapStore(a, s => 'map ' + s)
+
+  const r = router()
+  r.mount(m, 'f mapped/', ALL, 'backend/', true)
+  r.mount(a, 'f raw/', ALL, 'backend/', true)
+
+  ;(async () => {
+    const sub = r.subscribe({type: 'static range', q: [{low: sel('f'), high: sel('f\xff')}]})
+    // const sub = r.subscribe({type: 'kv', q: new Set(['f mapped/x', 'f raw/x'])})
+    for await (const cu of sub) {
+      console.log('cu', cu)
+    }
+  })()
+
+  await new Promise(resolve => setTimeout(resolve, 200))
+  await setKV(a, 'backend/x', 'a x 2')
+  await setKV(a, 'backend/x', 'a x 3')
+
+  // const store = router()
+  // store.mount(a, 'a/', ALL, 'ab/', true)
+
+}
+
 process.on('unhandledRejection', err => {
   console.error(err.stack)
   process.exit(1)
@@ -416,4 +443,6 @@ global.console = new (Console as any)({
 
 
 // testRange()
-contentful()
+// contentful()
+
+reproMapRouterBug()

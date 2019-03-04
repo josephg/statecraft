@@ -6,9 +6,9 @@ import * as N from './netmessages'
 import createStore from './client'
 import serve from './server'
 
-import {TinyReader, TinyWriter} from './tinystream'
+import {TinyReader, TinyWriter, onMsg} from './tinystream'
 
-type BothMsg = N.CSMsg | N.SCMsg
+export type BothMsg = N.CSMsg | N.SCMsg
 
 // Passes invariants inv(0) != 0, inv(inv(x)) == x.
 const inv = (x: number) => -x-1
@@ -36,7 +36,7 @@ export default function connectMux<RemoteVal>(reader: TinyReader<BothMsg>, write
     close() { writer.close() },
   }
 
-  const remoteReader: TinyReader<N.SCMsg> = {isClosed: false}
+  const remoteReader: TinyReader<N.SCMsg> = {buf: [], isClosed: false}
   const remoteWriter: TinyWriter<N.CSMsg> = {
     write(msg) {
       if (!symmetry) msg.ref = inv(msg.ref)
@@ -45,13 +45,13 @@ export default function connectMux<RemoteVal>(reader: TinyReader<BothMsg>, write
     close() { writer.close() },
   }
 
-  reader.onmessage = msg => {
-    if (msg.a === N.Action.Hello) remoteReader.onmessage!(msg)
+  reader.onMessage = msg => {
+    if (msg.a === N.Action.Hello) onMsg(remoteReader, msg)
     else {
       const neg = msg.ref < 0
       if (neg) msg.ref = inv(msg.ref)
-      if (neg !== symmetry) remoteReader.onmessage!(msg as N.SCMsg)
-      else localReader.onmessage!(msg as N.CSMsg)
+      if (neg !== symmetry) onMsg(remoteReader, msg as N.SCMsg)
+      else onMsg(localReader, msg as N.CSMsg)
     }
   }
 

@@ -5,19 +5,15 @@
 // - HTTP listener + websockets for the monitoring app
 
 import express from 'express'
-import WebSocket from 'ws'
 import http from 'http'
 import net from 'net'
 
 import * as I from '../../lib/interfaces'
-import {wrapWebSocket} from '../../lib/net/wsserver'
 import kvMem from '../../lib/stores/kvmem'
-// import singleMem, {setSingle} from '../../lib/stores/singlemem'
 import augment from '../../lib/augment'
-import connectMux from '../../lib/net/clientservermux'
 import subValues from '../../lib/subvalues'
 import { rmKV, setKV } from '../../lib/kv'
-import { connectToSocket } from '../../lib/stores/tcpclient';
+import { connectToSocket } from '../../lib/stores/tcpclient'
 import serveWS from '../../lib/net/wsserver'
 
 process.on('unhandledRejection', err => {

@@ -66,7 +66,7 @@ const mapRangeAsync = <In, Out>(input: [I.Key, In][][], fn: (val: In, key: I.Key
   mapRangeEntryAsync(input, (k, v) => fn(v, k).then(v2 => ([k, v2] as [I.Key, Out])))
 )
 
-const walk2 = <T>(a: [I.Key, T][], b: [I.Key, T][], fn: (k: I.Key, a: T | null, b: T | null) => void) => {
+const walk2 = <X, Y>(a: [I.Key, X][], b: [I.Key, Y][], fn: (k: I.Key, a: X | null, b: Y | null) => void) => {
   let ai = 0, bi = 0
 
   while (ai < a.length && bi < b.length) {
@@ -121,7 +121,11 @@ const type: I.ResultOps<Val, I.RangeResult<Val>, I.RangeTxn<Val>> = {
     }
   },
 
-  apply(snap, op) { throw Error('Not implemented') },
+  apply(snap, op) {
+    const result = snap.map(r => r.map(ko => ko.slice() as [string, any]))
+    this.applyMut!(result, op)
+    return result
+  },
 
   compose(op1, op2) { throw Error('not implemented') },
   
@@ -170,13 +174,23 @@ const type: I.ResultOps<Val, I.RangeResult<Val>, I.RangeTxn<Val>> = {
     return {type: 'kv', q: keys}
   },
 
-  filterSupportedOps(op, view: Map<I.Key, Val>, supportedTypes) {
-    return mapRange(op, (o, k) => (
-      fieldOps.filterSupportedOps(o, view.get(k), supportedTypes))
-    )
+  filterSupportedOps(op, values, supportedTypes) {
+    // console.log('fso', op, values)
+    return op.map((r, i) => {
+      const result: [string, I.Op<any>][] = []
+      walk2(r, values[i], (k, o, v) => {
+        if (o != null) result.push([k, fieldOps.filterSupportedOps(o, v, supportedTypes)])
+      })
+      return result
+    })
+    // return mapRange(op, (o, k) => (
+    //   fieldOps.filterSupportedOps(o, values.get(k), supportedTypes))
+    // )
   },
 
   updateResults<Val>(snapshot: I.RangeResult<Val>, _q: I.ReplaceQuery, data: I.RangeResult<Val>[]) {
+    // console.log('updateResults', snapshot, _q, data)
+
     if (_q.type !== 'static range') throw new TypeError('Invalid data type in updateResults: ' + _q.type)
     const q = _q.q
   
@@ -193,13 +207,15 @@ const type: I.ResultOps<Val, I.RangeResult<Val>, I.RangeTxn<Val>> = {
       // For each qq/dd pair, we need to replace that range in si with the entry in dd.
       if (qq.length !== dd.length) throw new err.InvalidDataError()
       for (let k = 0; k < qq.length; k++) {
-        const qqq = qq[i], ddd = dd[i]
+        const qqq = qq[k], ddd = dd[k]
 
         const [start, end] = findRangeStatic(qqq, si.map(x => x[0]))
         if (end < start) throw new err.InvalidDataError() // It might make sense to just skip?
         si.splice(start, end-start, ...ddd)
       }
     }
+
+    // console.log('upd -> ', snapshot)
 
     return snapshot
   }

@@ -7,7 +7,7 @@ import {
   fullVersionRangeToNet, fullVersionRangeFromNet,
 } from './util'
 import {queryTypes, resultTypes} from '../qrtypes'
-import {TinyReader, TinyWriter} from './tinystream'
+import {TinyReader, TinyWriter, listen} from './tinystream'
 import errs, {errToJSON, errFromJSON} from '../err'
 
 // import {Readable, Writable} from 'stream'
@@ -38,6 +38,7 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
   }
 
   const write = (data: N.SCMsg) => {
+    // console.log('S->C data', data)
     writer.write(data)
   }
 
@@ -48,6 +49,7 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
 
   // let closed = false
   reader.onClose = () => {
+    // console.log('client reader closed')
     for (const sub of subForRef.values()) {
       sub.return()
     }
@@ -64,8 +66,8 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
     capabilities: capabilitiesToJSON(store.storeInfo.capabilities),
   })
 
-  reader.onmessage = (msg: N.CSMsg) => {
-    // console.log('C->S data', msg)
+  listen(reader, (msg: N.CSMsg) => {
+    console.log('C->S data', msg)
     
     switch (msg.a) {
       case N.Action.Fetch: {
@@ -146,12 +148,18 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
             : opts.fv == null ? undefined
             : fullVersionFromNet(opts.fv),
         }
-        const sub = store.subscribe(query, innerOpts)
+
+        let sub
+        try {
+          sub = store.subscribe(query, innerOpts)
+        } catch (e) {
+          writeErr(ref, e)
+          break
+        }
         const type = queryTypes[query.type]
 
         assert(!subForRef.has(ref)) // TODO
         subForRef.set(ref, sub)
-
         ;(async () => {
           try {
             for await (const update of sub) {
@@ -167,11 +175,12 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
               }
               write(msg)
             }
+            // console.log('server: sub stopped')
           } catch (e) {
             writeErr(ref, e)
           }
-          write({a: N.Action.SubClose, ref})
           subForRef.delete(ref)
+          write({a: N.Action.SubClose, ref})
         })()
         break
       }
@@ -180,6 +189,7 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
         const {ref} = msg
         const sub = subForRef.get(ref)
         // TODO: What should we do for invalid refs? Right now we're silently ignoring them..?
+        // console.log('sub.return()')
         if (sub != null) sub.return() // This will confirm via 'sub ret'.
         break
       }
@@ -188,5 +198,5 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
       default:
         protoErr(new Error('Invalid msg: ' + msg))
     }
-  }
+  })
 }

@@ -19,8 +19,7 @@ export async function* subResults<Val>(type: I.ResultType, sub: I.Subscription<V
     if (update.replace) {
       // console.log('replace', last, update.replace)
       last = rtype.updateResults(last, update.replace.q, update.replace.with)
-      // const val = update.replace.with
-      // last = val
+      // console.log('->', last)
       yield {results: last!, versions}
     }
 

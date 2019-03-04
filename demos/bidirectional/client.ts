@@ -1,7 +1,7 @@
 import {connect} from '../../lib/stores/wsclient'
 import singleMem, {setSingle} from '../../lib/stores/singlemem'
 import augment from '../../lib/augment'
-import connectMux from '../../lib/net/clientservermux'
+import connectMux, { BothMsg } from '../../lib/net/clientservermux'
 import subValues from '../../lib/subvalues'
 
 const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws`
@@ -40,7 +40,7 @@ function draw() {
 }
 
 ;(async () => {
-  const [reader, writer] = await connect(wsurl)
+  const [reader, writer] = await connect<BothMsg, BothMsg>(wsurl)
   const remoteStore = await connectMux<DbVal>(reader, writer, localStore, true)
 
   document.body.onmousemove = e => {

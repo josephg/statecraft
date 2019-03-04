@@ -15,11 +15,11 @@ const store1 = augment(singleStore('store1'))
 const store2 = augment(singleStore('store2'))
 
 const createPair = <T>(): [TinyReader<T>, TinyWriter<T>] => {
-  const reader: TinyReader<T> = {isClosed: false}
+  const reader: TinyReader<T> = {buf: [], isClosed: false}
   const writer: TinyWriter<T> = {
     write(msg) {
       // console.log('msg', msg)
-      process.nextTick(() => reader.onmessage!(msg))
+      process.nextTick(() => reader.onMessage!(msg))
     },
     close() {},
   }

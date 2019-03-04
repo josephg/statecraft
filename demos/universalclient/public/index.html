@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<title>Universal client</title>
+<style>
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  font-family: sans-serif;
+  background-color: #1e1e1e;
+  color: #f2f2f2;
+}
+pre {
+  margin: 0;
+}
+
+/* 2 column layout */
+#container {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  grid-template-rows: 40px 1fr;
+  height: 100%;
+}
+
+#container.kv {
+  grid-template-areas:
+    "header header"
+    "sidebar content";
+}
+#container.single {    
+    grid-template-areas:
+      "header header"
+      "content content";
+}
+
+#header {
+  grid-area: header;
+  background-color: #2d3a2d;
+  border-bottom: 2px solid green;
+}
+
+#keys {
+  grid-area: sidebar;
+  max-width: 600px;
+  border-right: 2px solid green;
+}
+
+#keys > * {
+  display: block;
+  width: 100%;
+  background-color: #2a2a2a;
+  padding: 1em;
+  border-bottom: 1px solid #878787;
+}
+
+#keys > *.selected {background-color: #5d5d5d;}
+
+#content {
+  grid-area: content;
+  flex-grow: 1;
+  font-size: 18px;
+  padding: 2em;
+}
+
+#content.json {
+  font-family: monospace;
+}
+</style>
+<body></body>
+<script src=bundle.js></script>

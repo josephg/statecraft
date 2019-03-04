@@ -10,9 +10,10 @@ import err from '../err'
 import assert from 'assert'
 import streamToIter from '../streamToIter'
 import {queryTypes, resultTypes} from '../qrtypes'
-import {vIntersectMut} from '../version'
+import {vIntersectMut, vEq} from '../version'
 import sel from '../sel'
 import {vMax, vMin, vCmp} from '../version'
+import iterGuard from '../iterGuard'
 
 // import {inspect} from 'util'
 // const ins = (x: any) => inspect(x, {depth: null, colors: true})
@@ -42,6 +43,8 @@ type Route = {
   // closed, should we chain close the backend?
   isOwned: boolean,
 }
+
+let nextId = 1000 // For debugging
 
 export const prefixToRange = (prefix: string): [Sel, Sel] => [sel(prefix), sel(prefix+'~')]
 export const ALL = prefixToRange('')
@@ -134,6 +137,8 @@ const mapCatchup = <Val>(data: I.CatchupData<Val>, qtype: I.QueryType, routes: M
       const route = qtype === 'kv'
         ? (routes as Map<I.Key, Route>).get(bk)
         : (routes as Route[])[i]
+      // TODO: Why would route be unset here?
+      assert(route)
       return route ? changePrefix(bk, route.bPrefix, route.fPrefix) : null
     })
     data.replace.with = qtype === 'kv'
@@ -266,8 +271,15 @@ const mergeCatchups = <Val>(qtype: I.QueryType, cd: I.CatchupData<Val>[], res: a
 
     for (const s in src.toVersion) {
       const dv = result.toVersion[s]
+
+      // For some reason when this error happens, it takes a couple seconds for the server to actually crash out.
+      // if (dv != null && !vEq(dv, src.toVersion[s])) {
+      //   console.log('misaligned', s, dv, src.toVersion[s])
+      //   process.exit(1)
+      // }
+
       if (dv == null) result.toVersion[s] = src.toVersion[s]
-      else if (dv !== src.toVersion[s]) throw Error('Subscription ops misaligned')
+      else if (!vEq(dv, src.toVersion[s])) throw Error('Subscription ops misaligned')
     }
   }
 
@@ -344,6 +356,7 @@ export default function router<Val>(): Router<Val> {
     // the actual result will be aggregated.
     const res = q.map((r, i) => ({
       inputs: splitRangeByRoutes(r).map(([from, to, route], k) => {
+        // console.log('srr', r, from, to, route.fPrefix)
         const {store} = route
 
         let byStoreIdx = byStore.findIndex(x => x[0] === store)
@@ -553,6 +566,9 @@ export default function router<Val>(): Router<Val> {
     },
 
     subscribe(q, opts = {}) {
+      const id = nextId++
+      // console.log(id, 'q', q)
+      
       const qtype = q.type
       if (qtype !== 'kv' && qtype !== 'static range') {
         throw new err.UnsupportedTypeError('Router only supports kv queries')
@@ -572,14 +588,17 @@ export default function router<Val>(): Router<Val> {
         ...opts,
         alwaysNotify: true
       }
-      const childSubs = byStore.map(([store, q, routes]) => ({
-        store,
-        // routes,
-        sub: mapSub(store.subscribe({type:qtype, q} as I.Query, childOpts), qtype, routes) as I.AsyncIterableIteratorWithRet<I.CatchupData<Val>>,
-      }))
+      const childSubs = byStore.map(([store, q, routes]) => {
+        const rawSub = store.subscribe({type:qtype, q} as I.Query, childOpts)
+        return {
+          store,
+          sub: iterGuard(mapSub(rawSub, qtype, routes), rawSub.return) as I.AsyncIterableIteratorWithRet<I.CatchupData<Val>>,
+        }
+      })
 
       const stream = streamToIter<I.CatchupData<Val>>(() => {
         // We're done reading. Close parents.
+        // console.log(id, 'router stream return')
         for (const sub of childSubs) sub.sub.return()
       })
 
@@ -618,6 +637,8 @@ export default function router<Val>(): Router<Val> {
           catchups.push(catchup)
         }
 
+        // console.log('catchups', catchups)
+
         // Ok, now we need to wait for everyone to catch up to fromVersion!
         const waiting = []
         for (let i = 0; i < catchups.length; i++) {
@@ -650,6 +671,7 @@ export default function router<Val>(): Router<Val> {
         // Note we're sending the catchup even if there's no data - if the
         // input query maps to an empty query, we'll still generate an empty
         // catchup which returns nothing.
+        // console.log(id, 'initial emitting', mergeCatchups(qtype, catchups, res))
         stream.append(mergeCatchups(qtype, catchups, res))
 
         // ***** Ok we have our initial data and fromVersion is set now.
@@ -735,7 +757,12 @@ export default function router<Val>(): Router<Val> {
               })
 
               // Locally or from another sub group.
-              if (finished) break
+              if (finished) {
+                // console.log(id, 'finished!')
+                break
+              }
+              
+              // console.warn(id, 'merge catchups - updates', updates)
 
               // I could update fromVersions, but I don't need to. Its not
               // used for anything at this point.
@@ -744,6 +771,9 @@ export default function router<Val>(): Router<Val> {
                 stream.append(merged)
               }
             }
+
+            // We're done. Propogate upwards
+            subs.forEach(sub => sub.return())
           })()
         }
 
