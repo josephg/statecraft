@@ -515,9 +515,12 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
 
         // The first message will be a catchup, which should bring us to v2.
         const {value: catchup} = await sub.next()
-        assert.deepStrictEqual(catchup.txns[0].txn, ssTxn('a', 2))
-        assert.deepStrictEqual(catchup.toVersion[this.source], v2)
+        // Depending on the store, this might return a replace operation.
+        if (catchup.replace) assert.deepStrictEqual(catchup.replace.with.get('a'), 2)
+        else assert.deepStrictEqual(catchup.txns[0].txn, ssTxn('a', 2))
 
+        assert.deepStrictEqual(catchup.toVersion[this.source], v2)
+        
         // And we should also be able to submit a subsequent op to get to v3.
         const v3 = (await setSingle(this.store, 'a', 3)).version
         const {value: update} = await sub.next()

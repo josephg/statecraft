@@ -67,7 +67,7 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
   })
 
   listen(reader, (msg: N.CSMsg) => {
-    console.log('C->S data', msg)
+    // console.log('C->S data', msg)
     
     switch (msg.a) {
       case N.Action.Fetch: {
