@@ -26,6 +26,7 @@ export default function connectMux<RemoteVal>(reader: TinyReader<BothMsg>, write
   // local store messages. If its false, we invert the remote store messages.
 
   const localReader = {} as TinyReader<N.CSMsg>
+  localReader.buf = []
 
   // If either writer closes, we'll close the whole tunnel.
   const localWriter: TinyWriter<N.SCMsg> = {

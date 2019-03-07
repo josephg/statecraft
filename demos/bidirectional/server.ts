@@ -10,6 +10,7 @@ import augment from '../../lib/augment'
 import connectMux, { BothMsg } from '../../lib/net/clientservermux'
 import subValues from '../../lib/subvalues'
 import { rmKV, setKV } from '../../lib/kv';
+import serveTCP from '../../lib/net/tcpserver'
 
 process.on('unhandledRejection', err => {
   console.error(err.stack)
@@ -50,7 +51,8 @@ process.on('unhandledRejection', err => {
 
     for await (const val of subValues('single', sub)) {
       // console.log(id, 'cu', val)
-      await setKV(store, id, {x: val.x, y: val.y})
+      // await setKV(store, id, {x: val.x, y: val.y})
+      await setKV(store, id, val)
       // console.log('db', db)
     }
   })
@@ -60,4 +62,11 @@ process.on('unhandledRejection', err => {
     if (err) throw err
     console.log('listening on', port)
   })
+
+
+  if (process.env.NODE_ENV !== 'production') {
+    const tcpServer = serveTCP(store)
+    tcpServer.listen(2002, 'localhost')
+    console.log('Debugging server listening on tcp://localhost:2002')
+  }
 })()

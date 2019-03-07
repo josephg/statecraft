@@ -3,11 +3,11 @@
 import net from 'net'
 
 import * as I from '../../lib/interfaces'
-import kvMem from '../../lib/stores/kvmem'
-import augment from '../../lib/augment'
+import {kvMem} from '../../lib/stores/kvmem'
 import subValues from '../../lib/subvalues'
 import { rmKV, setKV } from '../../lib/kv'
 import serve from '../../lib/net/tcpserver'
+import makeMap from '../../lib/stores/map'
 
 process.on('unhandledRejection', err => {
   console.error(err.stack)
@@ -15,16 +15,20 @@ process.on('unhandledRejection', err => {
 })
 
 ;(async () => {
-  const store = augment(await kvMem(new Map([
+  const store = await kvMem(new Map([
     ['hi', {a:3, b:4}],
-    ['yo there', {a:10, b:30}]
-  ])))
+    ['yo', {a:10, b:30}]
+  ]))
 
-  // setInterval(() => {
-  //   setKV(store, 'x', {a: Math.random(), b: Math.random()})
-  // }, 1000)
+  setInterval(() => {
+    setKV(store, 'x', {a: Math.random(), b: Math.random()})
+  }, 1000)
 
-  const server = serve(store)
-  server.listen(4444)
-  console.log('listening on TCP port 4444')
+  const mapStore = makeMap(store, ({a, b}) => {
+    return a + b
+  })
+
+  const server = serve(mapStore)
+  server.listen(2002)
+  console.log('listening on TCP port 2002')
 })()

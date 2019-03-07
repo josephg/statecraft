@@ -3,10 +3,19 @@ import singleMem, {setSingle} from '../../lib/stores/singlemem'
 import augment from '../../lib/augment'
 import connectMux, { BothMsg } from '../../lib/net/clientservermux'
 import subValues from '../../lib/subvalues'
+import { request } from 'https';
 
 const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws`
 
-type Pos = {x: number, y: number}
+type Pos = {
+  x: number,
+  y: number,
+  gamepad?: {
+    id: string,
+    buttons: number[],
+    axes: number[]
+  }
+}
 type DbVal = {[id: string]: Pos}
 
 let data = new Map<string, Pos>()
@@ -39,13 +48,47 @@ function draw() {
   }
 }
 
+let lastTS: number = -1
+let mouse: Pos = {x:0, y:0}
+const pollGamepads = () => {
+  const gamepads = navigator.getGamepads()
+  const g = gamepads[0]
+  if (g == null) {
+    return
+  }
+
+  console.log(g.timestamp)
+  if (lastTS != g.timestamp) {
+    mouse.gamepad = {
+      id: g.id,
+      buttons: g.buttons.map(b => b.value),
+      axes: g.axes,
+    }
+
+    setSingle(localStore, mouse)
+    lastTS = g.timestamp
+  }
+
+  setTimeout(pollGamepads, 16)
+  // requestAnimationFrame(pollGamepads)
+}
+
+window.addEventListener("gamepadconnected", e => {
+  console.log('gamepad connected')
+  pollGamepads()
+  // requestAnimationFrame(pollGamepads)
+})
+
+
 ;(async () => {
   const [reader, writer] = await connect<BothMsg, BothMsg>(wsurl)
   const remoteStore = await connectMux<DbVal>(reader, writer, localStore, true)
 
   document.body.onmousemove = e => {
     // console.log('setting', e.clientX)
-    setSingle(localStore, {x: e.clientX, y: e.clientY})
+    // mouse = {x: e.clientX, y: e.clientY}
+    mouse.x = e.clientX; mouse.y = e.clientY
+    setSingle(localStore, mouse)
   }
 
   const sub = remoteStore.subscribe({type: 'allkv', q:true})

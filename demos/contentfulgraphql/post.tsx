@@ -9,7 +9,7 @@ const renderMarkdown = (content: string) => {
   return {__html: writer.render(tree)}
 }
 
-export default function MyComponent({updatedAt, title, content, author: {fullName}}: any): ReactElement {
+export default function Post({updatedAt, title, content, author: {fullName}}: any): ReactElement {
   console.log('updat', updatedAt)
   return <html>
     <head>

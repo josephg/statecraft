@@ -7,6 +7,7 @@ import {queryTypes} from '../qrtypes'
 import {V64, v64ToNum, vMax, V_EMPTY, vCmp} from '../version'
 import {findRangeStatic} from '../types/range'
 import opmem from './opmem';
+import augment from '../augment'
 
 
 const bakeSel = (sel: I.KeySelector, rawpos: number, resultpos: number, keys: ArrayLike<I.Key>) => {
@@ -58,7 +59,7 @@ export interface KVMemOptions<Val> {
   inner?: I.OpStore<Val>
 }
 
-export default async function singleStore<Val>(
+export default async function createKVStore<Val>(
   _data?: Map<I.Key, Val>,
   storeOpts: KVMemOptions<Val> = {}
   // source: I.Source = genSource(),
@@ -193,4 +194,9 @@ export default async function singleStore<Val>(
   lastVersion = (await inner.start!())[source]
 
   return store
+}
+
+export async function kvMem<Val>(_data?: Map<I.Key, Val>,
+  storeOpts: KVMemOptions<Val> = {}) {
+  return augment(await createKVStore(_data, storeOpts))
 }
