@@ -7,14 +7,15 @@ import reconnecter from '../../lib/stores/reconnectingclient'
 import {connect} from '../../lib/stores/wsclient'
 import subValues, { subResults } from '../../lib/subvalues'
 import augment from '../../lib/augment'
-import { vRangeTo } from '../../lib/version';
+import sel from '../../lib/sel'
 
 import {type as texttype} from 'ot-text-unicode'
 import {register} from '../../lib/typeregistry'
-
-import sel from '../../lib/sel'
+import { resultTypes } from '../../lib/qrtypes';
 
 register(texttype)
+
+type Ops = {v: I.Version[], op?: I.Op<any>, replace?: any}[]
 
 interface State extends IState {
   sources: I.Source[]
@@ -23,6 +24,7 @@ interface State extends IState {
   // selectedKey?: string
   connectionStatus: string
   prefer: 'pre' | 'html'
+  opsForKey: Map<string, Ops>
 }
 
 const hex = (v: Uint8Array): string => (
@@ -38,8 +40,8 @@ const header = (state: State, emit: any) => {
       <span style="display: inline-block; width: 2em;"></span>
       Version: <span class=mon>${sources.map(s => versions[s] && hex(versions[s])).join(', ')}</span>
       <span style="display: inline-block; width: 2em;"></span>
-      <div class=button onclick=${() => {emit('set prefer', 'html')}} disabled=${prefer === 'html'}>Prefer HTML</div>
-      <div class=button onclick=${() => {emit('set prefer', 'pre')}} disabled=${prefer === 'pre'}>Prefer PRE</div>
+      <div class=button onclick=${() => {emit('set prefer', 'pre')}} disabled=${prefer === 'pre'}>PRE</div>
+      <div class=button onclick=${() => {emit('set prefer', 'html')}} disabled=${prefer === 'html'}>HTML</div>
       <span class=right>${connectionStatus}</span>
     </div>
   `
@@ -49,6 +51,18 @@ const raw = (innerHTML: string) => {
   const elem = html`<div></div>`
   elem.innerHTML = innerHTML
   return elem
+}
+
+const opsView = (state: State, ops: Ops = []) => {
+  return html`<div id=ops>
+  ${ops.map(({v, op, replace}) => html`<div>
+    <span class=mon>${v.map(hex).join(', ')}</span>
+    ${op
+      ? html`<span class=op>Op: ${JSON.stringify(op)}</div>`
+      : html`<span class=replace>Replace: ${JSON.stringify(replace)}</div>`
+    }
+    </div>`)}
+  </div>`
 }
 
 const dataView = (state: State, val: any) => {
@@ -101,6 +115,10 @@ const kvView = (state: State, emit: any) => {
         html`<div id=content>Select a key on the left to inspect</div>`
         : dataView(state, selectedData)
       }
+      ${selectedData === undefined ?
+        html`<div id=ops></div>`
+        : opsView(state, state.opsForKey.get(selectedKey))
+      }
     </div>
   </body>
   `
@@ -118,8 +136,9 @@ const kvView = (state: State, emit: any) => {
 
   const store = await storeP
   
+  
   const app = new choo()
-
+  
   app.use((state, emitter) => {
     state.connectionStatus = 'loading'
     
@@ -133,11 +152,22 @@ const kvView = (state: State, emit: any) => {
       }
     })()
   })
-
-  app.use((state, emitter) => {
+  
+  app.use((_state, emitter) => {
+    const state = _state as State
     state.sources = store.storeInfo.sources
     state.data = null
     state.versions = {}
+    state.opsForKey = new Map()
+
+    const getOps = (key: string) => {
+      let ops = state.opsForKey.get(key)
+      if (ops == null) {
+        ops = []
+        state.opsForKey.set(key, ops)
+      }
+      return ops
+    }
 
     ;(async () => {
       const qt = store.storeInfo.capabilities.queryTypes
@@ -145,17 +175,33 @@ const kvView = (state: State, emit: any) => {
         : qt.has('static range') ? {type: 'static range', q: [{low: sel(''), high: sel('\xff')}]}
         // : qt.has('static range') ? {type: 'static range', q: [{low: sel('mdraw/'), high: sel('mdraw/~')}]}
         : {type: 'single', q:true}
-      const rtype = ({allkv: 'kv', single: 'single', 'static range': 'range'} as any)[q.type]
+      const rtypeName = ({allkv: 'kv', single: 'single', 'static range': 'range'} as any)[q.type]
+      const rtype = resultTypes[rtypeName]
 
-      for await (const {results, versions} of subResults(rtype, store.subscribe(q))) {
+      // I would love to just use subResults here, but 
+      for await (const {raw, results, versions} of subResults(rtypeName, store.subscribe(q))) {
         console.log('results', results)
         
-        state.data = rtype === 'range'
+        state.data = rtypeName === 'range'
           ? new Map(results[0])
           : results
         // console.log('val', results, state.data, versions)
 
-        state.versions = vRangeTo(versions)
+        const v = state.sources.map(s => versions[s])
+        if (raw.replace) {
+          rtype.mapReplace<any, void>(raw.replace.with, (val, k) => {
+            getOps(k == null ? 'single' : k).unshift({v, replace: val})
+          })
+        }
+
+        raw.txns.forEach(({txn}) => {
+          rtype.mapTxn<any, void>(txn, (op, k) => {
+            getOps(k == null ? 'single' : k).unshift({v, op})
+            return null as any as I.Op<void> // It'd be better to have a forEach .. .eh.
+          })
+        })
+
+        state.versions = versions
         emitter.emit('render')
       }
     })()

@@ -24,20 +24,22 @@ pre {
 #container {
   display: grid;
   height: 100%;
-  grid-template-rows: 2em 1fr;
+  grid-template-rows: 2em 4fr 1fr;
 }
 
 #container.kv {
-  grid-template-columns: 30% 1fr;
+  grid-template-columns: 1fr 3fr;
   grid-template-areas:
-  "header header"
-  "sidebar content";
+    "header header"
+    "sidebar content"
+    "sidebar ops";
 }
 #container.single {
   grid-template-columns: 1fr;
   grid-template-areas:
-      "header"
-      "content";
+    "header"
+    "content"
+    "ops";
 }
 
 #header {
@@ -54,7 +56,7 @@ pre {
   background-color: #680000;
   border-bottom: 2px solid red;
 }
-#header > .mon {
+.mon {
   font-family: monospace;
   font-size: 120%;
 }
@@ -78,9 +80,10 @@ pre {
 
 #keys {
   grid-area: sidebar;
-  max-width: 600px;
+  max-width: 30vw;
   border-right: 2px solid green;
-  overflow: hidden;
+  overflow: auto;
+  resize: horizontal;
 }
 
 #keys > * {
@@ -99,10 +102,26 @@ pre {
   flex-grow: 1;
   font-size: 18px;
   padding: 2em;
+  overflow: auto;
+  resize: vertical;
+  border-bottom: 2px solid green;
 }
 
 #content.json {
   font-family: monospace;
+}
+
+#ops {
+  overflow: auto;
+  padding: 1em;
+}
+
+#ops .replace {
+  color: #ffa9a9;
+}
+
+#ops .op {
+  color: #add6f0;
 }
 </style>
 <body></body>
