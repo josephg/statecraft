@@ -215,7 +215,9 @@ function storeFromStreams<Val>(reader: TinyReader<N.SCMsg>,
         // thing to do.
         const fv = sub.opts.fromVersion
         if (fv == null) sub.opts.fromVersion = toVersion
-        else if (fv !== 'current') for (const s in toVersion) fv[s] = toVersion[s]
+        else if (fv !== 'current') toVersion.forEach((v, si) => {
+          if (v != null) fv[si] = v
+        })
 
         sub.stream.append(update)
         break
@@ -274,7 +276,7 @@ function storeFromStreams<Val>(reader: TinyReader<N.SCMsg>,
       v: fullVersionRangeToNet(versions), opts
     }),
 
-    mutate: (ref: number, mtype: I.ResultType, txn: I.Txn<Val>, versions: I.FullVersion = {}, opts: I.MutateOptions = {}) => ({
+    mutate: (ref: number, mtype: I.ResultType, txn: I.Txn<Val>, versions: I.FullVersion = [], opts: I.MutateOptions = {}) => ({
       a: N.Action.Mutate, ref, mtype,
       txn: resultTypes[mtype].opToJSON(txn),
       v: fullVersionToNet(versions), opts

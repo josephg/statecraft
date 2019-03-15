@@ -60,8 +60,8 @@ const otStore = <Val>(inner: I.Store<Val> /*, filter: (key: I.Key) => boolean */
           // always be kv or single.
           if (queryTypes[q.type].resultType.name !== type) throw Error(`Mismatched query types unsupported ${queryTypes[q.type].resultType.name} != ${type}`)
 
-          const catchupVersions: I.FullVersionRange = {}
-          for (const s in versions) { catchupVersions[s] = {from: versions[s], to: new Uint8Array()}} // empty to version = all.
+          // empty to version == all.
+          const catchupVersions: I.FullVersionRange = versions.map(v => v == null ? null : {from: v, to: new Uint8Array()})
           const {ops} = await inner.getOps(q, catchupVersions)
           if (ops.length === 0) throw e // Can't make progress.
 
@@ -94,9 +94,9 @@ const otStore = <Val>(inner: I.Store<Val> /*, filter: (key: I.Key) => boolean */
               return {type: a.type, data}
             })
 
-            for (const s in ops[i].versions) {
-              if (versions[s] != null) versions[s] = ops[i].versions[s]
-            }
+            ops[i].versions.forEach((v, si) => {
+              if (v != null && versions[si] != null) versions[si] = v
+            })
           }
 
           // If we didn't make progress, abort to avoid an infinite loop.

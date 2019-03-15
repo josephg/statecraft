@@ -89,7 +89,7 @@ const testResultMap2 = async () => {
   const store = augment(await kvStore())
   const txn = new Map([['x', {type:'set', data: {x: 10}}]])
   const v = await store.mutate('kv', txn)
-  const r = await store.getOps!({type: 'allkv', q: true}, {[store.storeInfo.sources![0]!]: {from:new Uint8Array(), to:new Uint8Array()}})
+  const r = await store.getOps!({type: 'allkv', q: true}, [{from:new Uint8Array(), to:new Uint8Array()}])
   console.log(r)
 }
 
@@ -154,7 +154,7 @@ const testProzess = async () => {
     console.log('ontxn', source, from, to, type, txn)
   }
   const txn = new Map([['x', {type:'set', data: {x: 10}}]])
-  const v = await store.mutate('kv', txn, {[store.storeInfo.sources![0]!]: new Uint8Array()})
+  const v = await store.mutate('kv', txn, [new Uint8Array()])
   console.log('mutate cb', v)
 }
 
@@ -177,7 +177,7 @@ const testLmdb = async () => {
   // const txn = new Map([['x', {type:'set', data: {ddd: (Math.random() * 100)|0}}]])
   // const txn = new Map([['q', {type:'set', data: (Math.random() * 100)|0}]])
   console.log('source', store.storeInfo.sources)
-  const v = await store.mutate('kv', txn, {[store.storeInfo.sources![0]!]: new Uint8Array()})
+  const v = await store.mutate('kv', txn, [new Uint8Array()])
   console.log('mutate cb', v)
 
   const results = await store.fetch({type:'allkv', q: true})
@@ -221,7 +221,7 @@ const testRouter = async () => {
   })()
 
   // const txn = new Map([['x', {type:'set', data: {x: 10}}]])
-  const v = await a.mutate('kv', setSingle('x', 'hi'), {[a.storeInfo.sources![0]!]: V64(0)})
+  const v = await a.mutate('kv', setSingle('x', 'hi'), [V64(0)])
 }
 
 const testRouterRange = async () => {
@@ -247,7 +247,7 @@ const testRouterRange = async () => {
       console.log('subscribe data', inspect(data, false, 10, true))
     }
   })()
-  const v = await a.mutate('kv', setSingle('y', 'hi'), {[a.storeInfo.sources![0]!]: V64(0)})
+  const v = await a.mutate('kv', setSingle('y', 'hi'), [V64(0)])
 }
 
 const testPoll = async () => {
@@ -311,7 +311,7 @@ const getOps = async () => {
   // const backend = lmdbStore(
   const store = augment(backend)
   const source = store.storeInfo.sources[0]
-  const ops = await store.getOps({type: 'kv', q:new Set(['asdf'])}, {[source]: {from: Buffer.alloc(0), to:  Buffer.alloc(0)}})
+  const ops = await store.getOps({type: 'kv', q:new Set(['asdf'])}, [{from: Buffer.alloc(0), to:  Buffer.alloc(0)}])
 
   let doc: any = null
   ops.ops.forEach(o => {
@@ -319,7 +319,7 @@ const getOps = async () => {
     if (op.type === 'set') doc = op.data
     else if (op.type === 'text-unicode') doc = textType.type.apply(doc, op.data)
     console.log({
-      version: Array.from(o.versions[source]),
+      version: Array.from(o.versions[0]!),
       len: doc.length, op: op.data, meta: o.meta}, doc)
   })
 

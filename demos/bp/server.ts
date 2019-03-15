@@ -19,6 +19,7 @@ import jsesc from 'jsesc'
 
 import mod from './rustpng'
 import opmem from '../../lib/stores/opmem';
+import { vRangeTo } from '../../lib/version';
 
 process.on('unhandledRejection', err => { throw err })
 
@@ -85,8 +86,7 @@ const data = new Map<string, BPWorld>(
     // TODO: generate an etag based off the version, and parse it back to pass to fetch.
 
     const versionRange = result.versions
-    const versions: I.FullVersion = {}
-    for (const s in versionRange) versions[s] = versionRange[s].to
+    const versions: I.FullVersion = vRangeTo(versionRange)
 
     const mimetype = Buffer.isBuffer(value) ? 'image/png' : 'application/json'
     // if (Buffer.isBuffer(value)) value = value.toString('base64')

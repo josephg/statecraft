@@ -10,8 +10,8 @@ export type NetQuery = 'single' | 'allkv' | [I.QueryType, any]
 
 export type NetVersion = number[] // This makes me really sad. Not needed with msgpack; only for json.
 export type NetVersionRange = [NetVersion, NetVersion]
-export type NetFullVersion = [I.Source, NetVersion][]
-export type NetFullVersionRange = [I.Source, NetVersionRange][]
+export type NetFullVersion = (null | NetVersion)[]
+export type NetFullVersionRange = (null | NetVersionRange)[]
 
 export type SubscribeOpts = {
   // TODO: Add all the rest!!!

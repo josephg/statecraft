@@ -26,7 +26,7 @@ const singleStore = <Val = any>(initialValue: Val, source: I.Source = genSource(
       return {
         results: data,
         queryRun: query,
-        versions: {[source]: {from:V64(version), to:V64(version)}},
+        versions: [{from:V64(version), to:V64(version)}],
       }
     },
 
@@ -34,7 +34,7 @@ const singleStore = <Val = any>(initialValue: Val, source: I.Source = genSource(
       if (type !== 'single') throw new err.UnsupportedTypeError()
       const op = txn as I.Op<Val>
 
-      const expectv = versions && versions[source]
+      const expectv = versions && versions[0]
       const currentv = V64(version)
       if (expectv != null && vCmp(expectv, currentv) < 0) throw new err.VersionTooOldError()
 
@@ -42,7 +42,7 @@ const singleStore = <Val = any>(initialValue: Val, source: I.Source = genSource(
       const newv = V64(++version)
 
       store.onTxn && store.onTxn(source, currentv, newv, type, op, data, opts.meta || {})
-      return {[source]: newv}
+      return [newv]
     },
 
     close() {},

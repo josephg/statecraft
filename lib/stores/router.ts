@@ -10,7 +10,7 @@ import err from '../err'
 import assert from 'assert'
 import streamToIter from '../streamToIter'
 import {queryTypes, resultTypes} from '../qrtypes'
-import {vIntersectMut, vEq} from '../version'
+import {vIntersectMut, vEq, vSparse} from '../version'
 import sel from '../sel'
 import {vMax, vMin, vCmp} from '../version'
 import iterGuard from '../iterGuard'
@@ -30,6 +30,9 @@ type RangeRes = {inputs: [number, number][], reverse: boolean}[]
 
 type Route = {
   store: I.Store<any>,
+
+  // This maps from backend source id to frontend source (eg sourceMap[0] = 4)
+  sourceMap: number[],
 
   // Frontend prefix (eg movies/)
   fPrefix: string,
@@ -69,6 +72,17 @@ const changeSelPrefix = (s: Sel, fromPrefix: string, toPrefix: string): Sel => {
 //     return route == null ? null : [changePrefix(bk!, route.bPrefix, route.fPrefix), v]
 //   }))
 // }
+
+// Convert frontend versions into backend versions for a particular route
+const mapVersionsFrontToBack = <V>(versions: (V | null)[], sourceMap: number[]): (V | null)[] => (
+  sourceMap.map(m => versions[m])
+)
+
+const mapVersionsBackToFront = <V>(versions: (V | null)[], sourceMap: number[]): (V | null)[] => {
+  const result: (V | null)[] = []
+  versions.forEach((v, i) => {result[sourceMap[i]] = v})
+  return result
+}
 
 const mapKVResults = <T>(from: Map<I.Key, T>, routes: Map<I.Key, Route>): Map<I.Key, T> => (
   resultTypes['kv'].mapEntries(from, (bk, v) => {
@@ -126,8 +140,8 @@ const mapCRKeys = (qtype: I.QueryType, data: I.ReplaceQueryData, mapFn: (k: I.Ke
 )
 
 // Consumes data. (It rewrites it in-place)
-const mapCatchup = <Val>(data: I.CatchupData<Val>, qtype: I.QueryType, routes: Map<I.Key, Route> | Route[]) => {
-  const qr = queryTypes[qtype]
+const mapCatchupMut = <Val>(data: I.CatchupData<Val>, qtype: I.QueryType, routes: Map<I.Key, Route> | Route[], sourceMap: number[]) => {
+  // const qr = queryTypes[qtype]
 
   if (data.replace) {
     // This is super gross. The data format for KVs matches the format for
@@ -144,24 +158,29 @@ const mapCatchup = <Val>(data: I.CatchupData<Val>, qtype: I.QueryType, routes: M
     data.replace.with = qtype === 'kv'
       ? mapResults(qtype, data.replace.with, routes)
       : (data.replace.with as [I.Key, Val][][][]).map(d => mapResults(qtype, d, routes))
-  }
 
+    data.toVersion = mapVersionsBackToFront(data.toVersion, sourceMap)
+  }
+  
   for (let i = 0; i < data.txns.length; i++) {
     data.txns[i].txn = mapResults(qtype, data.txns[i].txn as I.KVTxn<Val>, routes)
+    data.txns[i].versions = mapVersionsBackToFront(data.txns[i].versions, sourceMap)
   }
+
+  data.toVersion = mapVersionsBackToFront(data.toVersion, sourceMap)
 
   return data
 }
 
 // Wrap a subscription with the route mapping.
-const mapSub = async function*<Val>(sub: I.Subscription<Val>, qtype: I.QueryType, routes: Map<I.Key, Route> | Route[]) {
+const mapSub = async function*<Val>(sub: I.Subscription<Val>, qtype: I.QueryType, routes: Map<I.Key, Route> | Route[], sourceMap: number[]) {
   for await (const c of sub) {
-    yield mapCatchup(c, qtype, routes)
+    yield mapCatchupMut(c, qtype, routes, sourceMap)
   }
 }
 
 const mergeVersionsInto = (dest: I.FullVersion, src: I.FullVersion) => {
-  for (const s in src) dest[s] = src[s]
+  for (let i = 0; i < src.length; i++) dest[i] = src[i]
 }
 
 // Consumes both. Returns a.
@@ -231,7 +250,7 @@ const mergeQueries = <T>(qtype: I.QueryType, from: (Set<I.Key> | I.StaticRange[]
 
 // const noopRange = (): I.StaticRange => ({from: sel(''), to: sel('')})
 const mergeCatchups = <Val>(qtype: I.QueryType, cd: I.CatchupData<Val>[], res: any): I.CatchupData<Val> => {
-  const result: I.CatchupData<Val> = {txns: [], toVersion: {}}
+  const result: I.CatchupData<Val> = {txns: [], toVersion: []}
 
   // Check if any of the catchup data contains a replace block
   if (cd.reduce((v, cd) => !!cd.replace || v, false)) {
@@ -251,13 +270,13 @@ const mergeCatchups = <Val>(qtype: I.QueryType, cd: I.CatchupData<Val>[], res: a
     const versions = cd.reduce((acc, src) => {
       if (src.replace) {
         const srv = src.replace.versions
-        for (const s in srv) {
-          acc[s] = acc[s] == null ? srv[s] : vMax(acc[s], srv[s])
+        for (let i = 0; i < srv.length; i++) if (srv[i] != null) {
+          acc[i] = acc[i] == null ? srv[i] : vMax(acc[i]!, srv[i]!)
         }
       }
 
       return acc
-    }, {} as I.FullVersion)
+    }, [] as I.FullVersion)
 
     result.replace = {q, with: w, versions}
   }
@@ -269,8 +288,8 @@ const mergeCatchups = <Val>(qtype: I.QueryType, cd: I.CatchupData<Val>[], res: a
     // correct if applied in sequence.. but its a lil' janky.
     result.txns.push(...src.txns)
 
-    for (const s in src.toVersion) {
-      const dv = result.toVersion[s]
+    for (let i = 0; i < src.toVersion.length; i++) if (src.toVersion[i] != null) {
+      const dv = result.toVersion[i]
 
       // For some reason when this error happens, it takes a couple seconds for the server to actually crash out.
       // if (dv != null && !vEq(dv, src.toVersion[s])) {
@@ -278,8 +297,8 @@ const mergeCatchups = <Val>(qtype: I.QueryType, cd: I.CatchupData<Val>[], res: a
       //   process.exit(1)
       // }
 
-      if (dv == null) result.toVersion[s] = src.toVersion[s]
-      else if (!vEq(dv, src.toVersion[s])) throw Error('Subscription ops misaligned')
+      if (dv == null) result.toVersion[i] = src.toVersion[i]
+      else if (!vEq(dv, src.toVersion[i]!)) throw Error('Subscription ops misaligned')
     }
   }
 
@@ -299,21 +318,32 @@ export default function router<Val>(): Router<Val> {
     routes.find(r => sel.kGt(k, r.fRange[0]) && sel.kLt(k, r.fRange[1])) || null
   )
 
+  type ByStore = {
+    store: I.Store<Val>,
+    q: I.QueryData,
+    routes: Map<I.Key, Route> | Route[],
+
+    /** Map from each backend source -> frontend source index. Eg [3,5] */
+    sourceMap: number[]
+  }
+
   const splitKeysByStore = (keys: Set<I.Key>) => {
-    const result: [I.Store<Val>, Set<I.Key>, Map<I.Key, Route>][] = []
+    // const result: [I.Store<Val>, Set<I.Key>, Map<I.Key, Route>, number[]][] = []
+    const result: ByStore[] = []
 
     for (const fKey of keys) {
       const route = getRoute(fKey)
       if (route) {
         const bKey = changePrefix(fKey, route.fPrefix, route.bPrefix)
 
-        let pair = result.find(([s]) => s === route.store)
+        let pair = result.find(({store}) => store === route.store)
         let q, routeForKey
         if (pair == null) {
           [q, routeForKey] = [new Set(), new Map()]
-          result.push([route.store, q, routeForKey])
+          result.push({store: route.store, q, routes: routeForKey, sourceMap: route.sourceMap})
         } else {
-          q = pair[1], routeForKey = pair[2]
+          q = pair.q as I.KVQuery
+          routeForKey = pair.routes as Map<I.Key, Route>
         }
 
         q.add(bKey)
@@ -344,7 +374,7 @@ export default function router<Val>(): Router<Val> {
     // For each store, we'll generate the range query that applies to that
     // store and the list of routes that each part of the range query feeds
     // from, to map the query back.
-    const byStore: [I.Store<Val>, I.StaticRangeQuery, Route[]][] = []
+    const byStore: ByStore[] = []
 
     // When we run the queries we'll have a list of [store, results[][]]
     // that we need to map back into a list of results corresponding to our
@@ -359,12 +389,12 @@ export default function router<Val>(): Router<Val> {
         // console.log('srr', r, from, to, route.fPrefix)
         const {store} = route
 
-        let byStoreIdx = byStore.findIndex(x => x[0] === store)
+        let byStoreIdx = byStore.findIndex(x => x.store === store)
         if (byStoreIdx < 0) {
-          byStoreIdx = byStore.push([store, [], []]) - 1
+          byStoreIdx = byStore.push({store, q: [], routes: [], sourceMap: route.sourceMap}) - 1
         }
-        const outIdx = byStore[byStoreIdx][1].push({low:from, high:to}) - 1
-        byStore[byStoreIdx][2][outIdx] = route
+        const outIdx = (byStore[byStoreIdx].q as I.StaticRangeQuery).push({low:from, high:to}) - 1
+        ;(byStore[byStoreIdx].routes as Route[])[outIdx] = route
 
         return [byStoreIdx, outIdx] as [number, number]
       }),
@@ -374,16 +404,16 @@ export default function router<Val>(): Router<Val> {
     return [byStore, res] as [typeof byStore, typeof res]
   }
 
-  const splitQueryByStore = (q: I.Query): [[I.Store<Val>, I.QueryData, Map<I.Key, Route> | Route[]][], any] => {
+  const splitQueryByStore = (q: I.Query): [ByStore[], any] => {
     if (q.type === 'kv') return [splitKeysByStore(q.q), null]
     else if (q.type === 'static range') return splitRangeQuery(q.q)
     else throw new err.UnsupportedTypeError('Router only supports kv queries')
   }
 
   const isBefore = (v: I.FullVersion, other: I.FullVersion) => {
-    for (const s in v) {
-      assert(other[s] != null)
-      if (vCmp(v[s], other[s]) < 0) return true
+    for (let i = 0; i < v.length; i++) if (v[i] != null) {
+      assert(other[i] != null)
+      if (vCmp(v[i]!, other[i]!) < 0) return true
     }
     return false
   }
@@ -398,12 +428,18 @@ export default function router<Val>(): Router<Val> {
       }
     },
 
+    // NOTE: You must mount all stores before the router is used.
+    // TODO: Enforce that.
     mount(store, fPrefix, range, bPrefix, isOwned) {
       if (range == null) range = ALL
       assert(sel.ltSel(range[0], range[1]), 'Range start must be before range end')
 
-      store.storeInfo.sources.forEach(s => {
-        if (!sources.includes(s)) sources.push(s)
+      // TODO: Consider keeping this list sorted.
+      const sourceMap = store.storeInfo.sources.map((s, i) => {
+        const si = sources.indexOf(s)
+        return si < 0
+          ? sources.push(s) - 1
+          : si
       })
 
       // Filter the advertised capabilities to only be those which all our
@@ -418,7 +454,7 @@ export default function router<Val>(): Router<Val> {
       const [a, b] = [sel.addPrefix(fPrefix, range[0]), sel.addPrefix(fPrefix, range[1])]
 
       const route: Route = {
-        store, fPrefix, fRange: [a, b], bPrefix, isOwned
+        store, sourceMap, fPrefix, fRange: [a, b], bPrefix, isOwned
       }
 
       // Check that the new route doesn't overlap an existing route
@@ -435,7 +471,7 @@ export default function router<Val>(): Router<Val> {
       routes.splice(pos, 0, route)
     },
 
-    async fetch(query, opts = {}) {
+    async fetch(query, frontOpts = {}) {
       // Range support here is a red hot mess. I have a sticky situation in
       // that the implementation for range reads and the implementation for KV
       // reads is similar, but definitely not the same. I could write this in
@@ -451,9 +487,13 @@ export default function router<Val>(): Router<Val> {
 
       const [byStore, res] = splitQueryByStore(query)
 
-      let versions: I.FullVersionRange = {}
-      const innerResults = await Promise.all(byStore.map(async ([store, q, routes]) => {
-        const r = await store.fetch({type: qtype, q} as I.Query, opts)
+      let versions: I.FullVersionRange = []
+      const innerResults = await Promise.all(byStore.map(async ({store, q, routes, sourceMap}) => {
+        const backOpts = {...frontOpts}
+        if (frontOpts.atVersion) {
+          backOpts.atVersion = mapVersionsFrontToBack(frontOpts.atVersion, sourceMap)
+        }
+        const r = await store.fetch({type: qtype, q} as I.Query, backOpts)
 
         const newVersions = vIntersectMut(versions, r.versions)
         if (newVersions == null) throw Error('Incompatible versions in results not yet implemented')
@@ -473,7 +513,7 @@ export default function router<Val>(): Router<Val> {
       if (qtype !== 'kv' && qtype !== 'static range') throw new err.UnsupportedTypeError()
       const [byStore, res] = splitQueryByStore(query)
 
-      let validRange: I.FullVersionRange = {} // Output valid version range
+      let validRange: I.FullVersionRange = [] // Output valid version range
 
       // For now this function requires that the underlying stores each only
       // contain a single source. This is sort of disappointing, but the fully
@@ -482,10 +522,14 @@ export default function router<Val>(): Router<Val> {
       
       type SingleTxnData = {txn: I.KVTxn<Val> | I.RangeTxn<Val>, v: I.Version, meta: I.Metadata}
       // const opsForSource = new Map<I.Source, SingleTxnData[]>()
-      const allSources = new Set<I.Source>()
+      const frontSourcesUsed: (true | undefined)[] = [] // frontend sources.
 
-      const opsByStore = await Promise.all(byStore.map(async ([store, q, routes]) => {
-        const {ops, versions} = await store.getOps({type:query.type, q} as I.Query, queryVersions, opts)
+      const opsByStore = await Promise.all(byStore.map(async ({store, q, routes, sourceMap}) => {
+        const {ops, versions} = await store.getOps(
+          {type:query.type, q} as I.Query,
+          mapVersionsFrontToBack(queryVersions, sourceMap),
+          opts
+        )
         
         // We'll just map the keys back here.
         const newValidRange = vIntersectMut(validRange, versions)
@@ -494,25 +538,25 @@ export default function router<Val>(): Router<Val> {
         if (newValidRange == null) throw Error('Conflicting valid version ranges in getOps')
         validRange = newValidRange
 
-        let source: I.Source | null = null
+        let backSourceIdx: number | null = null
         return ops.map(op => {
           // assert(op.txn instanceof Map)
 
-          const sources = Object.keys(op.versions)
-          assert(sources.length)
+          const sourceIdxs = op.versions.map((v, i) => v == null ? -1 : i).filter(i => i >= 0)
+          assert(sourceIdxs.length)
 
-          if (sources.length > 1) throw Error('Multiple backend sources in router not implemented yet')
-          if (source == null) source = sources[0]
-          else if (source !== sources[0]) throw Error('Multiple backend sources in router not implemented yet')
+          if (sourceIdxs.length > 1) throw Error('Multiple backend sources in router not implemented yet')
+          if (backSourceIdx == null) backSourceIdx = sourceIdxs[0]
+          else if (backSourceIdx !== sourceIdxs[0]) throw Error('Multiple backend sources in router not implemented yet')
 
-          allSources.add(source)
+          frontSourcesUsed[sourceMap[backSourceIdx]] = true
 
           // Destructively rewrite the keys in each op
           return <SingleTxnData>{
             txn: qtype === 'kv'
               ? mapKVResults(op.txn as I.KVTxn<Val>, routes as Map<I.Key, Route>)
               : mapRangeResults(op.txn as I.RangeTxn<Val>, routes as Route[]),
-            v: op.versions[source],
+            v: op.versions[backSourceIdx],
             meta: op.meta,
           }
         })
@@ -523,11 +567,13 @@ export default function router<Val>(): Router<Val> {
       //
       // - Merge all the ops from the same source together, with respect to the query
       // - Flatmap the results
-      const resultsBySource = Array.from(allSources).map(source => {
+      const resultsBySource = frontSourcesUsed.map((hasOps, frontSourceIdx) => {
+        if (!hasOps) return []
+
         // mergeResults(qtype, opsByStore.
         const filtered = opsByStore
-          .filter(item => item.length !== 0)
-          .map((data, i) => byStore[i][0].storeInfo.sources[0] === source ? data : null)
+          .map((data, i) => (data.length && byStore[i].sourceMap[0] === frontSourceIdx) ? data : null)
+          .filter(x => x != null) as SingleTxnData[][]
 
         // This is all pretty inefficient, but it should be correct enough for
         // now. I can optimize later.
@@ -545,13 +591,13 @@ export default function router<Val>(): Router<Val> {
           if (versions.length === 0) break // We're done.
 
           const minVersion = versions.reduce(vMin)
-          const toMerge = filtered.map(item => item != null && item.length > 0 && item[0].v === minVersion
+          const toMerge = filtered.map(item => item != null && item.length > 0 && vEq(item[0].v, minVersion)
             ? item.shift()!.txn : null)
 
           const txn = mergeResults(qtype, toMerge, res) // TODO: reverse?
           merged.push({
             txn,
-            versions: {[source]: minVersion},
+            versions: vSparse(frontSourceIdx, minVersion),
             meta,
           })
         }
@@ -571,7 +617,7 @@ export default function router<Val>(): Router<Val> {
       
       const qtype = q.type
       if (qtype !== 'kv' && qtype !== 'static range') {
-        throw new err.UnsupportedTypeError('Router only supports kv queries')
+        throw new err.UnsupportedTypeError('Router only supports kv and static range queries')
       }
 
       let {fromVersion} = opts
@@ -588,11 +634,11 @@ export default function router<Val>(): Router<Val> {
         ...opts,
         alwaysNotify: true
       }
-      const childSubs = byStore.map(([store, q, routes]) => {
+      const childSubs = byStore.map(({store, q, routes, sourceMap}) => {
         const rawSub = store.subscribe({type:qtype, q} as I.Query, childOpts)
         return {
           store,
-          sub: iterGuard(mapSub(rawSub, qtype, routes), rawSub.return) as I.AsyncIterableIteratorWithRet<I.CatchupData<Val>>,
+          sub: iterGuard(mapSub(rawSub, qtype, routes, sourceMap), rawSub.return) as I.AsyncIterableIteratorWithRet<I.CatchupData<Val>>,
         }
       })
 
@@ -616,7 +662,7 @@ export default function router<Val>(): Router<Val> {
 
         // Figure out the starting version for subscriptions, which is the
         // max version of everything that was returned.
-        fromVersion = {}
+        fromVersion = []
 
         const catchups: I.CatchupData<Val>[] = []
         for (let i = 0; i < catchupIterItem.length; i++) {
@@ -629,10 +675,9 @@ export default function router<Val>(): Router<Val> {
             return
           }
 
-          for (const s in catchup.toVersion) {
-            fromVersion[s] = fromVersion[s] == null
-              ? catchup.toVersion[s]
-              : vMax(fromVersion[s], catchup.toVersion[s])
+          for (let si = 0; si < catchup.toVersion.length; si++) {
+            const v = catchup.toVersion[si]
+            if (v != null) fromVersion[si] = (fromVersion[si] == null) ? v : vMax(fromVersion[si]!, v)
           }
           catchups.push(catchup)
         }
@@ -653,8 +698,10 @@ export default function router<Val>(): Router<Val> {
               }
               composeCatchupsMut(qtype, catchups[i], value)
 
-              for (const s in catchups[i].toVersion) {
-                if (vCmp(catchups[i].toVersion[s], fromVersion[s]) > 0) {
+              for (let si = 0; si < catchups[i].toVersion.length; si++) {
+                const tv = catchups[i].toVersion[si]
+
+                if (tv != null && fromVersion[si] != null && vCmp(tv, fromVersion[si]!) > 0) {
                   throw new Error('Skipped target version. Handling this is NYI')
                 }
               }
@@ -807,7 +854,7 @@ export default function router<Val>(): Router<Val> {
         bTxn.set(bk, op)
       }
 
-      if (store == null) return {}
+      if (store == null) return []
       else return store.mutate('kv', bTxn, versions, opts)
     },
     

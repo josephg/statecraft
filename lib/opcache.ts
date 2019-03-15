@@ -6,6 +6,7 @@ import binsearch from 'binary-search'
 import {vCmp, vEq} from './version'
 
 export interface OpCacheOpts {
+  readonly sources: I.Source[],
   readonly qtype?: I.QueryType,
   readonly maxTime?: number, // in milliseconds. 0 = ignore.
   readonly maxNum?: number, // Max number of ops kept for each source. 0 = ignore
@@ -28,11 +29,18 @@ const opcache = <Val>(opts: OpCacheOpts): {
   const maxTime = opts.maxTime || 0
   // List is sorted in order and accessed using binary search.
 
-  const opsForSource: {[source: string]: OpsEntry<Val>[]} = {}
+  // source => list of ops entries sorted by version
+  const opsForSource: OpsEntry<Val>[][] = new Array(opts.sources.length)
 
   const getOpsForSource = (source: I.Source) => {
-    let ops = opsForSource[source]
-    if (ops == null) opsForSource[source] = ops = []
+    const idx = opts.sources.indexOf(source)
+
+    // There might be times we want to silently ignore this error, but until
+    // we find them this code will throw.
+    if (idx < 0) throw Error('Cannot get ops for unknown source')
+
+    let ops = opsForSource[idx]
+    if (ops == null) opsForSource[idx] = ops = []
     return ops
   }
 
@@ -55,15 +63,16 @@ const opcache = <Val>(opts: OpCacheOpts): {
 
       let limitOps = options.limitOps || -1
 
-      const vOut: I.FullVersionRange = {}
+      const vOut: I.FullVersionRange = []
 
       const result: I.TxnWithMeta<Val>[] = []
-      for (const source in opsForSource) {
+      for (let si = 0; si < opsForSource.length; si++) {
         // This is a bit inefficient - if there's lots of sources
         // we're looking through all of them even if the user only
         // wants one. But that shouldn't happen much in practice (right?)
-        const ops = opsForSource[source]
-        const vs = versions[source] || versions._other
+        const ops = opsForSource[si]
+        if (ops == null) continue
+        const vs = versions[si] //|| versions._other
         if (vs == null) continue
 
         const {from, to} = vs
@@ -87,16 +96,19 @@ const opcache = <Val>(opts: OpCacheOpts): {
           // The transaction will be null if the operation doesn't match
           // the supplied query.
           const txn = qops.adaptTxn(item.txn, query.q)
-          if (txn != null) result.push({versions:{[source]: item.toV}, txn, meta: item.meta})
+          const versions = []
+          versions[si] = item.toV
+          if (txn != null) result.push({versions, txn, meta: item.meta})
 
           vTo = item.toV
           if (limitOps > 0 && --limitOps === 0) break
         }
-        if (vTo !== vFrom) vOut[source] = {from: vFrom, to: vTo}
+        if (vTo !== vFrom) vOut[si] = {from: vFrom, to: vTo}
 
         if (limitOps === 0) break
       }
 
+      // console.log('opcache', result, vOut)
       return Promise.resolve({ops: result, versions: vOut})
     },
   }

@@ -156,7 +156,7 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.SimpleSto
 
       // const expectedVersion = (versions && versions[source] != null) ? versions[source] : version
 
-      const v = (versions ? versions[source] : null)
+      const v = versions && versions[0]
       if (typeof v === 'number') throw Error('Got invalid numeric version')
       if (v) assert.strictEqual(v.byteLength, 10, 'Version invalid - wrong length')
 
@@ -198,7 +198,7 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.SimpleSto
       // debug('mutate complete', m)
 
       // console.log('mutate -> resulting version', vs)
-      return {[source]: vs}
+      return [vs]
     },
 
     async fetch(query, opts = {}) {
@@ -311,10 +311,10 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.SimpleSto
       return {
         bakedQuery,
         results,
-        versions: {[source]: {
+        versions: [{
           from: maxVersion || NULL_VERSION,
           to: vs ? vs.stamp : NULL_VERSION
-        }}
+        }]
       }
     },
 
@@ -323,15 +323,15 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.SimpleSto
       const qops = queryTypes[qtype]
 
       const limitOps = opts.limitOps || -1
-      const vOut: I.FullVersionRange = {}
+      const vOut: I.FullVersionRange = []
 
-      const reqV = versions[source] || versions._other
-      if (reqV == null) return {ops: [], versions: {}}
+      const reqV = versions[0]
+      if (reqV == null) return {ops: [], versions: []}
       let {from, to} = reqV
       if (from.length === 0) from = NULL_VERSION
       if (to.length === 0) to = END_VERSION
       if (typeof from === 'number' || typeof to === 'number') throw Error('Invalid version request')
-      if (vCmp(from, to) >= 0) return {ops: [], versions: {}}
+      if (vCmp(from, to) >= 0) return {ops: [], versions: []}
 
       // TODO: This will have some natural limit based on how big a
       // transaction can be. Split this up across multiple transactions using
@@ -348,17 +348,15 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.SimpleSto
         // console.log('ops', version, txnArr, meta)
         const txn = qops.adaptTxn(new Map<I.Key, I.Op<Val>>(txnArr), query.q)
         // console.log('txn', txn)
-        if (txn != null) result.push({txn, meta, versions: {[source]: version}})
+        if (txn != null) result.push({txn, meta, versions: [version]})
       }
 
       return {
         ops: result,
-        versions: {
-          [source]: {
-            from,
-            to: ops.length ? ops[ops.length-1][0] : from
-          }
-        }
+        versions: [{
+          from,
+          to: ops.length ? ops[ops.length-1][0] : from
+        }]
       }
     },
 

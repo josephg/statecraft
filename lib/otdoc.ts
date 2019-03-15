@@ -37,6 +37,12 @@ const xf = <Val, Op>(type: I.AnyOTType, client: Op | null, server: I.SingleOp<Va
   }
 }
 
+const vAtIdx = <V>(i: number, v: V): (V | null)[] => {
+  const result = []
+  result[i] = v
+  return result
+}
+
 const otDoc = async <Val, Op>(
     store: I.Store<Val>,
     typeName: string,
@@ -56,6 +62,8 @@ const otDoc = async <Val, Op>(
   }
 
   const source = opts.source || store.storeInfo.sources[0]!
+  const sourceId = store.storeInfo.sources.indexOf(source)
+  if (sourceId < 0) throw Error('Requested source not found in store')
 
   const type = typeOrThrow(typeName)
   if (!type.compose || !type.transform) throw Error('Missing compose / transform on your OT type')
@@ -64,7 +72,7 @@ const otDoc = async <Val, Op>(
   const sub = store.subscribe({type: 'single', q: true}, {
     fromVersion: opts.initial
       ? (opts.initial.version instanceof Uint8Array
-        ? {[source]: opts.initial.version}
+        ? vAtIdx(sourceId, opts.initial.version)
         : opts.initial.version
       ) : undefined,
   })
@@ -73,7 +81,7 @@ const otDoc = async <Val, Op>(
   let doc: any = initial ? initial.val : null
 
   let version = initial
-    ? (initial.version instanceof Uint8Array ? initial.version : initial.version[source])
+    ? (initial.version instanceof Uint8Array ? initial.version : initial.version[sourceId])
     : new Uint8Array()
 
   // Written assuming the type has a compose() function.
@@ -113,7 +121,7 @@ const otDoc = async <Val, Op>(
     // TODO: Add metadata to this.
     /*const resultingVersion =*/ await store.mutate('single',
         {type: typeName, data: inflightTxn},
-        {[source]: version},
+        vAtIdx(sourceId, version),
         {meta: {uid: inflightUid}}) // Returns the version # of our op
     // inflightTxn = null
 
@@ -128,7 +136,8 @@ const otDoc = async <Val, Op>(
 
       if (update.replace) {
         // This situation with versions is a huge mess. What is authoritative?
-        processTxn({type: 'set', data: update.replace.with}, update.replace.versions[source])
+        // And what do we do if the version doesn't contain the named source here??
+        processTxn({type: 'set', data: update.replace.with}, update.replace.versions[sourceId]!)
 
         if (readyResolve != null) {
           readyResolve!()
@@ -152,12 +161,12 @@ const otDoc = async <Val, Op>(
         }
 
         const innerTxn = txn.txn as I.SingleTxn<Val>
-        if (Array.isArray(innerTxn)) innerTxn.forEach(op => processTxn(op, txn.versions[source]))
-        else processTxn(innerTxn, txn.versions[source])
+        if (Array.isArray(innerTxn)) innerTxn.forEach(op => processTxn(op, txn.versions[sourceId]!))
+        else processTxn(innerTxn, txn.versions[sourceId]!)
       })
 
       // Could instead do this using the txn - its equivalent.
-      if (update.toVersion[source]) version = update.toVersion[source]
+      if (update.toVersion[sourceId]) version = update.toVersion[sourceId]
 
       if (tryFlush) flush()
 

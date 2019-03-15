@@ -16,7 +16,7 @@ export const decodeTxn = (data: Buffer): [I.KVTxn<any>, I.Metadata] => {
 // TODO: This should work with batches.
 export const decodeEvent = (event: Event, source: I.Source): I.TxnWithMeta<any> => {
   const [txn, meta] = decodeTxn(event.data)
-  return { versions: {[source]: V64(event.version)}, txn, meta }
+  return { versions: [V64(event.version)], txn, meta }
 }
 
 export function sendTxn(client: PClient,

@@ -1,10 +1,9 @@
 // This is a simple single value in-memory store.
 import * as I from '../interfaces'
-import genSource from '../gensource'
 import err from '../err'
 import resultMap from '../types/map'
 import {queryTypes} from '../qrtypes'
-import {V64, v64ToNum, vMax, V_EMPTY, vCmp} from '../version'
+import {V64, v64ToNum, vMax, V_EMPTY, vCmp, vSparse} from '../version'
 import {findRangeStatic} from '../types/range'
 import opmem from './opmem';
 import augment from '../augment'
@@ -146,19 +145,20 @@ export default async function createKVStore<Val>(
         // this is a bit inefficient.... ehhhh
         bakedQuery,
         results: opts.noDocs ? queryTypes[query.type].resultType.map(results, () => true) : results,
-        versions: {[source]: {from:lowerRange, to:lastVersion!}},
+        versions: [{from:lowerRange, to:lastVersion!}],
       })
     },
 
 
-    mutate(type, _txn, versions, opts = {}) {
-      if (type !== 'kv') return Promise.reject(new err.UnsupportedTypeError())
-      if (storeOpts.readonly) return Promise.reject(new err.AccessDeniedError())
+    async mutate(type, _txn, versions = [], opts = {}) {
+      if (type !== 'kv') throw new err.UnsupportedTypeError()
+      if (storeOpts.readonly) throw new err.AccessDeniedError()
       // console.log('kvmem mutate')
 
       const txn = _txn as I.KVTxn<Val>
 
-      const expectv = (!versions || versions[source] == null) ? lastVersion! : versions[source]
+      const reqV = versions[0]
+      const expectv = reqV == null ? lastVersion! : reqV
 
       // These are both numbers here, so this comparison is ok.
       // if (expectv < initialVersion) return Promise.reject(new err.VersionTooOldError())
@@ -173,7 +173,12 @@ export default async function createKVStore<Val>(
       }
 
       // 2. Actually apply.
-      return inner.mutate(type, txn, versions, opts)
+      // TODO: This isn't entirely correct - there's a potential race condition
+      // if multiple in-flight ops apply at once, since opmem doesn't store any
+      // operations locally. We might throw bad VersionTooOldError here.
+      // Instead put a retry loop where if we get a VersionTooOldError we retry
+      /// once we have an updated lastVersion.
+      return inner.mutate(type, txn, reqV == null ? [] : [lastVersion], opts)
     },
 
     close() {},
@@ -190,8 +195,8 @@ export default async function createKVStore<Val>(
     if (store.onTxn != null) store.onTxn(source, fromV, toV, 'kv', txn, data, meta)
   },
 
-  // Should we await this?
-  lastVersion = (await inner.start!())[source]
+  lastVersion = (await inner.start!())[0]
+  if (lastVersion == null) throw Error('inner.start did not return current version')
 
   return store
 }

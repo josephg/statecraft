@@ -43,7 +43,10 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
   }
 
   const writeErr = (ref: N.Ref, err: Error) => {
-    console.warn('Error processing client data', err)
+    // Should probably ignore most errors here.
+    if (!(err instanceof errs.WriteConflictError)) {
+      console.warn('Warning: Error processing client data', err)
+    }
     write({a: N.Action.Err, ref, err: errToJSON(err)})
   }
 

@@ -62,9 +62,9 @@ const createContentfulStore = (syncState: I.SimpleStore<any>, opts: {
 
         const state: {vStr: string, syncToken: string} | null = await getKV(syncState, 'state')
 
-        if (state != null && fv != null && fv[source] != null) {
+        if (state != null && fv != null && fv[0] != null) {
           const current_version = Buffer.from(state.vStr, 'base64')
-          if (vCmp(fv[source], current_version) <= 0) {
+          if (vCmp(fv[0]!, current_version) <= 0) {
             version = current_version
             initial = false
             nextSyncToken = state.syncToken
@@ -150,7 +150,7 @@ const createContentfulStore = (syncState: I.SimpleStore<any>, opts: {
       })()
 
       // We have a problem that versions are opaque strings.
-      return {[source]: version}
+      return [version]
     },
 
     close() {}

@@ -36,8 +36,8 @@ const prozessStore = <Val>(conn: PClient): I.OpStore<Val> => {
       if (type !== 'kv') throw new err.UnsupportedTypeError()
       const txn = _txn as I.KVTxn<Val>
 
-      const version = await sendTxn(conn, txn, opts.meta || {}, (versions && versions[source]) || new Uint8Array(), {})
-      return {[source]: version!}
+      const version = await sendTxn(conn, txn, opts.meta || {}, (versions && versions[0]) || new Uint8Array(), {})
+      return [version!]
     },
 
     async getOps(query, versions, opts) {
@@ -46,8 +46,8 @@ const prozessStore = <Val>(conn: PClient): I.OpStore<Val> => {
       const qops = queryTypes[query.type]
 
       // We need to fetch ops in the range of (from, to].
-      const vs = versions[source] || versions._other
-      if (!vs || vs.from === vs.to) return {ops: [], versions: {}}
+      const vs = versions[0]
+      if (!vs || vs.from === vs.to) return {ops: [], versions: []}
 
       const {from, to} = vs
 
@@ -67,7 +67,7 @@ const prozessStore = <Val>(conn: PClient): I.OpStore<Val> => {
 
       return {
         ops,
-        versions: {[source]: {from:V64(data!.v_start - 1), to: V64(data!.v_end - 1)}}
+        versions: [{from:V64(data!.v_start - 1), to: V64(data!.v_end - 1)}]
       }
     },
 
@@ -97,7 +97,7 @@ const prozessStore = <Val>(conn: PClient): I.OpStore<Val> => {
       }
 
       return new Promise((resolve, reject) => {
-        const vs = v == null ? null : v[source]
+        const vs = v == null ? null : v[0]
         // Should this be vs or vs+1 or something?
         conn.subscribe(vs == null ? -1 : v64ToNum(vs) + 1, {}, (err, subdata) => {
           if (err) {
@@ -107,7 +107,7 @@ const prozessStore = <Val>(conn: PClient): I.OpStore<Val> => {
           }
           
           // The events will all be emitted via the onevent callback. We'll do catchup there.
-          resolve({[source]: V64(subdata!.v_end + 1)}) // +1 ??? 
+          resolve([V64(subdata!.v_end + 1)]) // +1 ??? 
         })
       })
     }

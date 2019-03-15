@@ -12,16 +12,13 @@ export type KVPair<Val> = [Key, Val]
 
 export type KVQuery = Set<Key>
 
-export type FullVersion = {
-  // _other?: Version,
-  [s: string]: Version,
-}
+// In the context of a store's sources (the first result matches the first of
+// the stores' listed sources in storeinfo).
+export type FullVersion = (Version | null)[]
 
 export type VersionRange = {from: Version, to: Version}
-export type FullVersionRange = {
-  // _other?: VersionRange
-  [s: string]: VersionRange
-}
+// In the context of a store's sources
+export type FullVersionRange = (VersionRange | null)[]
 
 export type StaticKeySelector = {
   k: Key,
@@ -204,6 +201,7 @@ export type GetOpsResult = {
   versions: FullVersionRange,
 }
 
+// If the to version in a version range is empty, fetch the open range (from..]
 export type GetOpsFn = (q: Query, versions: FullVersionRange, opts?: GetOpsOptions) => Promise<GetOpsResult>
 
 

@@ -4,9 +4,17 @@ import assert from 'assert'
 import {queryTypes} from '../lib/qrtypes'
 import sel from '../lib/sel'
 import {vCmp, vDec} from '../lib/version'
-
 import {inspect} from 'util'
+import {Console} from 'console'
+
 const ins = (x: any) => inspect(x, {depth: null, colors: true})
+
+
+global.console = new (Console as any)({
+  stdout: process.stdout,
+  stderr: process.stderr,
+  inspectOptions: {depth: null}
+})
 
 const assertThrows = async (block: () => Promise<void>, errType?: string) => {
   try {
@@ -33,9 +41,9 @@ const versionSatisfies = (v1: I.Version | I.VersionRange, v2: I.Version | I.Vers
   v1 instanceof Uint8Array ? versionAtLeast(v1, v2) : rangeContainsV(v1, v2)
 
 const fullVersionSatisfies = (r1: I.FullVersion | I.FullVersionRange, r2: I.FullVersion | I.FullVersionRange) => {
-  for (let source in r1) {
-    const rs = r2[source]
-    if (rs !== null && !versionSatisfies(r1[source], rs)) return false
+  for (let i = 0; i < r1.length; i++) if (r1[i] != null) {
+    const rs = r2[i]
+    if (rs !== null && !versionSatisfies(r1[i]!, rs)) return false
   }
   return true
 }
@@ -93,7 +101,7 @@ const eachFetchMethod = async <Val>(store: I.Store<Val>, query: I.Query, keys: S
 
       const sub = store.subscribe(query, {supportedTypes: new Set()})
 
-      const versions: I.FullVersionRange = {}
+      const versions: I.FullVersionRange = []
 
       // We'll just pull off the first update.
       const update = (await sub.next()).value!
@@ -104,16 +112,21 @@ const eachFetchMethod = async <Val>(store: I.Store<Val>, query: I.Query, keys: S
         r = rtype.updateResults(r, update.replace.q, update.replace.with)
         // console.log('r2', ins(r))
 
+        // TODO: This behaviour should match subvalues.
         const vs = update.replace.versions
-        for (const s in vs) versions[s] = {from: vs[s], to: vs[s]}
+        vs.forEach((v, i) => {
+          if (v != null) versions[i] = {from: v, to: v}
+        })
       }
 
       update.txns.forEach(txn => {rtype.applyMut!(r, txn.txn)})
 
-      for (const s in update.toVersion) {
-        if (versions[s]) versions[s].to = update.toVersion[s]
-        else versions[s] = {from: update.toVersion[s], to: update.toVersion[s]}
-      }
+      update.toVersion.forEach((v, i) => {
+        if (v != null) {
+          if (versions[i] != null) versions[i]!.to = v
+          else versions[i] = {from: v, to: v}
+        }
+      })
 
       sub.return()
       // console.log(query.type, 'r', r)
@@ -229,32 +242,38 @@ const getOpsBoth = async (store: I.Store<any>, keys: I.Key[], versions: I.FullVe
   return vals[0]
 }
 
-type SingleVersion = {source: I.Source, version: I.Version}
-type SingleVersionRange = {source: I.Source, version: I.VersionRange}
+type SingleVersion<V> = {source: I.Source, version: V}
 
 // Convert from a version object with exactly 1 entry to a [source, version] pair
-function splitSingleVersions(versions: I.FullVersion): SingleVersion;
-function splitSingleVersions(versions: I.FullVersionRange): SingleVersionRange;
-function splitSingleVersions(versions: I.FullVersion | I.FullVersionRange): SingleVersion | SingleVersionRange {
-  const sources = Object.keys(versions)
-  assert.strictEqual(sources.length, 1)
-  const source = sources[0]
-  return {source, version: versions[source] as any}
+function splitSingleVersions<V>(store: I.Store<any>, versions: (V | null)[]): SingleVersion<V> {
+  const sources = store.storeInfo.sources
+  // Only 1 version from the versions array should be non-null.
+  const idxArr = versions
+    .map((v, i) => v == null ? -1 : i)
+    .filter(i => i >= 0)
+
+  assert.strictEqual(idxArr.length, 1)
+  const idx = idxArr[0]
+  return {
+    source: sources[idx],
+    version: versions[idx]!
+  }
 }
 
+// TODO: Consider replacing these with the equivalents in utils.
 const ssTxn = <Val>(k: I.Key, v: Val): I.KVTxn<Val> => new Map([[k, {type:'set', data:v}]])
-const setSingle = async <Val>(store: I.Store<Val>, key: I.Key, value: Val, versions: I.FullVersion = {}): Promise<SingleVersion> => {
+const setSingle = async <Val>(store: I.Store<Val>, key: I.Key, value: Val, versions: I.FullVersion = []): Promise<SingleVersion<I.Version>> => {
   // if (typeof versions === 'function') [versions, callback] = [{}, versions]
   const txn = ssTxn(key, value)
   const vs = await store.mutate('kv', txn, versions, {})
-  return splitSingleVersions(vs)
+  return splitSingleVersions(store, vs)
 }
 
-const delSingle = async (store: I.Store<any>, key: I.Key): Promise<SingleVersion> => {
+const delSingle = async (store: I.Store<any>, key: I.Key): Promise<SingleVersion<I.Version>> => {
   // if (typeof versions === 'function') [versions, callback] = [{}, versions]
   const txn = new Map([[key, {type:'rm'}]])
-  const vs = await store.mutate('kv', txn, {}, {})
-  return splitSingleVersions(vs)
+  const vs = await store.mutate('kv', txn)
+  return splitSingleVersions(store, vs)
 }
 
 type SingleValue<Val = any> = {source: I.Source, version: I.VersionRange, value: Val}
@@ -264,17 +283,25 @@ const getSingle = async <Val>(store: I.Store<Val>, key: I.Key, opts?: I.FetchOpt
   assert(results.size <= 1)
 
   // console.log('r', results.entries().next().value[1])
-  const vs = splitSingleVersions(r.versions)
+  const vs = splitSingleVersions(store, r.versions)
   const entry = results.entries().next().value
   if (entry != null) assert.strictEqual(entry[0], key)
   return {source: vs.source, version: vs.version, value: entry ? entry[1] : null}
 }
 
 
-const getVersionForKeys = async (store: I.Store<any>, _keys: I.Key[] | I.Key): Promise<SingleVersionRange> => {
+const getVersionForKeys = async (store: I.Store<any>, _keys: I.Key[] | I.Key): Promise<SingleVersion<I.VersionRange>> => {
   const keys = Array.isArray(_keys) ? new Set(_keys) : new Set([_keys])
   const {versions} = await store.fetch({type:'kv', q:keys}, {noDocs:true})
-  return splitSingleVersions(versions)
+  return splitSingleVersions(store, versions)
+}
+
+const sparseSV = <V>(source: I.Source, store: I.Store<any>, val: V): (V | null)[] => {
+  const i = store.storeInfo.sources.indexOf(source)
+  if (i < 0) throw Error('Invalid source - source ' + source + ' not in storeinfo')
+  const result = []
+  result[i] = val
+  return result
 }
 
 interface Context extends Mocha.Context {
@@ -306,7 +333,7 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
 
     it('can store things and return them', async function() {
       const txn = new Map([['a', {type:'set', data:'hi there'}]])
-      const vs = await this.store.mutate('kv', txn, {}, {})
+      const vs = await (this.store as I.Store<any>).mutate('kv', txn, [], {})
 
       // The version we get back here should contain exactly 1 source with a
       // single integer version.
@@ -339,12 +366,12 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
     // This test relies on the full version semantics of statecraft's native stores.
     it('returns acceptable version ranges for queries', async function() {
       // Set in 3 different transactions so we get a document version range.
-      const {version: v1, source} = await setSingle(this.store, 'a', 1)
+      const {source, version: v1} = await setSingle(this.store, 'a', 1)
       const v2 = (await setSingle(this.store, 'b', 2)).version
       const v3 = (await setSingle(this.store, 'c', 3)).version
 
       assert(vCmp(v1, v2) < 0 && vCmp(v2, v3) < 0)
-      await assertKVResults(this.store, ['a'], [['a', 1]], {[source]: {from:v1, to:v3}})
+      await assertKVResults(this.store, ['a'], [['a', 1]], sparseSV(source, this.store, {from:v1, to:v3}))
     })
 
     it('makes conflicting edits to the same key collide', async function() {
@@ -354,10 +381,10 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
       assert(v >= new Uint8Array()) // The version should be defined - normally 0.
 
       // Now set it. This should succeed...
-      await setSingle(this.store, 'a', 1, {[source]:v})
+      await setSingle(this.store, 'a', 1, sparseSV(source, this.store, v))
 
       await assertThrows(async () => {
-        await setSingle(this.store, 'a', 2, {[source]:v})
+        await setSingle(this.store, 'a', 2, sparseSV(source, this.store, v))
       }, 'WriteConflictError')
     })
 
@@ -366,8 +393,8 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
       const {source, version} = await getVersionForKeys(this.store, ['a', 'b'])
       const v = version.to
       // TODO: Make a parallel variant of this function
-      await setSingle(this.store, 'a', 1, {[source]:v})
-      await setSingle(this.store, 'b', 1, {[source]:v})
+      await setSingle(this.store, 'a', 1, sparseSV(source, this.store, v))
+      await setSingle(this.store, 'b', 1, sparseSV(source, this.store, v))
     })
 
     it('supports opts.noDocs in fetch', async function() {
@@ -433,52 +460,48 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
         this.v4 = (await setSingle(this.store, 'b', 4)).version
 
         this.expectedOps = [
-          {versions:{[source]: this.v1}, txn:ssTxn('a', 1), meta:{}},
-          {versions:{[source]: this.v2}, txn:ssTxn('b', 2), meta:{}},
-          {versions:{[source]: this.v3}, txn:ssTxn('a', 3), meta:{}},
-          {versions:{[source]: this.v4}, txn:ssTxn('b', 4), meta:{}},
+          {versions:sparseSV(source, this.store, this.v1), txn:ssTxn('a', 1), meta:{}},
+          {versions:sparseSV(source, this.store, this.v2), txn:ssTxn('b', 2), meta:{}},
+          {versions:sparseSV(source, this.store, this.v3), txn:ssTxn('a', 3), meta:{}},
+          {versions:sparseSV(source, this.store, this.v4), txn:ssTxn('b', 4), meta:{}},
         ]
 
-        this.allVersions = <I.FullVersionRange>{
-          [this.source]: {from: vDec(this.v1), to: this.v4}
-        }
+        this.allVersions = sparseSV(source, this.store, {from: vDec(this.v1), to: this.v4})
       })
 
-      const emptyOpsResult: I.GetOpsResult = {ops: [], versions: {}}
+      const emptyOpsResult: I.GetOpsResult = Object.freeze({ops: [], versions: []})
 
       it('returns an empty list when no versions are requested', async function() {
-        const result = await getOpsBoth(this.store, ['a', 'b', 'c', 'd'], {})
+        const result = await getOpsBoth(this.store, ['a', 'b', 'c', 'd'], [])
         assert.deepStrictEqual(result, emptyOpsResult)
       })
 
       it('returns an empty list for closed ranges', async function() {
-        const result = await getOpsBoth(this.store, ['a', 'b', 'c', 'd'], {[this.source]: {from:this.v1, to:this.v1}})
+        const result = await getOpsBoth(this.store, ['a', 'b', 'c', 'd'], sparseSV(this.source, this.store, {from:this.v1, to:this.v1}))
         assert.deepStrictEqual(result, emptyOpsResult)
       })
 
       it('gets all ops when the top range is unbound', async function() {
-        const result = await getOpsBoth(this.store, ['a', 'b'], {[this.source]: {from:vDec(this.v1), to:new Uint8Array()}})
+        const result = await getOpsBoth(this.store, ['a', 'b'], sparseSV(this.source, this.store, {from:vDec(this.v1), to:new Uint8Array()}))
         assert.deepStrictEqual(result.versions, this.allVersions)
         assert.deepStrictEqual(result.ops, this.expectedOps)
       })
 
       it('gets all ops when the range is explicit', async function() {
-        const result = await getOpsBoth(this.store, ['a', 'b', 'c', 'd'], {[this.source]: {from:vDec(this.v1), to:this.v4}})
+        const result = await getOpsBoth(this.store, ['a', 'b', 'c', 'd'], sparseSV(this.source, this.store, {from:vDec(this.v1), to:this.v4}))
         assert.deepStrictEqual(result.versions, this.allVersions)
         assert.deepStrictEqual(result.ops, this.expectedOps)
       })
 
       it('filters the operations based on the query', async function() {
-        const result = await getOpsBoth(this.store, ['a'], {[this.source]: {from:vDec(this.v1), to:this.v4}})
+        const result = await getOpsBoth(this.store, ['a'], sparseSV(this.source, this.store, {from:vDec(this.v1), to:this.v4}))
         assert.deepStrictEqual(result.versions, this.allVersions)
         assert.deepStrictEqual(result.ops, [this.expectedOps[0], this.expectedOps[2]])
       })
 
       it('filters operations based on the supplied versions', async function() {
-        const result = await getOpsBoth(this.store, ['a', 'b'], {[this.source]: {from:this.v1, to:this.v3}})
-        assert.deepStrictEqual(result.versions, <I.FullVersionRange>{
-          [this.source]: {from: this.v1, to: this.v3}
-        })
+        const result = await getOpsBoth(this.store, ['a', 'b'], sparseSV(this.source, this.store, {from:this.v1, to:this.v3}))
+        assert.deepStrictEqual(result.versions, sparseSV(this.source, this.store, {from: this.v1, to: this.v3}))
         assert.deepStrictEqual(result.ops, [this.expectedOps[1], this.expectedOps[2]])
       })
 
@@ -495,7 +518,7 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
       })
 
       it('allows you to subscribe from the current version, specified explicitly', async function() {
-        const sub = (this.store as I.Store<any>).subscribe({type: 'kv', q: new Set(['a'])}, {fromVersion: {[this.source]: this.v1}})
+        const sub = (this.store as I.Store<any>).subscribe({type: 'kv', q: new Set(['a'])}, {fromVersion: sparseSV(this.source, this.store, this.v1)})
 
         // The first message will be a catchup, which should be empty.
         const {value: catchup} = await sub.next()
@@ -505,13 +528,13 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
         const v2 = (await setSingle(this.store, 'a', 2)).version
         const {value: update} = await sub.next()
         assert.deepStrictEqual(update.txns[0].txn, ssTxn('a', 2))
-        assert.deepStrictEqual(update.toVersion[this.source], v2)
+        assert.deepStrictEqual(update.toVersion[this.store.storeInfo.sources.indexOf(this.source)], v2)
       })
 
       it('allows you to subscribe from the previous version, specified explicitly', async function() {
         const v2 = (await setSingle(this.store, 'a', 2)).version
 
-        const sub = (this.store as I.Store<any>).subscribe({type: 'kv', q: new Set(['a'])}, {fromVersion: {[this.source]: this.v1}})
+        const sub = (this.store as I.Store<any>).subscribe({type: 'kv', q: new Set(['a'])}, {fromVersion: sparseSV(this.source, this.store, this.v1)})
 
         // The first message will be a catchup, which should bring us to v2.
         const {value: catchup} = await sub.next()
@@ -519,14 +542,17 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
         if (catchup.replace) assert.deepStrictEqual(catchup.replace.with.get('a'), 2)
         else assert.deepStrictEqual(catchup.txns[0].txn, ssTxn('a', 2))
 
-        assert.deepStrictEqual(catchup.toVersion[this.source], v2)
+        const si = this.store.storeInfo.sources.indexOf(this.source)
+        assert.deepStrictEqual(catchup.toVersion[si], v2)
         
         // And we should also be able to submit a subsequent op to get to v3.
         const v3 = (await setSingle(this.store, 'a', 3)).version
         const {value: update} = await sub.next()
         assert.deepStrictEqual(update.txns[0].txn, ssTxn('a', 3))
-        assert.deepStrictEqual(update.toVersion[this.source], v3)
+        assert.deepStrictEqual(update.toVersion[si], v3)
       })
+
+      it('propogates a subscription close through to the backing store') // No idea how to test this here.
     })
   })
 }

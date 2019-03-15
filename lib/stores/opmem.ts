@@ -6,7 +6,7 @@
 import * as I from '../interfaces'
 import err from '../err'
 import {queryTypes} from '../qrtypes'
-import {V64, v64ToNum, vInc} from '../version'
+import {V64, v64ToNum, vInc, vEq} from '../version'
 import genSource from '../gensource'
 
 // const capabilities = {
@@ -57,14 +57,19 @@ const opmem = <Val>(opts: Opts = {}): I.OpStore<Val> & Trigger<Val> => {
       return toV
     },
 
-    async mutate(type, txn, versions, opts = {}) {
+    async mutate(type, txn, versions = [], opts = {}) {
       if (isReadonly) throw new err.UnsupportedTypeError('Cannot write to readonly store')
-      return {[source]: this.internalDidChange(type, txn, opts.meta || {})}
+      const reqV = versions[0]
+      
+      // Because we don't store the operations here, the operation's version must match exactly.
+      if (reqV != null && !vEq(reqV, version)) throw new err.VersionTooOldError()
+
+      return [this.internalDidChange(type, txn, opts.meta || {})]
     },
 
     start() {
       started = true
-      return Promise.resolve({[source]: version})
+      return Promise.resolve([version])
     },
 
     close() {},

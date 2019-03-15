@@ -27,19 +27,13 @@ export const versionFromNet = (v: N.NetVersion): I.Version => Uint8Array.from(v)
 export const versionRangeToNet = ({from, to}: I.VersionRange): N.NetVersionRange => [versionToNet(from), versionToNet(to)]
 export const versionRangeFromNet = (val: N.NetVersionRange): I.VersionRange => ({from: versionFromNet(val[0]), to: versionFromNet(val[1])})
 
-export const fullVersionToNet = (v: I.FullVersion): N.NetFullVersion => Object.entries(v).map(([s, v]) => [s, versionToNet(v)] as [I.Source, N.NetVersion])
-export const fullVersionFromNet = (v: N.NetFullVersion): I.FullVersion => {
-  const r: I.FullVersion = {}
-  for (let i = 0; i < v.length; i++) r[v[i][0]] = versionFromNet(v[i][1])
-  return r
-}
+export const fullVersionToNet = (vs: I.FullVersion): N.NetFullVersion => vs.map(v => v ? versionToNet(v) : null)
+export const fullVersionFromNet = (nvs: N.NetFullVersion): I.FullVersion => nvs.map(nv => nv ? versionFromNet(nv) : null)
 
-export const fullVersionRangeToNet = (v: I.FullVersionRange): N.NetFullVersionRange => (
-  Object.entries(v).map(([s, fv]) => [s, versionRangeToNet(fv)] as [I.Source, N.NetVersionRange])
+export const fullVersionRangeToNet = (vs: I.FullVersionRange): N.NetFullVersionRange => (
+  vs.map(v => v ? versionRangeToNet(v) : null)
 )
-export const fullVersionRangeFromNet = (v: N.NetFullVersionRange): I.FullVersionRange => {
-  const r: I.FullVersionRange = {}
-  for (let i = 0; i < v.length; i++) r[v[i][0]] = versionRangeFromNet(v[i][1])
-  return r
-}
+export const fullVersionRangeFromNet = (nvs: N.NetFullVersionRange): I.FullVersionRange => (
+  nvs.map(nv => nv ? versionRangeFromNet(nv) : null)
+)
 

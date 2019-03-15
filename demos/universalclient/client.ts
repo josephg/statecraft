@@ -15,7 +15,7 @@ import { resultTypes } from '../../lib/qrtypes';
 
 register(texttype)
 
-type Ops = {v: I.Version[], op?: I.Op<any>, replace?: any}[]
+type Ops = {v: (I.Version | null)[], op?: I.Op<any>, replace?: any}[]
 
 interface State extends IState {
   sources: I.Source[]
@@ -38,7 +38,7 @@ const header = (state: State, emit: any) => {
     <div id=header class=${connectionStatus}>
       Store: <span class=mon>${sources.join(', ')}</span>
       <span style="display: inline-block; width: 2em;"></span>
-      Version: <span class=mon>${sources.map(s => versions[s] && hex(versions[s])).join(', ')}</span>
+      Version: <span class=mon>${sources.map((s, i) => versions[i] && hex(versions[i]!)).join(', ')}</span>
       <span style="display: inline-block; width: 2em;"></span>
       <div class=button onclick=${() => {emit('set prefer', 'pre')}} disabled=${prefer === 'pre'}>PRE</div>
       <div class=button onclick=${() => {emit('set prefer', 'html')}} disabled=${prefer === 'html'}>HTML</div>
@@ -56,7 +56,7 @@ const raw = (innerHTML: string) => {
 const opsView = (state: State, ops: Ops = []) => {
   return html`<div id=ops>
   ${ops.map(({v, op, replace}) => html`<div>
-    <span class=mon>${v.map(hex).join(', ')}</span>
+    <span class=mon>${v.map(vv => vv == null ? '␀' : hex(vv)).join(', ')}</span>
     ${op
       ? html`<span class=op>Op: ${JSON.stringify(op)}</div>`
       : html`<span class=replace>Replace: ${JSON.stringify(replace)}</div>`
@@ -157,7 +157,7 @@ const kvView = (state: State, emit: any) => {
     const state = _state as State
     state.sources = store.storeInfo.sources
     state.data = null
-    state.versions = {}
+    state.versions = []
     state.opsForKey = new Map()
 
     const getOps = (key: string) => {
@@ -187,7 +187,7 @@ const kvView = (state: State, emit: any) => {
           : results
         // console.log('val', results, state.data, versions)
 
-        const v = state.sources.map(s => versions[s])
+        const v = versions
         if (raw.replace) {
           rtype.mapReplace<any, void>(raw.replace.with, (val, k) => {
             getOps(k == null ? 'single' : k).unshift({v, replace: val})

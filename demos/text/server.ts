@@ -26,6 +26,7 @@ import serveWS from '../../lib/net/wsserver'
 import serveTCP from '../../lib/net/tcpserver'
 import {register} from '../../lib/typeregistry'
 import sel from '../../lib/sel'
+import { vRangeTo } from '../../lib/version';
 
 import http from 'http'
 
@@ -97,15 +98,12 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
     // I'd love to use base64, but omg what a giant tire fire in the browser. I'm floored.
     // const result: {[k: string]: string} = {}
     // for (const s in v) result[s] = Buffer.from(v[s]).toString('base64')
-    const result: {[k: string]: number[]} = {}
-    for (const s in v) result[s] = Array.from(v[s])
-    return result
+    return v.map(vv => vv == null ? null : Array.from(vv))
   }
 
   const genEtag = (key: string, versions: I.FullVersion): string => {
-    const sources = Object.keys(versions).sort()
-    return key + '_' + sources.map(s => `${s}-${Buffer.from(versions[s]).toString('base64')}`).join('_')
-  }
+    return key + '_' + versions.map(v => v == null ? '' : Buffer.from(v).toString('base64')).join('.')
+  }  
   
   const renderEditor = (value: string | null, key: I.Key, versions: I.FullVersion): HTMLDocData => (
     {
@@ -164,12 +162,6 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
   const app = express()
   app.use(express.static(`${__dirname}/public`))
 
-  const resultingVersion = (v: I.FullVersionRange): I.FullVersion => {
-    const result: I.FullVersion = {}
-    for (const s in v) result[s] = v[s].to
-    return result
-  }
-
   const scHandler = (
       getKey: (params: any) => string,
       getDefault?: (params: any, versions: I.FullVersionRange) => HTMLDocData | null): express.RequestHandler => (
@@ -195,7 +187,7 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
 
   app.get('/edit/:name', scHandler(
     ({name}) => `editor/${name}`,
-    (params, versions) => renderEditor(null, `raw/${params.name}`, resultingVersion(versions))
+    (params, versions) => renderEditor(null, `raw/${params.name}`, vRangeTo(versions))
   ))
 
   app.get('/md/:name', scHandler(

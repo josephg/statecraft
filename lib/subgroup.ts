@@ -5,17 +5,17 @@ import {queryTypes, resultTypes} from './qrtypes'
 import {vEq, vCmp, V_EMPTY} from './version'
 
 const splitFullVersions = (v: I.FullVersionRange): [I.FullVersion, I.FullVersion] => {
-  const from: I.FullVersion = {}
-  const to: I.FullVersion = {}
-  for (const s in v) {
-    from[s] = v[s].from
-    to[s] = v[s].to
+  const from: I.FullVersion = []
+  const to: I.FullVersion = []
+  for (let i = 0; i < v.length; i++) if (v[i]) {
+    from[i] = v[i]!.from
+    to[i] = v[i]!.to
   }
   return [from, to]
 }
 
 type BufferItem = {
-  source: I.Source, fromV: I.Version, toV: I.Version, txn: I.Txn<any>, meta: I.Metadata
+  sourceIdx: number, fromV: I.Version, toV: I.Version, txn: I.Txn<any>, meta: I.Metadata
 }
 
 type Sub<Val> = {
@@ -117,11 +117,9 @@ export default class SubGroup<Val> {
       const getOps = this.getOps!
 
       // _other is used for any other sources we run into in getOps.
-      const versions: I.FullVersionRange = {_other: {from:V_EMPTY, to: V_EMPTY}}
+      // const versions: I.FullVersionRange = {_other: {from:V_EMPTY, to: V_EMPTY}}
+      const versions: I.FullVersionRange = fromVersion.map(v => (v == null ? null : {from:v, to:V_EMPTY}))
 
-      if (fromVersion) for (const source in fromVersion) {
-        versions[source] = {from:fromVersion[source], to: V_EMPTY}
-      }
       const {ops: txns, versions: opVersions} = await getOps(query, versions, {bestEffort: opts.bestEffort})
       const toVersion = splitFullVersions(opVersions)[1]
       return {txns, toVersion}
@@ -133,6 +131,9 @@ export default class SubGroup<Val> {
       type: I.ResultType, txn: I.Txn<Val>, resultingView: any,
       meta: I.Metadata) {
     if (vCmp(fromV, toV) >= 0) throw Error('Invalid op - goes backwards in time')
+    const si = this.store.storeInfo.sources.indexOf(source)
+    if (si < 0) throw Error('Invalid source')
+
     for (const sub of this.allSubs) {
       // console.log(sub.id, 'onOp version', sub.id, 'fv', fromV, 'tv', toV, 'buf', sub.opsBuffer, 'sub ev', sub.expectVersion, 'val', sub.value, 'txn', txn)
 
@@ -144,24 +145,24 @@ export default class SubGroup<Val> {
       // console.log('sg onOp', fromV, toV, !!sub.opsBuffer)
       if (sub.opsBuffer) {
         // console.log('op -> opbuffer')
-        sub.opsBuffer.push({source, fromV, toV, txn, meta})
+        sub.opsBuffer.push({sourceIdx: si, fromV, toV, txn, meta})
       } else {
         if (sub.q == null) throw Error('Invalid state')
 
         if (isVersion(sub.expectVersion)) {
-          if (sub.expectVersion[source] && !vEq(sub.expectVersion[source], fromV)) {
+          if (sub.expectVersion[si] && !vEq(sub.expectVersion[si]!, fromV)) {
             // This can happen if you fetch / mutate and get a future-ish
             // version, then try to subscribe to that version before that
             // version is propogated through the subscription channel. This
             // happens reliably with the fdb unit tests.
             //
             // Implemented this way we provide cover for bugs, its more correct.
-            console.warn(sub.id, 'skip version', 'expect', sub.expectVersion[source], 'actual fromV', fromV, 'data', sub.value)
+            console.warn(sub.id, 'skip version', 'expect', sub.expectVersion[si], 'actual fromV', fromV, 'data', sub.value)
             continue
             // throw Error(`Invalid version from source: from/to versions mismatch: ${sub.expectVersion[source]} != ${fromV}`)
           }
 
-          sub.expectVersion[source] = toV
+          sub.expectVersion[si] = toV
         }
 
         const qtype = queryTypes[sub.q.type]
@@ -184,9 +185,12 @@ export default class SubGroup<Val> {
         // console.log(sub.id, 'propogate op', localTxn, toV)
 
         // This is pretty verbose. Might make sense at some point to do a few MS of aggregation on these.
+        const fullToV = []
+        fullToV[si] = toV
+
         if (localTxn != null || sub.alwaysNotify) sub.stream.append({
-          txns: localTxn != null ? [{versions: {[source]:toV}, txn: localTxn as I.Txn<Val>, meta}] : [],
-          toVersion: {[source]:toV},
+          txns: localTxn != null ? [{versions: fullToV, txn: localTxn as I.Txn<Val>, meta}] : [],
+          toVersion: fullToV,
         })
       }
 
@@ -265,18 +269,20 @@ export default class SubGroup<Val> {
 
       // Replay the operation buffer into the catchup txn
       for (let i = 0; i < sub.opsBuffer.length; i++) {
-        const {source, fromV, toV, txn, meta} = sub.opsBuffer[i]
+        const {sourceIdx, fromV, toV, txn, meta} = sub.opsBuffer[i]
         // console.log('pop from opbuffer', source, {fromV, toV}, txn)
-        const v = catchupVersion[source]
+        const v = catchupVersion[sourceIdx]
 
         // If the buffered op is behind the catchup version, discard it and continue.
         if (v != null && vCmp(toV, v) <= 0) continue
 
         // console.log('adaptTxn', query.type, txn, sub.q!.q)
         const filteredTxn = qtype.adaptTxn(txn, sub.q!.q)
-        if (v === fromV || vCmp(v, fromV) === 0) {
-          if (filteredTxn != null) catchup.txns.push({versions:{[source]: toV}, txn: filteredTxn, meta})
-          catchupVersion[source] = toV
+        if (v === fromV || vCmp(v!, fromV) === 0) {
+          const fv = []
+          fv[sourceIdx] = toV
+          if (filteredTxn != null) catchup.txns.push({versions:fv, txn: filteredTxn, meta})
+          catchupVersion[sourceIdx] = toV
           
           if (sub.trackValues) {
             const rtype = qtype.resultType
@@ -293,7 +299,10 @@ export default class SubGroup<Val> {
       
       if (sub.expectVersion == null) sub.expectVersion = {...catchupVersion}
       else if (sub.expectVersion !== 'current') {
-        for (const s in catchupVersion) sub.expectVersion[s] = catchupVersion[s]
+        for (let si = 0; si < catchupVersion.length; si++) {
+          const v = catchupVersion[si]
+          if (v != null) sub.expectVersion[si] = v
+        }
       }
       sub.opsBuffer = null
       

@@ -83,7 +83,7 @@ const lmdbStore = <Val>(inner: I.OpStore<Val>, location: string): Promise<I.Simp
     mutationTypes: new Set<I.ResultType>(['kv']),
   }
 
-  const ready = inner.start!({[source]: version})
+  const ready = inner.start!([version])
 
   const decode = (bytes: Buffer | null): [Uint8Array, any] => {
     if (bytes == null) return [V_ZERO, null]
@@ -237,7 +237,7 @@ const lmdbStore = <Val>(inner: I.OpStore<Val>, location: string): Promise<I.Simp
 
       debug('mutate', txn)
 
-      const expectedVersion = (versions && versions[source] != null) ? versions[source] : version
+      const expectedVersion = (versions && versions[0] != null) ? versions[0]! : version
 
       // Check that the transaction applies cleanly.
       const dbTxn = env.beginTxn({readOnly: true})
@@ -263,9 +263,11 @@ const lmdbStore = <Val>(inner: I.OpStore<Val>, location: string): Promise<I.Simp
       // const resultVersion = await sendTxn(client, txn, opts.meta || {}, version, {})
       
       // We know its valid at the current version, so we're ok to pass that here.
-      const result = await inner.mutate('kv', txn, {...versions, [source]: version}, opts)
+      const innerV = versions == null ? [version] : versions.slice()
+      innerV[0] = version
+      const result = await inner.mutate('kv', txn, innerV, opts)
 
-      debug('mutate cb', result.resultVersion)
+      debug('mutate cb', result)
       return result
     },
 
@@ -320,7 +322,7 @@ const lmdbStore = <Val>(inner: I.OpStore<Val>, location: string): Promise<I.Simp
         return {
           bakedQuery,
           results,
-          versions: {[source]: {from: maxVersion, to: version}}
+          versions: [{from: maxVersion, to: version}]
         }
       })
     },

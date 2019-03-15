@@ -25,7 +25,7 @@ process.on('unhandledRejection', err => {
   }, 1000)
 
   const mapStore = makeMap(store, ({a, b}) => {
-    return a + b
+    return "a + b is " + (a+b)
   })
 
   const server = serve(mapStore)

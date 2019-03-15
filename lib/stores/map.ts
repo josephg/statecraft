@@ -2,6 +2,7 @@ import * as I from '../interfaces'
 import err from '../err'
 import {queryTypes} from '../qrtypes'
 import iterGuard from '../iterGuard'
+import {vRangeTo} from '../version'
 
 const supportedOpTypes = new Set(['rm', 'set'])
 
@@ -35,17 +36,12 @@ const mapTxnWithMetas = <In, Out>(type: I.ResultOps<In, any, I.Txn<In>>, txn: I.
   }))
 )
 
-const resultingVersion = (v: I.FullVersionRange): I.FullVersion => {
-  const result: I.FullVersion = {}
-  for (const s in v) result[s] = v[s].to
-  return result
-}
-
 // Syncronous map fn
 const map = <In, Out>(inner: I.Store<In>, mapfn: MapFn<In, Out>): I.Store<Out> => {
+  const sources = inner.storeInfo.sources
   return {
     storeInfo: {
-      sources: inner.storeInfo.sources,
+      sources,
 
       capabilities: {
         // TODO: Filter these capabilities by the ones we support locally.
@@ -60,7 +56,7 @@ const map = <In, Out>(inner: I.Store<In>, mapfn: MapFn<In, Out>): I.Store<Out> =
 
       const innerResults = await inner.fetch(query, opts)
 
-      const version = resultingVersion(innerResults.versions)
+      const version = vRangeTo(innerResults.versions)
       const outerResults: I.FetchResults<Out> = {
         // In the noDocs case, inner.fetch will have already stripped the documents.
         results: (opts && opts.noDocs)
@@ -100,15 +96,15 @@ const map = <In, Out>(inner: I.Store<In>, mapfn: MapFn<In, Out>): I.Store<Out> =
         trackValues: true,
       })
 
-      const version: I.FullVersion = {}
+      const version: I.FullVersion = []
 
       return iterGuard((async function*() {
         for await (const innerUpdates of innerSub) {
           // Note that version contains the version *after* the whole catchup
           // is applied. I'm updating it here, but note that it is not used by
           // txns.
-          for (const s in innerUpdates.toVersion) {
-            version[s] = innerUpdates.toVersion[s]
+          for (let i = 0; i < sources.length; i++) {
+            if (innerUpdates.toVersion[i] != null) version[i] = innerUpdates.toVersion[i]
           }
 
           // TODO: It'd be better to avoid calling the map function so often

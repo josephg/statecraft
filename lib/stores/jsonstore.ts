@@ -35,7 +35,7 @@ const fileStore = <Val>(filename: string, sourceIn?: string): I.SimpleStore<Val>
     console.log('file changed to', data, v)
     const oldVersion = version
     version = v
-    resolveFns.forEach(cb => cb({[source]: version}))
+    resolveFns.forEach(cb => cb([version]))
     resolveFns.length = 0
     store.onTxn && store.onTxn(source, oldVersion, version, 'single', {type: 'set', data}, data, {})
   }
@@ -102,7 +102,7 @@ const fileStore = <Val>(filename: string, sourceIn?: string): I.SimpleStore<Val>
       return Promise.resolve({
         results: data,
         queryRun: query,
-        versions: {[source]: {from:version, to:V64(Date.now())}},
+        versions: [{from:version, to:V64(Date.now())}],
       })
     },
 
@@ -110,7 +110,7 @@ const fileStore = <Val>(filename: string, sourceIn?: string): I.SimpleStore<Val>
       if (type !== 'single') return Promise.reject(new err.UnsupportedTypeError())
       const op = txn as I.Op<Val>
 
-      const expectv = versions && versions[source]
+      const expectv = versions && versions[0]
       if (expectv != null && vCmp(expectv, version) < 0) return Promise.reject(new err.VersionTooOldError())
 
       if (op) data = fieldOps.apply(data, op)

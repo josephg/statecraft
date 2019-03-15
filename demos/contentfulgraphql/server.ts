@@ -75,8 +75,7 @@ const schema = gqlTools.makeExecutableSchema({
 })
 
 const genEtag = (versions: I.FullVersion): string => {
-  const sources = Object.keys(versions).sort()
-  return sources.map(s => `${s}-${Buffer.from(versions[s]).toString('base64')}`).join('_')
+  return versions.map(v => v == null ? '' : Buffer.from(v).toString('base64')).join('.')
 }
 
 ;(async () => {

@@ -30,7 +30,7 @@ export class Transaction<Val = any> {
     }
     this._writeCache = new Map()
     this._store = store
-    this._v = opts.v || {}
+    this._v = opts.v || []
     this.docsRead = new Set()
     this._readOnly = !!opts.readOnly
     this._readCache = opts.readCache
@@ -99,7 +99,7 @@ export class Transaction<Val = any> {
     // conflicted.
     this.docsRead.clear()
     this._writeCache.clear()
-    this._v = {}
+    this._v = []
   }
 }
 
@@ -164,7 +164,9 @@ export const txnSubscribe = <Val, T>(store: I.Store<Val>, fn: (txn: Transaction<
         // Ok; now re-run the function. If we end up fetching more / different
         // documents, we'll need to bail out and re-make the subscription.
 
-        for (const s in catchup.toVersion) v[s] = catchup.toVersion[s]
+        catchup.toVersion.forEach((cv, si) => {
+          if (cv != null) v[si] = cv
+        })
         txn._v = vToRange(v)
         const cachePreSize = cache.size
         // console.log('cache 1', Array.from(cache.keys()))

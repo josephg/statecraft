@@ -5,7 +5,9 @@ import makeOpCache from './opcache'
 import SubGroup from './subgroup'
 
 const augment = <Val>(innerStore: I.SimpleStore<Val>, opts?: any): I.Store<Val> => {
-  const opcache = innerStore.getOps ? null : makeOpCache({})
+  const opcache = innerStore.getOps ? null : makeOpCache({
+    sources: innerStore.storeInfo.sources
+  })
   const getOps = innerStore.getOps || opcache!.getOps
 
   const subscriptions = innerStore.subscribe ? null : new SubGroup(innerStore, getOps)
@@ -28,7 +30,7 @@ const augment = <Val>(innerStore: I.SimpleStore<Val>, opts?: any): I.Store<Val> 
   if (innerStore.storeInfo.capabilities.mutationTypes.has('kv')) {
     outerStore.set = (key: I.Key, val: Val) => {
       const txn = new Map([[key, {type:'set', data: val}]])
-      return innerStore.mutate('kv', txn, {}, {})
+      return innerStore.mutate('kv', txn)
     }
   }
 

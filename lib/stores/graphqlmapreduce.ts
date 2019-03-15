@@ -67,7 +67,6 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
 
   // This just straight out contains the entire backend. bleh.
   const allDocs: Map<I.Key, any> = results.results
-
   
   // Set of keys which were used to generate each item
   const deps = opts.mapReduces.map(() => new Map<I.Key, Set<I.Key>>())
@@ -140,7 +139,7 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
   // The frontend store which clients can query. TODO: Make this configurable.
   // There should also be no problem using multiple sources here.
   const beSource = backend.storeInfo.sources[0]
-  const frontOps = opmem({source: beSource, initialVersion: results.versions[beSource].to})
+  const frontOps = opmem({source: beSource, initialVersion: results.versions[0]!.to})
   const frontend = await kvMem(initialValues, {
     inner: frontOps,
     readonly: true,
@@ -203,7 +202,7 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
       // console.log('usedby', usedBy)
       if (txn.size) {
         // console.log('gqlmr txn', txn)
-        frontOps.internalDidChange('kv', txn, {}, toVersion[beSource])
+        frontOps.internalDidChange('kv', txn, {}, toVersion[0]!)
       }
       // This is janky because we aren't handing versions correctly. We should
       // validate that the version >= the sub version in this txn result.

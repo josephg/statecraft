@@ -54,25 +54,28 @@ export const vMax = (a: Uint8Array, b: Uint8Array) => vCmp(a, b) > 0 ? a : b
 export const vMin = (a: Uint8Array, b: Uint8Array) => vCmp(a, b) > 0 ? b : a
 export const vEq = (a: Uint8Array, b: Uint8Array) => vCmp(a, b) === 0
 
+// Modifies and returns dest = intersect(dest, src) if an intersection is valid.
+// Otherwise returns null if no intersection exists.
 export const vIntersectMut = (dest: I.FullVersionRange, src: I.FullVersionRange) => {
-  for (let source in src) {
-    const {from: fromSrc, to: toSrc} = src[source]
-    if (dest[source] == null) dest[source] = {from: fromSrc, to: toSrc}
+  for (let i = 0; i < src.length; i++) if (src[i] != null) {
+    const {from: fromSrc, to: toSrc} = src[i]!
+    if (dest[i] == null) dest[i] = {from: fromSrc, to: toSrc}
     else {
-      const {from:fromDest, to:toDest} = dest[source]
+      const {from:fromDest, to:toDest} = dest[i]!
+      // No intersection!
       if (vCmp(fromSrc, toDest) > 0 || vCmp(toSrc, fromDest) < 0) return null
-      dest[source] = {from: vMax(fromDest, fromSrc), to: vMin(toDest, toSrc)}
+      dest[i] = {from: vMax(fromDest, fromSrc), to: vMin(toDest, toSrc)}
     }
   }
   return dest
 }
 
-const objMap = <T, R>(obj: {[k: string]: T}, fn: (k: T) => R): {[k: string]: R} => {
-  const result: {[k: string]: R} = {}
-  for (const k in obj) result[k] = fn(obj[k])
+export const vRangeFrom = (vr: I.FullVersionRange) => vr.map(v => v == null ? null : v.from)
+export const vRangeTo = (vr: I.FullVersionRange) => vr.map(v => v == null ? null : v.to)
+export const vToRange = (v: I.FullVersion): I.FullVersionRange => v.map(v => v == null ? null : ({from: v, to: v}))
+
+export const vSparse = <V>(i: number, val: V): (V | null)[] => {
+  const result = []
+  result[i] = val
   return result
 }
-
-export const vRangeFrom = (vr: I.FullVersionRange) => objMap(vr, ({from}) => from)
-export const vRangeTo = (vr: I.FullVersionRange) => objMap(vr, ({to}) => to)
-export const vToRange = (v: I.FullVersion): I.FullVersionRange => objMap(v, v => ({from: v, to: v}))

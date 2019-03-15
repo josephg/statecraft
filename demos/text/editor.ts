@@ -17,7 +17,7 @@ register(texttype)
 declare const config: {
   key: string,
   initialValue: string | null,
-  initialVersions: {[k: string]: number[]},
+  initialVersions: (number[] | null)[],
 }
 
 // document.body.appendChild(html`<h1>oh hi</h1>`)
@@ -127,8 +127,8 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
 
   // The version is sent as an array of numbers. Base64 would be better, but
   // we can't have nice things because of browser vendors. Eh, this is fine.
-  const v0: I.FullVersion = {}
-  for (const s in config.initialVersions) v0[s] = Uint8Array.from(config.initialVersions[s])
+  const v0: I.FullVersion = config.initialVersions.map(vv => vv == null ? null : Uint8Array.from(vv))
+  // for (const s in config.initialVersions) v0[s] = Uint8Array.from(config.initialVersions[s])
 
   // This is needed to prevent the browser from storing the text content on back / forwards navigations.
   elem.value = config.initialValue || ''
