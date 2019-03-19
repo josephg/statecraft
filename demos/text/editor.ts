@@ -11,6 +11,7 @@ import fieldOps from '../../lib/types/field'
 import {type as texttype, TextOp} from 'ot-text-unicode'
 import otDoc from '../../lib/otdoc'
 import {register} from '../../lib/typeregistry'
+import simpleValuesSingle from '../../lib/simplevalues';
 
 register(texttype)
 
@@ -103,19 +104,11 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
   console.log('connecting to ws', wsurl, '...')
   const [statusStore, storeP] = createStore<string>(() => connect(wsurl))
 
-  statusStore.onTxn = (source, fromV, toV, type, txn, rv, meta) => {
-    // This is a bit nasty.. Might be better to augment and then subscribe.
-    // In any case, rv contains the view information.
-    document.getElementById('connstatus')!.className = rv
-
-    // console.log(source, fromV, toV, type, txn, rv, meta)
-  }
-
-  // ;(async () => {
-  //   for await (const st of statusStore.subscribe({type: 'single', q: true}, {})) {
-
-  //   }
-  // })()
+  ;(async () => {
+    for await (const status of simpleValuesSingle(statusStore)) {
+      document.getElementById('connstatus')!.className = status
+    }
+  })()
 
   const store = await storeP
   console.log('Connected to websocket server', wsurl)
