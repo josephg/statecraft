@@ -184,7 +184,7 @@ export default async function createKVStore<Val>(
     close() {},
   }
 
-  inner.onTxn = (source, fromV, toV, type, _txn, view, meta) => {
+  inner.onTxn = (source, fromV, toV, type, _txn, meta) => {
     if (type !== 'kv') throw new err.UnsupportedTypeError()
     lastVersion = toV
     const txn = _txn as I.KVTxn<Val>
@@ -192,7 +192,7 @@ export default async function createKVStore<Val>(
     for (const [k, op] of txn) lastModVersion.set(k, toV)
     resultMap.applyMut!(data, txn)
 
-    if (store.onTxn != null) store.onTxn(source, fromV, toV, 'kv', txn, data, meta)
+    if (store.onTxn != null) store.onTxn(source, fromV, toV, 'kv', txn, meta)
   },
 
   lastVersion = (await inner.start!())[0]

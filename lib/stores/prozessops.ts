@@ -89,7 +89,7 @@ const prozessStore = <Val>(conn: PClient): I.OpStore<Val> => {
             const [txn, meta] = decodeTxn(event.data)
 
             const nextVersion = event.version - 1 + event.batch_size
-            store.onTxn!(source, V64(event.version - 1), V64(nextVersion), 'kv', txn, null, meta)
+            store.onTxn!(source, V64(event.version - 1), V64(nextVersion), 'kv', txn, meta)
 
             expectVersion = nextVersion
           })

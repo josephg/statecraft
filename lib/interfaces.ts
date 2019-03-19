@@ -378,7 +378,7 @@ export interface StoreInfo {
 export type TxnListener<Val> = (
   source: Source,
   fromV: Version, toV: Version,
-  type: ResultType, txn: Txn<Val>, resultingView: any,
+  type: ResultType, txn: Txn<Val>,
   meta: Metadata
 ) => void
 

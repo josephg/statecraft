@@ -398,7 +398,7 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.SimpleSto
               source,
               v0,
               version,
-              'kv', new Map(op), new Map()/*resultingView TODO!!!*/, meta)
+              'kv', new Map(op), meta)
 
             v0 = version
           }

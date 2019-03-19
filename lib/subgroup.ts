@@ -128,7 +128,7 @@ export default class SubGroup<Val> {
 
   onOp(source: I.Source,
       fromV: I.Version, toV: I.Version,
-      type: I.ResultType, txn: I.Txn<Val>, resultingView: any,
+      type: I.ResultType, txn: I.Txn<Val>,
       meta: I.Metadata) {
     if (vCmp(fromV, toV) >= 0) throw Error('Invalid op - goes backwards in time')
     const si = this.store.storeInfo.sources.indexOf(source)

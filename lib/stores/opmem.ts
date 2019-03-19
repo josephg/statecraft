@@ -53,7 +53,7 @@ const opmem = <Val>(opts: Opts = {}): I.OpStore<Val> & Trigger<Val> => {
 
       version = toV
 
-      if (started) this.onTxn!(source, fromV, toV, type, txn, null, meta || {})
+      if (started) this.onTxn!(source, fromV, toV, type, txn, meta || {})
       return toV
     },
 

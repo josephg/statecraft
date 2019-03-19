@@ -135,7 +135,7 @@ const createContentfulStore = (syncState: I.SimpleStore<any>, opts: {
             // console.log('txn', txn)
             // console.log('synctxn', syncTxn)
 
-            store.onTxn!(source, version, nextVersion, 'kv', txn, null, {})
+            store.onTxn!(source, version, nextVersion, 'kv', txn, {})
             
             // Ok, now update our sync state. Note that this happens *after* we
             // notify upstream. Ideally we would wait until the txn was

@@ -345,7 +345,7 @@ const lmdbStore = <Val>(inner: I.OpStore<Val>, location: string): Promise<I.Simp
   let evtTxn: lmdb.Txn | null = null
   let nextVersion = new Uint8Array()
 
-  inner.onTxn = (source, fromV, toV, type, txn, _view, meta) => {
+  inner.onTxn = (source, fromV, toV, type, txn, meta) => {
     if (evtTxn == null) {
       evtTxn = env.beginTxn()
       process.nextTick(() => {
@@ -356,7 +356,7 @@ const lmdbStore = <Val>(inner: I.OpStore<Val>, location: string): Promise<I.Simp
     }
 
     const txn_ = txn as I.KVTxn<Val>
-    const view = new Map<I.Key, Val>()
+    // const view = new Map<I.Key, Val>()
     for (const [k, op] of txn_) {
       // const oldData = fieldOps.create(rawGet(dbTxn, k)[0], op)
       const oldData = rawGet(evtTxn, k)[1]
@@ -370,11 +370,11 @@ const lmdbStore = <Val>(inner: I.OpStore<Val>, location: string): Promise<I.Simp
       // thats useful.
       evtTxn.putBinary(dbi, k, msgpack.encode([Buffer.from(toV), newData]))
 
-      view.set(k, newData)
+      // view.set(k, newData)
     }
     nextVersion = toV
 
-    if (store.onTxn) store.onTxn(source, fromV, toV, type, txn, view, meta)
+    if (store.onTxn) store.onTxn(source, fromV, toV, type, txn, meta)
   }
 
   return ready.then(() => store)
