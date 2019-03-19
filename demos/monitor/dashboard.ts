@@ -3,6 +3,7 @@ import reconnecter from '../../lib/stores/reconnectingclient'
 import {connect} from '../../lib/stores/wsclient'
 import subValues from '../../lib/subvalues'
 import augment from '../../lib/augment'
+import simpleValuesSingle from '../../lib/simplevalues'
 
 import choo from 'choo'
 import html from 'choo/html'
@@ -48,14 +49,13 @@ const mainView = (state: any) => {
   const [statusStore, storeP] = reconnecter<ClientInfo>(() => connect(wsurl))
 
   ;(async () => {
-    // Using augment here is a very ... high level solution. It pulls in a lot more complexity.
-    // It'd be good to have a subValues equivalent kind of function for simple stores.
-    for await (const status of subValues('single', augment(statusStore).subscribe({type: 'single', q: true}))) {
+    for await (const status of simpleValuesSingle(statusStore)) {
       console.log('status', status)
     }
   })()
 
   const store = await storeP
+  console.log('connected to', store.storeInfo.uid)
   
   const app = new choo()
   app.use((state, emitter) => {

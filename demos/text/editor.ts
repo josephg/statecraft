@@ -11,7 +11,7 @@ import fieldOps from '../../lib/types/field'
 import {type as texttype, TextOp} from 'ot-text-unicode'
 import otDoc from '../../lib/otdoc'
 import {register} from '../../lib/typeregistry'
-import simpleValuesSingle from '../../lib/simplevalues';
+import simpleValuesSingle from '../../lib/simplevalues'
 
 register(texttype)
 

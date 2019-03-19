@@ -11,7 +11,7 @@ const capabilities = {
   // ops: <I.OpsSupport>'none',
 }
 
-const singleStore = <Val = any>(initialValue: Val, source: I.Source = genSource(), initialVersionNum: number = 0): I.SimpleStore<Val> => {
+export default function singleStore<Val = any>(initialValue: Val, source: I.Source = genSource(), initialVersionNum: number = 0): I.SimpleStore<Val> {
   let version: number = initialVersionNum
   let data = initialValue
 
@@ -21,6 +21,7 @@ const singleStore = <Val = any>(initialValue: Val, source: I.Source = genSource(
       capabilities,
       sources: [source]
     },
+    
     async fetch(query, opts) {
       if (query.type !== 'single') throw new err.UnsupportedTypeError()
 
@@ -55,5 +56,3 @@ const singleStore = <Val = any>(initialValue: Val, source: I.Source = genSource(
 export function setSingle<Val>(store: I.SimpleStore<Val>, value: Val) {
   return store.mutate('single', {type: 'set', data: value})
 }
-
-export default singleStore
