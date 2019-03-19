@@ -224,6 +224,7 @@ const lmdbStore = <Val>(inner: I.OpStore<Val>, location: string): Promise<I.Simp
 
   const store: I.SimpleStore<Val> = {
     storeInfo: {
+      uid: `lmdb(${inner.storeInfo.uid})`, // TODO: Maybe just re-expose inner.storeinfo.uid? All kv wraps should be identical
       sources: [source],
       capabilities,
     },

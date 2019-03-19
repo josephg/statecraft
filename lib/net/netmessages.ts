@@ -84,6 +84,7 @@ export interface HelloMsg {
   a: Action.Hello,
   p: 'statecraft',
   pv: number,
+  uid: string,
   sources: I.Source[], // ??? TODO: Still not sure whether to allow unknown sources.
   capabilities: any[]
 }

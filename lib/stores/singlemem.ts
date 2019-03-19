@@ -17,6 +17,7 @@ const singleStore = <Val = any>(initialValue: Val, source: I.Source = genSource(
 
   const store: I.SimpleStore<Val> = {
     storeInfo: {
+      uid: `single(${source})`,
       capabilities,
       sources: [source]
     },

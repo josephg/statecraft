@@ -6,6 +6,7 @@ const nullstore: I.Store<any> = {
   //
   // It might make sense to add a dummy hard-coded source name here - not sure.
   storeInfo: {
+    uid: 'null',
     sources: [],
 
     capabilities: {

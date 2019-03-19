@@ -40,6 +40,7 @@ const opmem = <Val>(opts: Opts = {}): I.OpStore<Val> & Trigger<Val> => {
 
   const store: I.OpStore<Val> & Trigger<Val> = {
     storeInfo: {
+      uid: `opmem(${source})`,
       sources: [source],
       capabilities: {
         queryTypes: new Set(),

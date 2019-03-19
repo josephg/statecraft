@@ -65,6 +65,7 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
     a: N.Action.Hello,
     p: 'statecraft',
     pv: 0,
+    uid: store.storeInfo.uid,
     sources: store.storeInfo.sources,
     capabilities: capabilitiesToJSON(store.storeInfo.capabilities),
   })

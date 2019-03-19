@@ -23,6 +23,7 @@ import {supportedTypes} from '../typeregistry'
 const assert = (a: any) => { if (!a) throw Error('Assertion error: ' + a) }
 
 const parseStoreInfo = (helloMsg: N.HelloMsg): I.StoreInfo => ({
+  uid: helloMsg.uid,
   sources: helloMsg.sources,
 
   capabilities: {

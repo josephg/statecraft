@@ -140,6 +140,7 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.SimpleSto
 
   const store: I.SimpleStore<Val> = {
     storeInfo: {
+      uid: `fdb(${source})`, // TODO: Consider passing the database prefix (or something like it) in here.
       sources: [source],
       capabilities
     },

@@ -36,11 +36,16 @@ const mapTxnWithMetas = <In, Out>(type: I.ResultOps<In, any, I.Txn<In>>, txn: I.
   }))
 )
 
+export interface MapOpts {
+  fnUid?: string, // This is a UID that should change each time the function is edited.
+}
+
 // Syncronous map fn
-const map = <In, Out>(inner: I.Store<In>, mapfn: MapFn<In, Out>): I.Store<Out> => {
+const map = <In, Out>(inner: I.Store<In>, mapfn: MapFn<In, Out>, opts: MapOpts = {}): I.Store<Out> => {
   const sources = inner.storeInfo.sources
   return {
     storeInfo: {
+      uid: `map(${inner.storeInfo.uid},${opts.fnUid || '_'})`,
       sources,
 
       capabilities: {

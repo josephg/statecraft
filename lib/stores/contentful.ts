@@ -42,6 +42,7 @@ const createContentfulStore = (syncState: I.SimpleStore<any>, opts: {
 
   const store: I.OpStore<any> = {
     storeInfo: {
+      uid: `cf(${source})`, // Could expose the contentful space ID here, but I don't wnat to leak it.
       sources: [source],
       capabilities: {
         // TODO: Add support for mutation and querying through these APIs.

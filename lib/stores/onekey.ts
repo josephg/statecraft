@@ -49,6 +49,7 @@ const onekey = <Val>(innerStore: I.Store<Val>, key: I.Key): I.Store<Val> => {
 
   return {
     storeInfo: {
+      uid: `onekey(${innerStore.storeInfo.uid},${key})`,
       sources: innerStore.storeInfo.sources,
       capabilities: {
         mutationTypes: canMutate ? capabilities.mutationTypes : new Set(),

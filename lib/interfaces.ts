@@ -366,6 +366,8 @@ export interface Capabilities {
 }
 
 export interface StoreInfo {
+  readonly uid: string, // Ideally, string or byte array or something.
+  
   // Unique and lexographically sorted.
   readonly sources: Source[],
 

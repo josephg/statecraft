@@ -77,6 +77,7 @@ export default async function createKVStore<Val>(
 
   const store: I.SimpleStore<Val> = {
     storeInfo: {
+      uid: `kvmem(${inner.storeInfo.uid})`,
       capabilities,
       sources: inner.storeInfo.sources,
     },

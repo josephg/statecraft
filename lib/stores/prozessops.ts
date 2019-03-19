@@ -28,6 +28,7 @@ const prozessStore = <Val>(conn: PClient): I.OpStore<Val> => {
 
   const store: I.OpStore<Val> = {
     storeInfo: {
+      uid: `prozess(${source})`,
       sources: [source],
       capabilities,
     },

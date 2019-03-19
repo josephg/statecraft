@@ -305,7 +305,7 @@ const mergeCatchups = <Val>(qtype: I.QueryType, cd: I.CatchupData<Val>[], res: a
   return result
 }
 
-
+// TODO: Change this API to have the routes passed in at construction time.
 export default function router<Val>(): Router<Val> {
   // The routes list is kept sorted in order of frontend ranges
   const routes: Route[] = []
@@ -421,6 +421,7 @@ export default function router<Val>(): Router<Val> {
   return {
     // Note the storeinfo will change as more stores are added.
     storeInfo: {
+      uid: `router(UNKNOWN)`, // TODO: Depend on routes to generate this!!!
       sources,
       capabilities: {
         queryTypes: new Set<I.QueryType>(['kv', 'static range']),

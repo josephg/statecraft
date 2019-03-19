@@ -4,6 +4,7 @@ import * as I from '../interfaces'
 export default function splitWrites<Val>(readStore: I.Store<Val>, writeStore: I.Store<Val>): I.Store<Val> {
   return {
     storeInfo: {
+      uid: readStore.storeInfo.uid, // TODO: Is this ok?
       sources: readStore.storeInfo.sources,
       capabilities: {
         queryTypes: readStore.storeInfo.capabilities.queryTypes,

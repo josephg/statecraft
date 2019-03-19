@@ -111,7 +111,7 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
   })()
 
   const store = await storeP
-  console.log('Connected to websocket server', wsurl)
+  console.log('Connected to websocket server', wsurl, 'storeid', store.storeInfo.uid)
 
   if (config.initialValue == null) {
     console.log('Creating the document on the server...')

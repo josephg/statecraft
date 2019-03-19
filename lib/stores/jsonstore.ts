@@ -93,6 +93,7 @@ const fileStore = <Val>(filename: string, sourceIn?: string): I.SimpleStore<Val>
 
   const store: I.SimpleStore<Val> = {
     storeInfo: {
+      uid: `file(${source})`, // Not putting the filename in here because it could be sensitive
       capabilities,
       sources: [source],
     },
