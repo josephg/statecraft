@@ -8,7 +8,6 @@ import {vRangeTo} from '../version'
 import subValues, { subResults } from '../subvalues'
 
 import kvMem from './kvmem'
-import augment from '../augment'
 import sel from '../sel'
 import opmem from './opmem'
 import Set2 from 'set2'
@@ -62,7 +61,7 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
   
   // This is awful - its pulling everything into memory. But it should be
   // correct at least, as a POC.
-  const results = await backend.fetch({type: 'allkv', q:true})
+  const results = await backend.fetch({type: I.QueryType.AllKV, q:true})
   console.log(results)
 
   // This just straight out contains the entire backend. bleh.
@@ -145,7 +144,7 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
     readonly: true,
   })
 
-  const sub = backend.subscribe({type: 'allkv', q: true}, {
+  const sub = backend.subscribe({type: I.QueryType.AllKV, q: true}, {
     fromVersion: vRangeTo(results.versions),
     supportedTypes: new Set(['rm', 'set']),
   })
@@ -202,14 +201,14 @@ const gqlmr = async (backend: I.Store<any>, opts: GQLMROpts): Promise<I.Store<an
       // console.log('usedby', usedBy)
       if (txn.size) {
         // console.log('gqlmr txn', txn)
-        frontOps.internalDidChange('kv', txn, {}, toVersion[0]!)
+        frontOps.internalDidChange(I.ResultType.KV, txn, {}, toVersion[0]!)
       }
       // This is janky because we aren't handing versions correctly. We should
       // validate that the version >= the sub version in this txn result.
     }
   })()
 
-  return augment(frontend)
+  return frontend
 }
 
 export default gqlmr

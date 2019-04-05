@@ -6,7 +6,6 @@ import http from 'http'
 import {wrapWebSocket} from '../../lib/net/wsserver'
 import kvMem from '../../lib/stores/kvmem'
 // import singleMem, {setSingle} from '../../lib/stores/singlemem'
-import augment from '../../lib/augment'
 import connectMux, { BothMsg } from '../../lib/net/clientservermux'
 import subValues from '../../lib/subvalues'
 import { rmKV, setKV } from '../../lib/kv';
@@ -22,7 +21,7 @@ process.on('unhandledRejection', err => {
   // type DbVal = {[id: string]: Pos}
 
   // The store is a kv store mapping from client ID (incrementing numbers) => latest position.
-  const store = augment(await kvMem<Pos>())
+  const store = await kvMem<Pos>()
 
   const app = express()
   app.use(express.static(`${__dirname}/public`))
@@ -40,7 +39,7 @@ process.on('unhandledRejection', err => {
 
     // console.log(id, 'info', remoteStore.storeInfo)
     console.log(id, 'client connected')
-    const sub = remoteStore.subscribe({type: 'single', q: true})
+    const sub = remoteStore.subscribe({type: I.QueryType.Single, q: true})
 
     reader.onClose = () => {
       console.log(id, 'client gone')
@@ -49,7 +48,7 @@ process.on('unhandledRejection', err => {
       rmKV(store, id)
     }
 
-    for await (const val of subValues('single', sub)) {
+    for await (const val of subValues(I.ResultType.Single, sub)) {
       // console.log(id, 'cu', val)
       // await setKV(store, id, {x: val.x, y: val.y})
       await setKV(store, id, val)

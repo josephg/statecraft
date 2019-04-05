@@ -13,7 +13,7 @@ const wait = (timeout: number) => new Promise(resolve => setTimeout(resolve, tim
 // - stopped
 type Status = string
 
-const reconnector = <Val>(connect: (() => Promise<[TinyReader<N.SCMsg>, TinyWriter<N.CSMsg>]>)): [I.SimpleStore<Status>, Promise<I.Store<Val>>] => {
+const reconnector = <Val>(connect: (() => Promise<[TinyReader<N.SCMsg>, TinyWriter<N.CSMsg>]>)): [I.Store<Status>, Promise<I.Store<Val>>] => {
   // This is a tiny store that the client can use to track & display whether
   // or not we're currently connected. Ite tempting to make a metastore be a
   // default feature.

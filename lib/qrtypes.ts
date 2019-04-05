@@ -35,32 +35,32 @@ const mapSetKeys = <T, R>(q: Set<T>, fn: (k: T, i: number) => R | null): Set<R> 
 
 
 const nyi = () => {throw Error('Not implemented')}
-export const queryTypes: {[name: string]: I.QueryOps<any>} = {}
-const registerQuery = (name: I.QueryType, resultType: I.ResultOps<any, any, I.Txn<any>>, fields: PartialQueryOPs = {}) => {
-  queryTypes[name] = {
+export const queryTypes: I.QueryOps<any>[] = []
+const registerQuery = (type: I.QueryType, resultType: I.ResultOps<any, any, I.Txn<any>>, fields: PartialQueryOPs = {}) => {
+  queryTypes[type] = {
     // createEmpty: () => null,
     toJSON: id, fromJSON: id,
     adaptTxn: id,
     composeCR: nyi,
     // fetchToReplace: defaultReplaceAll,
-    fetchToReplace: (q, data) => ({q: {type: name, q}, with: data}),
+    fetchToReplace: (q, data) => ({q: {type, q}, with: data}),
     updateQuery: (q, op) => op,
     ...fields,
-    name,
+    type,
     resultType,
   }
 }
 
 // The query is a placeholder. The value is just a single field that you can
 // mutate directly.
-registerQuery('single', field, {
+registerQuery(I.QueryType.Single, field, {
   composeCR(a, b) {
     return b
   },
 })
 
 // The query is a placeholder and the resulting value is a KV map of key -> value.
-registerQuery('allkv', resultmap, {
+registerQuery(I.QueryType.AllKV, resultmap, {
   // createEmpty: () => new Set<I.Key>(),
   mapKeys: mapSetKeys,
   composeCR(a, b) {
@@ -70,7 +70,7 @@ registerQuery('allkv', resultmap, {
 })
 
 // The query is a set of keys. The results are a KV map from key -> value.
-registerQuery('kv', resultmap, {
+registerQuery(I.QueryType.KV, resultmap, {
   // createEmpty: () => new Set<I.Key>(),
   toJSON(s) { return Array.from(s) },
   fromJSON(data) { return new Set(data) },
@@ -146,11 +146,11 @@ const mapRangeKeys = (q: I.RangeQuery, fn: (k: I.Key, i: number) => I.Key | null
 }
 
 type CatchupRangeReplace<Val> = I.CatchupReplace<Val, {
-  type: 'static range',
+  type: I.QueryType.StaticRange,
   q: I.StaticRangeQuery[]
 }, I.RangeResult<Val>[]>
 
-registerQuery('static range', range, {
+registerQuery(I.QueryType.StaticRange, range, {
   // createEmpty: (q) => new Array(q.length),
   mapKeys: mapRangeKeys,
   adaptTxn: adaptTxnToRange,
@@ -174,7 +174,7 @@ registerQuery('static range', range, {
     return {
       // I'm wrapping each item in a list for a good but frustrating reason; but I can't
       // for the life of me remember why now :(
-      q: {type: 'static range', q: q.map(x => [x])},
+      q: {type: I.QueryType.StaticRange, q: q.map(x => [x])},
       with: data.map(x => [x])
     }
   },
@@ -201,7 +201,7 @@ registerQuery('static range', range, {
   },
 })
 
-registerQuery('range', range, {
+registerQuery(I.QueryType.Range, range, {
   // createEmpty: (q) => new Array(q.length),
   mapKeys: mapRangeKeys,
   adaptTxn: () => {
@@ -212,17 +212,17 @@ registerQuery('range', range, {
 
   fetchToReplace<Val>(q: I.RangeQuery, data: I.RangeResult<Val>) {
     return {
-      q: {type: 'static range', q: q.map(x => [x])},
+      q: {type: I.QueryType.StaticRange, q: q.map(x => [x])},
       with: data.map(x => [x])
     }
   },
 })
 
-export const resultTypes: {[name: string]: I.ResultOps<any, any, I.Txn<any>>} = {
-  single: field,
-  kv: resultmap,
-  range,
-}
+export const resultTypes: I.ResultOps<any, any, I.Txn<any>>[] = []
+// It'd be nice if there was syntax for this.
+resultTypes[I.ResultType.Single] = field
+resultTypes[I.ResultType.KV] = resultmap
+resultTypes[I.ResultType.Range] = range
 
 export const wrapQuery = (type: I.QueryType, data: I.QueryData): I.Query => (
   {type, q: data} as I.Query

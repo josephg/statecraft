@@ -15,7 +15,7 @@ const mapTxnWithPair = <Val>(type: I.ResultType, a: I.Txn<Val>, b: I.Txn<Val>, f
       else result.set(k, av)
     }
     return result
-  } else if (type === 'single') {
+  } else if (type === I.ResultType.Single) {
     return fn(a as I.Op<Val>, b as I.Op<Val>)
   } else {
     throw new err.UnsupportedTypeError('Type ' + type + ' not supported by ot store')
@@ -58,7 +58,7 @@ const otStore = <Val>(inner: I.Store<Val> /*, filter: (key: I.Key) => boolean */
           // pretty rare in practice - basically the mutation type has to
           // match the type of the corresponding query. Which will basically
           // always be kv or single.
-          if (queryTypes[q.type].resultType.name !== type) throw Error(`Mismatched query types unsupported ${queryTypes[q.type].resultType.name} != ${type}`)
+          if (queryTypes[q.type].resultType.type !== type) throw Error(`Mismatched query types unsupported ${queryTypes[q.type].resultType.name} != ${type}`)
 
           // empty to version == all.
           const catchupVersions: I.FullVersionRange = versions.map(v => v == null ? null : {from: v, to: new Uint8Array()})

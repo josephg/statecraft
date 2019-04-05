@@ -51,7 +51,7 @@ const map = <In, Out>(inner: I.Store<In>, mapfn: MapFn<In, Out>, opts: MapOpts =
       capabilities: {
         // TODO: Filter these capabilities by the ones we support locally.
         queryTypes: inner.storeInfo.capabilities.queryTypes,
-        mutationTypes: new Set(), // You cannot mutate through the mapping.
+        mutationTypes: 0, // You cannot mutate through the mapping.
       },
     },
 
@@ -78,7 +78,7 @@ const map = <In, Out>(inner: I.Store<In>, mapfn: MapFn<In, Out>, opts: MapOpts =
       return Promise.reject(new err.UnsupportedTypeError('You cannot modify through a map fn'))
     },
 
-    async getOps(query, versions, opts): Promise<I.GetOpsResult> {
+    async getOps(query, versions, opts): Promise<I.GetOpsResult<Out>> {
       const r = await inner.getOps(query, versions, {
         ...opts,
         supportedTypes: supportedOpTypes,

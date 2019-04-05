@@ -1,6 +1,5 @@
 import 'mocha'
 import kvmem from '../lib/stores/kvmem'
-import augment from '../lib/augment'
 import runTests from './common'
 import assert from 'assert'
 
@@ -18,5 +17,5 @@ import assert from 'assert'
 // })
 
 describe('kvmem', () => {
-  runTests(() => kvmem().then(augment))
+  runTests(async () => kvmem<any>())
 })

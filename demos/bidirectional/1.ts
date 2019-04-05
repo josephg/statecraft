@@ -1,7 +1,6 @@
 import * as I from '../../lib/interfaces'
 import * as N from '../../lib/net/netmessages'
 import singleStore from '../../lib/stores/singlemem'
-import augment from '../../lib/augment'
 import {inspect} from 'util'
 
 import {TinyReader, TinyWriter, wrapReader, wrapWriter} from '../../lib/net/tinystream'
@@ -11,8 +10,8 @@ import connectMux from '../../lib/net/clientservermux'
 
 process.on('unhandledRejection', err => { throw err })
 
-const store1 = augment(singleStore('store1'))
-const store2 = augment(singleStore('store2'))
+const store1 = singleStore('store1')
+const store2 = singleStore('store2')
 
 const createPair = <T>(): [TinyReader<T>, TinyWriter<T>] => {
   const reader: TinyReader<T> = {buf: [], isClosed: false}
@@ -36,10 +35,10 @@ const [r2, w1] = createPair<BothMsg>()
 
   const [remoteStore2, remoteStore1] = await Promise.all([remoteStore2P, remoteStore1P])
 
-  console.log('store1', await remoteStore1.fetch({type: 'single', q:true}))
-  console.log('store2', await remoteStore2.fetch({type: 'single', q:true}))
+  console.log('store1', await remoteStore1.fetch({type: I.QueryType.Single, q:true}))
+  console.log('store2', await remoteStore2.fetch({type: I.QueryType.Single, q:true}))
 
-  const sub = remoteStore1.subscribe({type: 'single', q: true}, {})
+  const sub = remoteStore1.subscribe({type: I.QueryType.Single, q: true}, {})
   const results = await sub.next()
   console.log('initial', results.value)
   
@@ -49,7 +48,7 @@ const [r2, w1] = createPair<BothMsg>()
     }
   })()
 
-  const v = await remoteStore1.mutate('single', {type:'set', data: {x: 10}})
+  const v = await remoteStore1.mutate(I.ResultType.Single, {type:'set', data: {x: 10}})
   console.log('mutate run', v)
 
 })()

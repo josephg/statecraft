@@ -3,7 +3,7 @@
 import net from 'net'
 
 import * as I from '../../lib/interfaces'
-import {kvMem} from '../../lib/stores/kvmem'
+import kvMem from '../../lib/stores/kvmem'
 import subValues from '../../lib/subvalues'
 import { rmKV, setKV } from '../../lib/kv'
 import serve from '../../lib/net/tcpserver'

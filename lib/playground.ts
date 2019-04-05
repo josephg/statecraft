@@ -17,7 +17,6 @@ import lmdbStore from './stores/lmdb'
 import remoteStore from './stores/tcpclient'
 import poll from './stores/poll'
 import mapStore from './stores/map'
-import augment from './augment'
 import {inspect} from 'util'
 import {PClient, reconnecter} from 'prozess-client'
 import server from './net/tcpserver'
@@ -44,8 +43,8 @@ const ins = (x: any) => inspect(x, {depth: null, colors: true})
 // const sub = store.subscribe('allkv', new Set(['content']), {}, (type, txn, v) => {
 
 const testSingle = async () => {
-  const store = augment(singleStore(null))
-  const sub = store.subscribe({type: 'single', q: true}, {})
+  const store = singleStore(null)
+  const sub = store.subscribe({type: I.QueryType.Single, q: true}, {})
 
   const results = await sub.next()
   console.log('sub initial', results.value)
@@ -56,16 +55,16 @@ const testSingle = async () => {
     }
   })()
 
-  const v = await store.mutate('single', {type:'set', data: {x: 10}})
+  const v = await store.mutate(I.ResultType.Single, {type:'set', data: {x: 10}})
   console.log('mutate run', v)
 
-  const results2 = await store.fetch({type: 'single', q: true})
+  const results2 = await store.fetch({type: I.QueryType.Single, q: true})
   console.log('results', results2)
 }
 
 const testResultMap = async () => {
-  const store = augment(await kvStore())
-  const sub = store.subscribe({type: 'allkv', q: true}, {})
+  const store = await kvStore()
+  const sub = store.subscribe({type: I.QueryType.AllKV, q: true}, {})
 
   const results = await sub.next()
   console.log('sub initial', results.value)
@@ -77,25 +76,25 @@ const testResultMap = async () => {
   })()
 
   const txn = new Map([['x', {type:'set', data: {x: 10}}]])
-  const v = await store.mutate('kv', txn)
+  const v = await store.mutate(I.ResultType.KV, txn)
   console.log('mutate callback')
   console.log(v)
 
-  const r2 = await store.fetch({type: 'kv', q: new Set(['x'])})
+  const r2 = await store.fetch({type: I.QueryType.KV, q: new Set(['x'])})
   console.log(r2)
 }
 
 const testResultMap2 = async () => {
-  const store = augment(await kvStore())
+  const store = await kvStore()
   const txn = new Map([['x', {type:'set', data: {x: 10}}]])
-  const v = await store.mutate('kv', txn)
-  const r = await store.getOps!({type: 'allkv', q: true}, [{from:new Uint8Array(), to:new Uint8Array()}])
+  const v = await store.mutate(I.ResultType.KV, txn)
+  const r = await store.getOps!({type: I.QueryType.AllKV, q: true}, [{from:new Uint8Array(), to:new Uint8Array()}])
   console.log(r)
 }
 
 const toSel = (k: I.Key, isAfter: boolean = false, offset: number = 0) => ({k, isAfter, offset})
 const testRange = async () => {
-  const store = augment(await kvStore())
+  const store = await kvStore()
   const txn = new Map<I.Key, I.Op<any>>([
     // ['a', {type:'set', data: 0}],
     // ['b', {type:'set', data: 1}],
@@ -103,12 +102,12 @@ const testRange = async () => {
     // ['d', {type:'set', data: 3}],
     // ['e', {type:'set', data: 4}],
   ])
-  await store.mutate('kv', txn)
+  await store.mutate(I.ResultType.KV, txn)
 
   // When testing, check the invariant that if you send back the queryRun, you
   // should get the same result set.
   const q: I.Query = {
-    type: 'range',
+    type: I.QueryType.Range,
     q: [{
       low: toSel('a', true),
       // to: toSel('x'),
@@ -124,7 +123,7 @@ const testRange = async () => {
   const sub = store.subscribe(q, {supportedTypes: new Set(['set', 'rm'])})
 
   ;(async () => {
-    for await (const data of subValues('range', sub)) {
+    for await (const data of subValues(I.ResultType.Range, sub)) {
       console.log('data', data)
     }
   })()
@@ -135,8 +134,8 @@ const testRange = async () => {
   //   }
   // })()
 
-  // await store.mutate('kv', new Map([['c', {type: 'inc', data: 10}]]))
-  await store.mutate('kv', new Map([['c', {type: 'set', data: 10}]]))
+  // await store.mutate(I.ResultType.KV, new Map([['c', {type: 'inc', data: 10}]]))
+  await store.mutate(I.ResultType.KV, new Map([['c', {type: 'set', data: 10}]]))
 }
 
 const connectProzess = (): Promise<PClient> => new Promise((resolve, reject) => {
@@ -150,20 +149,24 @@ const testProzess = async () => {
   const client = await connectProzess()
   const store = prozessOps(client)
 
-  store.onTxn = (source, from, to, type, txn) => {
-    console.log('ontxn', source, from, to, type, txn)
-  }
+  const sub = store.subscribe({type: I.QueryType.AllKV, q: true})
+  ;(async () => {
+    for await (const cu of sub) {
+      console.log('cu', cu)
+    }
+  })
+
   const txn = new Map([['x', {type:'set', data: {x: 10}}]])
-  const v = await store.mutate('kv', txn, [new Uint8Array()])
+  const v = await store.mutate(I.ResultType.KV, txn, [new Uint8Array()])
   console.log('mutate cb', v)
 }
 
 const testLmdb = async () => {
   const client = await connectProzess()
 
-  const store = augment(await lmdbStore(prozessOps(client), process.argv[2] || 'testdb'))
+  const store = await lmdbStore(prozessOps(client), process.argv[2] || 'testdb')
 
-  const sub = store.subscribe({type:'kv', q:new Set(['x', 'q', 'y'])}, {})
+  const sub = store.subscribe({type:I.QueryType.KV, q:new Set(['x', 'q', 'y'])}, {})
   ;(async () => {
     for await (const data of sub) {
       console.log('subscribe data', inspect(data, false, 10, true))
@@ -177,17 +180,17 @@ const testLmdb = async () => {
   // const txn = new Map([['x', {type:'set', data: {ddd: (Math.random() * 100)|0}}]])
   // const txn = new Map([['q', {type:'set', data: (Math.random() * 100)|0}]])
   console.log('source', store.storeInfo.sources)
-  const v = await store.mutate('kv', txn, [new Uint8Array()])
+  const v = await store.mutate(I.ResultType.KV, txn, [new Uint8Array()])
   console.log('mutate cb', v)
 
-  const results = await store.fetch({type:'allkv', q: true})
+  const results = await store.fetch({type:I.QueryType.AllKV, q: true})
   console.log('fetch results', results)
 
   // store.close()
 }
 
 const listen = async () => {
-  const localStore = augment(await kvStore())
+  const localStore = await kvStore()
   server(localStore).listen(3334)
   console.log('listening on 3334')
 }
@@ -196,23 +199,23 @@ const testNet = async () => {
   await listen()
 
   const store = await remoteStore(3334, 'localhost')
-  const results = await store.fetch({type: 'kv', q:new Set(['x'])})
+  const results = await store.fetch({type: I.QueryType.KV, q:new Set(['x'])})
   console.log(results)
 }
 
 const setSingle = <Val>(k: I.Key, v: Val): I.KVTxn<Val> => new Map([[k, {type:'set', data: v}]])
 
 const testRouter = async () => {
-  const a = augment(await kvStore(new Map([['backa/x', 'yo']])))
-  const b = augment(await kvStore<string>())
+  const a = await kvStore(new Map([['backa/x', 'yo']]))
+  const b = await kvStore<string>()
 
   const store = router<string>()
   store.mount(a, 'a/', ALL, 'backa/', true)
   store.mount(b, 'b/', ALL, '', true)
 
-  const sub = store.subscribe({type: 'kv', q:new Set(['a/x', 'b/y'])}, {})
+  const sub = store.subscribe({type: I.QueryType.KV, q:new Set(['a/x', 'b/y'])}, {})
 
-  // const sub = a.subscribe({type: 'kv', q:new Set(['x'])}, {})
+  // const sub = a.subscribe({type: I.QueryType.KV, q:new Set(['x'])}, {})
   console.log('initial', (await sub.next()).value)
   ;(async () => {
     for await (const data of sub) {
@@ -221,18 +224,18 @@ const testRouter = async () => {
   })()
 
   // const txn = new Map([['x', {type:'set', data: {x: 10}}]])
-  const v = await a.mutate('kv', setSingle('x', 'hi'), [V64(0)])
+  const v = await a.mutate(I.ResultType.KV, setSingle('x', 'hi'), [V64(0)])
 }
 
 const testRouterRange = async () => {
-  const a = augment(await kvStore(new Map([['ab/x', 'a x'], ['ab/y', 'a y']])))
-  const c = augment(await kvStore(new Map([['x', 'c x'], ['y', 'c y']])))
+  const a = await kvStore(new Map([['ab/x', 'a x'], ['ab/y', 'a y']]))
+  const c = await kvStore(new Map([['x', 'c x'], ['y', 'c y']]))
 
   const store = router()
   store.mount(a, 'a/', ALL, 'ab/', true)
   store.mount(c, 'c/', ALL, '', true)
 
-  const q = {type: 'static range', q:[
+  const q = {type: I.QueryType.StaticRange, q:[
     {low: sel('a/x', true), high: sel('z'), reverse: true},
     // {from: sel('c'), to: sel('z')},
   ]} as I.Query
@@ -247,13 +250,13 @@ const testRouterRange = async () => {
       console.log('subscribe data', inspect(data, false, 10, true))
     }
   })()
-  const v = await a.mutate('kv', setSingle('y', 'hi'), [V64(0)])
+  const v = await a.mutate(I.ResultType.KV, setSingle('y', 'hi'), [V64(0)])
 }
 
 const testPoll = async () => {
-  const store = augment(await poll(() => Promise.resolve(Date.now())))
+  const store = await poll(() => Promise.resolve(Date.now()))
   
-  const sub = store.subscribe({type: 'single', q: true}, {})
+  const sub = store.subscribe({type: I.QueryType.Single, q: true}, {})
   console.log('initial', (await sub.next()).value)
   ;(async () => {
     for await (const data of sub) {
@@ -268,7 +271,7 @@ const retryTest = async () => {
 
   const client = await connectProzess()
   // const localStore = augment(await lmdbStore(prozessOps(client), process.argv[2] || 'testdb'))
-  const localStore = augment(await kvStore<number>())
+  const localStore = await kvStore<number>()
 
   // Using net to give it a lil' latency.
   // const s = server(localStore).listen(3334)
@@ -276,7 +279,7 @@ const retryTest = async () => {
 
   const store = localStore
 
-  await store.mutate('kv', setSingle('x', 0))
+  await store.mutate(I.ResultType.KV, setSingle('x', 0))
   // await db.set('x', numToBuf(0))
 
   let txnAttempts = 0
@@ -309,9 +312,9 @@ const getOps = async () => {
   const backend = await fdbStore<string>(fdbConn)
 
   // const backend = lmdbStore(
-  const store = augment(backend)
+  const store = backend
   const source = store.storeInfo.sources[0]
-  const ops = await store.getOps({type: 'kv', q:new Set(['asdf'])}, [{from: Buffer.alloc(0), to:  Buffer.alloc(0)}])
+  const ops = await store.getOps({type: I.QueryType.KV, q:new Set(['asdf'])}, [{from: Buffer.alloc(0), to:  Buffer.alloc(0)}])
 
   let doc: any = null
   ops.ops.forEach(o => {
@@ -328,10 +331,10 @@ const getOps = async () => {
 
 const txnSub = async () => {
   // const client = await connectProzess()
-  const store = augment(await kvStore<string | number>())
-  await store.mutate('kv', setSingle('ptr', 'x'))
-  await store.mutate('kv', setSingle('x', 0))
-  await store.mutate('kv', setSingle('y', 1))
+  const store = await kvStore<string | number>()
+  await store.mutate(I.ResultType.KV, setSingle('ptr', 'x'))
+  await store.mutate(I.ResultType.KV, setSingle('x', 0))
+  await store.mutate(I.ResultType.KV, setSingle('y', 1))
 
   const sub = txnSubscribe(store, async txn => {
     const ptr = await txn.get('ptr') as string
@@ -362,7 +365,7 @@ const txnSub = async () => {
       }
     })
 
-    store.mutate('kv', mut)
+    store.mutate(I.ResultType.KV, mut)
 
   }, 1000)
 }
@@ -375,8 +378,8 @@ const contentful = async () => {
 
   })
 
-  const store = augment(await kvStore(undefined, {inner: ops}))
-  const sub = store.subscribe({type: 'static range', q: [{
+  const store = await kvStore(undefined, {inner: ops})
+  const sub = store.subscribe({type: I.QueryType.StaticRange, q: [{
     low: sel(''),
     // low: sel('post/'),
     high: sel('post/\xff'),
@@ -384,13 +387,13 @@ const contentful = async () => {
   // for await (const r of sub) {
   //   console.log('results', ins(r))
   // }
-  for await (const r of subValues('range', sub)) {
+  for await (const r of subValues(I.ResultType.Range, sub)) {
     console.log('results', ins(r))
   }
 }
 
 const reproMapRouterBug = async () => {
-  const a = augment(await kvStore(new Map([['backend/x', 'a x'], ['ab/y', 'a y']])))
+  const a = await kvStore(new Map([['backend/x', 'a x'], ['ab/y', 'a y']]))
   const m = mapStore(a, s => 'map ' + s)
 
   const r = router()
@@ -398,8 +401,8 @@ const reproMapRouterBug = async () => {
   r.mount(a, 'f raw/', ALL, 'backend/', true)
 
   ;(async () => {
-    const sub = r.subscribe({type: 'static range', q: [{low: sel('f'), high: sel('f\xff')}]})
-    // const sub = r.subscribe({type: 'kv', q: new Set(['f mapped/x', 'f raw/x'])})
+    const sub = r.subscribe({type: I.QueryType.StaticRange, q: [{low: sel('f'), high: sel('f\xff')}]})
+    // const sub = r.subscribe({type: I.QueryType.KV, q: new Set(['f mapped/x', 'f raw/x'])})
     for await (const cu of sub) {
       console.log('cu', cu)
     }

@@ -89,6 +89,7 @@ const id = <T>(x: T) => x
 
 const type: I.ResultOps<Val, I.RangeResult<Val>, I.RangeTxn<Val>> = {
   name: 'range',
+  type: I.ResultType.Range,
 
   create(data) {
     if (data == null) return []
@@ -171,7 +172,7 @@ const type: I.ResultOps<Val, I.RangeResult<Val>, I.RangeTxn<Val>> = {
       snap[i].forEach(([k]) => keys.add(k))
     }
 
-    return {type: 'kv', q: keys}
+    return {type: I.QueryType.KV, q: keys}
   },
 
   filterSupportedOps(op, values, supportedTypes) {
@@ -191,7 +192,7 @@ const type: I.ResultOps<Val, I.RangeResult<Val>, I.RangeTxn<Val>> = {
   updateResults<Val>(snapshot: I.RangeResult<Val>, _q: I.ReplaceQuery, data: I.RangeResult<Val>[]) {
     // console.log('updateResults', snapshot, _q, data)
 
-    if (_q.type !== 'static range') throw new TypeError('Invalid data type in updateResults: ' + _q.type)
+    if (_q.type !== I.QueryType.StaticRange) throw new TypeError('Invalid data type in updateResults: ' + _q.type)
     const q = _q.q
   
     // console.log('snap', ins(snapshot), ins(q), ins(data))

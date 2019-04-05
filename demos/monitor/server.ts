@@ -10,7 +10,6 @@ import net from 'net'
 
 import * as I from '../../lib/interfaces'
 import kvMem from '../../lib/stores/kvmem'
-import augment from '../../lib/augment'
 import subValues from '../../lib/subvalues'
 import { rmKV, setKV } from '../../lib/kv'
 import { connectToSocket } from '../../lib/stores/tcpclient'
@@ -30,7 +29,7 @@ process.on('unhandledRejection', err => {
     cpus?: CPU[]
   }
 
-  const store = augment(await kvMem<ClientInfo>())
+  const store = await kvMem<ClientInfo>()
 
   // 1. Setup the TCP server to listen for incoming clients
 
@@ -45,10 +44,10 @@ process.on('unhandledRejection', err => {
     let id: string | null = null
 
     const remoteStore = await connectToSocket<ClientInfo>(socket)
-    const sub = remoteStore.subscribe({type: 'single', q: true})
+    const sub = remoteStore.subscribe({type: I.QueryType.Single, q: true})
 
     let lastVal: ClientInfo | null = null
-    for await (const _val of subValues('single', sub)) {
+    for await (const _val of subValues(I.ResultType.Single, sub)) {
       const val = _val as ClientInfo
       val.ip = ip
       if (id == null) id = val.hostname

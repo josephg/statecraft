@@ -1,5 +1,6 @@
 import * as I from '../interfaces'
 import http from 'http'
+import { hasBit } from '../bit'
 
 const id = <T>(x: T) => x
 
@@ -25,7 +26,7 @@ const defaultOpts: HttpOpts = {
 // This function should really return an express / connect Router or
 // something.
 export default function handler<Val>(store: I.Store<Val>, optsIn?: HttpOpts) {
-  if (!store.storeInfo.capabilities.queryTypes.has('kv')) {
+  if (!hasBit(store.storeInfo.capabilities.queryTypes, I.QueryType.KV)) {
     throw Error('Httpserver needs kv support')
   }
 
@@ -35,7 +36,7 @@ export default function handler<Val>(store: I.Store<Val>, optsIn?: HttpOpts) {
 
   return async (req: http.IncomingMessage, res: http.ServerResponse) => {
     const key = opts.urlToKey!(req.url!)
-    const result = await store.fetch({type: 'kv', q: new Set([key])})
+    const result = await store.fetch({type: I.QueryType.KV, q: new Set([key])})
     const value = result.results.get(key)
     // console.log('key', key, 'value', value, result)
 

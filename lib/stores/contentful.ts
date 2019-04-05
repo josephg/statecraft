@@ -3,6 +3,9 @@ import * as I from '../interfaces'
 import {createClient, CreateClientParams, SyncCollection, Entry, Sys} from 'contentful'
 import { V64, vEq, vCmp, vInc } from '../version';
 import { getKV } from '../kv';
+import err from '../err'
+import makeOpCache from '../opcache'
+import SubGroup from '../subgroup'
 
 const CONTENT_TYPE_PREFIX = 'ContentType/'
 const stripLocale = (locale: string, obj: any | null) => (
@@ -30,31 +33,19 @@ const flattenFields = (locale: string, obj: Entry<any>): any => {
   return data
 }
 
-const createContentfulStore = (syncState: I.SimpleStore<any>, opts: {
+const createContentfulStore = (syncState: I.Store<any>, opts: {
   query?: any,
   source?: I.Source,
   // vStore: I.Store<
-} & CreateClientParams): I.OpStore<any> => {
+} & CreateClientParams): I.Store<any> => {
   console.log(opts)
   const client = createClient(opts)
   const source = opts.source || opts.space
   let closed = false
 
-  const store: I.OpStore<any> = {
-    storeInfo: {
-      uid: `cf(${source})`, // Could expose the contentful space ID here, but I don't wnat to leak it.
-      sources: [source],
-      capabilities: {
-        // TODO: Add support for mutation and querying through these APIs.
-        queryTypes: new Set(),
-        mutationTypes: new Set(),
-      }
-    },
-
-    mutate() {
-      throw new Error('Not implemented')
-    },
-
+  const opCache = makeOpCache<any>()
+  const subGroup = new SubGroup({
+    getOps: opCache.getOps, 
     async start(fv) {
       let version = V64(0)
       ;(async () => {
@@ -120,7 +111,7 @@ const createContentfulStore = (syncState: I.SimpleStore<any>, opts: {
             })
             
             if (deletedEntries.length) {
-              const types = (await syncState.fetch({type: 'kv', q: new Set(deletedEntries.map(e => CONTENT_TYPE_PREFIX + e.sys.id))})).results
+              const types = (await syncState.fetch({type: I.QueryType.KV, q: new Set(deletedEntries.map(e => CONTENT_TYPE_PREFIX + e.sys.id))})).results
               
               for (const e of deletedEntries) {
                 const contentType = types.get(CONTENT_TYPE_PREFIX + e.sys.id)
@@ -136,12 +127,13 @@ const createContentfulStore = (syncState: I.SimpleStore<any>, opts: {
             // console.log('txn', txn)
             // console.log('synctxn', syncTxn)
 
-            store.onTxn!(source, version, nextVersion, 'kv', txn, {})
+            opCache.onOp(0, version, nextVersion, I.ResultType.KV, txn, {})
+            subGroup.onOp(0, version, [{txn, meta: {}, versions: [nextVersion]}])
             
             // Ok, now update our sync state. Note that this happens *after* we
             // notify upstream. Ideally we would wait until the txn was
             // ingested before updating our sync state
-            await syncState.mutate('kv', syncTxn)
+            await syncState.mutate(I.ResultType.KV, syncTxn)
             version = nextVersion
           }
 
@@ -152,6 +144,29 @@ const createContentfulStore = (syncState: I.SimpleStore<any>, opts: {
 
       // We have a problem that versions are opaque strings.
       return [version]
+    }
+  })
+
+  const store: I.Store<any> = {
+    storeInfo: {
+      uid: `cf(${source})`, // Could expose the contentful space ID here, but I don't wnat to leak it.
+      sources: [source],
+      capabilities: {
+        // TODO: Add support for mutation and querying through these APIs.
+        queryTypes: 0,
+        mutationTypes: 0,
+      }
+    },
+
+    getOps: opCache.getOps,
+    subscribe: subGroup.create.bind(subGroup),
+
+    fetch() {
+      throw new err.UnsupportedTypeError()
+    },
+
+    mutate() {
+      throw new Error('Not implemented')
     },
 
     close() {}

@@ -30,6 +30,7 @@ const mapAsync = <In, Out>(input: Map<I.Key, In>, fn: (val: In, key: I.Key) => P
 type Val = any
 const type: I.ResultOps<Val, Map<I.Key, Val>, I.KVTxn<Val>> = {
   name: 'kv',
+  type: I.ResultType.KV,
 
   create(data) {
     return data instanceof Map ? data : new Map(data)
@@ -109,7 +110,7 @@ const type: I.ResultOps<Val, Map<I.Key, Val>, I.KVTxn<Val>> = {
   opFromJSON(data) { return new Map(data) },
 
   getCorrespondingQuery(snap) {
-    return {type: 'kv', q: new Set(snap.keys())}
+    return {type: I.QueryType.KV, q: new Set(snap.keys())}
   },
 
   filterSupportedOps(op, values: Map<I.Key, Val>, supportedTypes) {
@@ -120,7 +121,7 @@ const type: I.ResultOps<Val, Map<I.Key, Val>, I.KVTxn<Val>> = {
   },
 
   updateResults(s: Map<I.Key, Val>, q: I.ReplaceQuery, data: Map<I.Key, Val>) {
-    if (q.type === 'kv') {
+    if (q.type === I.QueryType.KV) {
       for (const k of q.q) {
         if (data.has(k)) s.set(k, data.get(k))
         else s.delete(k)

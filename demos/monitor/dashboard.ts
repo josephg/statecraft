@@ -1,9 +1,8 @@
-
+import * as I from '../../lib/interfaces'
 import reconnecter from '../../lib/stores/reconnectingclient'
 import {connect} from '../../lib/stores/wsclient'
 import subValues from '../../lib/subvalues'
-import augment from '../../lib/augment'
-import simpleValuesSingle from '../../lib/simplevalues'
+import subvalues from '../../lib/subvalues'
 
 import choo from 'choo'
 import html from 'choo/html'
@@ -49,7 +48,7 @@ const mainView = (state: any) => {
   const [statusStore, storeP] = reconnecter<ClientInfo>(() => connect(wsurl))
 
   ;(async () => {
-    for await (const status of simpleValuesSingle(statusStore)) {
+    for await (const status of subvalues(I.ResultType.Single, statusStore.subscribe({type:I.QueryType.Single, q:true}))) {
       console.log('status', status)
     }
   })()
@@ -61,7 +60,7 @@ const mainView = (state: any) => {
   app.use((state, emitter) => {
     state.machines = new Map()
     ;(async () => {
-      for await (const val of subValues('kv', store.subscribe({type: 'allkv', q: true}))) {
+      for await (const val of subValues(I.ResultType.KV, store.subscribe({type: I.QueryType.AllKV, q: true}))) {
         console.log('val', val)
         state.machines = val
         emitter.emit('render')

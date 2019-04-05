@@ -13,14 +13,17 @@ import err from '../err'
 import fs from 'fs'
 import chokidar from 'chokidar'
 import {V64, vEq, vInc, vCmp} from '../version'
+import { bitSet } from '../bit'
+import makeOpCache from '../opcache'
+import SubGroup from '../subgroup'
 
 const capabilities = {
-  queryTypes: new Set<I.QueryType>(['single']),
-  mutationTypes: new Set<I.ResultType>(['single']),
+  queryTypes: bitSet(I.QueryType.Single),
+  mutationTypes: bitSet(I.ResultType.Single),
   ops: <I.OpsSupport>'none',
 }
 
-const fileStore = <Val>(filename: string, sourceIn?: string): I.SimpleStore<Val> => {
+const fileStore = <Val>(filename: string, sourceIn?: string): I.Store<Val> => {
   const source: I.Source = sourceIn || filename
 
   // Try and load the file.
@@ -31,13 +34,33 @@ const fileStore = <Val>(filename: string, sourceIn?: string): I.SimpleStore<Val>
 
   const resolveFns: ((v: I.FullVersion) => void)[] = []
 
+  const fetch: I.FetchFn<Val> = (query, opts) => {
+    if (query.type !== I.QueryType.Single) return Promise.reject(new err.UnsupportedTypeError(`Unsupported query type ${query.type} to json store`))
+
+    return Promise.resolve({
+      results: data,
+      queryRun: query,
+      versions: [{from:version, to:V64(Date.now())}],
+    })
+  }
+
+  const opcache = makeOpCache<Val>()
+  // Set before store is returned.
+  let subGroup: SubGroup<Val> | null = null
+
   function onchange(v: I.Version) {
     console.log('file changed to', data, v)
     const oldVersion = version
     version = v
     resolveFns.forEach(cb => cb([version]))
     resolveFns.length = 0
-    store.onTxn && store.onTxn(source, oldVersion, version, 'single', {type: 'set', data}, {})
+    const txns: I.TxnWithMeta<Val>[] = [{
+      txn: {type: 'set', data},
+      meta: {},
+      versions: [version],
+    }]
+    opcache.onOp(0, oldVersion, version, I.ResultType.Single, txns[0].txn, txns[0].meta)
+    subGroup!.onOp(0, oldVersion, txns)
   }
 
   const tryReadFile = (create: boolean) => {
@@ -50,6 +73,7 @@ const fileStore = <Val>(filename: string, sourceIn?: string): I.SimpleStore<Val>
     if (fs.existsSync(filename)) {
       const newcontent = fs.readFileSync(filename, 'utf8')
       let newversion = V64(fs.statSync(filename).mtime.getTime())
+      if (subGroup == null) subGroup = new SubGroup({initialVersion: [newversion], fetch, getOps: opcache.getOps})
       try {
         // console.log('xxxx newcontent', newcontent)
         if (newcontent === strcontent && vEq(newversion, version)) return false
@@ -84,31 +108,19 @@ const fileStore = <Val>(filename: string, sourceIn?: string): I.SimpleStore<Val>
     }
   }
 
-  const watcher = chokidar.watch(filename).on('change', (path, stats) => {
-    console.log('watch fired', stats)
-    tryReadFile(false)
-  })
-
-  // watcher.on('error', err => console.error('Watcher error', err))
-
-  const store: I.SimpleStore<Val> = {
+  const store: I.Store<Val> = {
     storeInfo: {
       uid: `file(${source})`, // Not putting the filename in here because it could be sensitive
       capabilities,
       sources: [source],
     },
-    fetch(query, opts) {
-      if (query.type !== 'single') return Promise.reject(new err.UnsupportedTypeError(`Unsupported query type ${query.type} to json store`))
-
-      return Promise.resolve({
-        results: data,
-        queryRun: query,
-        versions: [{from:version, to:V64(Date.now())}],
-      })
-    },
+    
+    fetch,
+    getOps: opcache.getOps,
+    subscribe(q, opts) { return subGroup!.create(q, opts) },
 
     mutate(type, txn, versions, opts = {}) {
-      if (type !== 'single') return Promise.reject(new err.UnsupportedTypeError())
+      if (type !== I.ResultType.Single) return Promise.reject(new err.UnsupportedTypeError())
       const op = txn as I.Op<Val>
 
       const expectv = versions && versions[0]
@@ -138,7 +150,15 @@ const fileStore = <Val>(filename: string, sourceIn?: string): I.SimpleStore<Val>
       watcher.close()
     }
   }
+
   tryReadFile(true)
+
+  const watcher = chokidar.watch(filename).on('change', (path, stats) => {
+    // console.log('watch fired', stats)
+    tryReadFile(false)
+  })
+
+  // watcher.on('error', err => console.error('Watcher error', err))
 
   return store
 }

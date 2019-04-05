@@ -12,13 +12,9 @@ import errs, {errToJSON, errFromJSON} from '../err'
 
 // import {Readable, Writable} from 'stream'
 import assert from 'assert'
+import { hasBit } from '../bit';
 
-const capabilitiesToJSON = (c: I.Capabilities): any[] => {
-  return [
-    Array.from(c.queryTypes),
-    Array.from(c.mutationTypes)
-  ]
-}
+const capabilitiesToJSON = (c: I.Capabilities): any[] => [c.queryTypes, c.mutationTypes]
 
 const txnsWithMetaToNet = <Val>(type: I.ResultOps<any, any, I.Txn<Val>>, txns: I.TxnWithMeta<Val>[]): N.NetTxnWithMeta[] => (
   txns.map(txn => (<N.NetTxnWithMeta>[
@@ -78,7 +74,7 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
         const {ref, query: netQuery, opts} = (msg as N.FetchRequest)
         const query = queryFromNet(netQuery) as I.Query
         const qtype = query.type
-        if (!store.storeInfo.capabilities.queryTypes.has(qtype)) {
+        if (!hasBit(store.storeInfo.capabilities.queryTypes, qtype)) {
           return writeErr(ref, new errs.UnsupportedTypeError(`query type ${qtype} not supported in fetch`))
         }
 
@@ -104,7 +100,7 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
         const query = queryFromNet(netQuery) as I.Query
         const qtype = query.type
 
-        if (!store.storeInfo.capabilities.queryTypes.has(qtype)) {
+        if (!hasBit(store.storeInfo.capabilities.queryTypes, qtype)) {
           return writeErr(ref, new errs.UnsupportedTypeError(`query type ${qtype} not supported in getops`))
         }
 
@@ -127,7 +123,7 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
 
       case N.Action.Mutate: {
         const {ref, mtype, txn, v, opts} = <N.MutateRequest>msg
-        if (!store.storeInfo.capabilities.mutationTypes.has(mtype)) {
+        if (!hasBit(store.storeInfo.capabilities.mutationTypes, mtype)) {
           return writeErr(ref, new errs.UnsupportedTypeError(`mutation type ${mtype} not supported`))
         }
 
@@ -171,6 +167,7 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
                 a: N.Action.SubUpdate, ref,
                 txns: txnsWithMetaToNet(type.resultType, update.txns),
                 tv: fullVersionToNet(update.toVersion),
+                u: update.caughtUp,
               }
               if (update.replace) {
                 msg.q = queryToNet(update.replace.q)

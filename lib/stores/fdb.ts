@@ -17,7 +17,9 @@ import assert from 'assert'
 import debugLib from 'debug'
 import fieldOps from '../types/field'
 import {queryTypes} from '../qrtypes'
-import {V_EMPTY, vEq, vMax, vCmp} from '../version'
+import {vMax, vCmp} from '../version'
+import {bitSet, hasBit} from '../bit'
+import SubGroup from '../subgroup'
 
 // All system-managed keys are at 0x00___.
 
@@ -53,7 +55,6 @@ const OP_PREFIX = Buffer.from('\x00op', 'ascii')
 const START_KEY = Buffer.from('\x01', 'ascii')
 const END_KEY = Buffer.from('\xff', 'ascii')
 
-const BUF_EMPTY = Buffer.alloc(0)
 // const NULL_VERSION = new Uint8Array(10) //Buffer.alloc(10)
 const NULL_VERSION = Buffer.alloc(10)
 // const END_VERSION = (new Uint8Array(10)).fill(0xff)//Buffer.alloc(10, 0xff)
@@ -94,8 +95,12 @@ const kStoFDBSel = ({k, isAfter, offset}: I.KeySelector) => (
   keySelector(clamp(Buffer.from(k, 'utf8'), START_KEY, END_KEY), isAfter, (offset || 0) + 1)
 )
 
+const capabilities = {
+  queryTypes: bitSet(I.QueryType.AllKV, I.QueryType.KV, I.QueryType.StaticRange, I.QueryType.Range),
+  mutationTypes: bitSet(I.ResultType.KV),
+}
 
-export default async function fdbStore<Val>(_db?: Database): Promise<I.SimpleStore<Val>> {
+export default async function fdbStore<Val>(_db?: Database): Promise<I.Store<Val>> {
   // Does it make sense to prefix like this? Once the directory layer is in,
   // we'll use that instead.
   const rawDb = _db || openSync().at('SC')
@@ -117,6 +122,9 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.SimpleSto
       debug('Database was created - no config!')
       const source = genSource()
       tn.set(CONFIG_KEY, {sc_ver: 1, source})
+
+      // This shouldn't be necessary - but it simplifies the watch logic below.
+      tn.setVersionstampPrefixedValue(VERSION_KEY)
       return source
     } else {
       const {sc_ver, source:dbSource} = config
@@ -125,20 +133,178 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.SimpleSto
     }
   })
 
+  // Could fetch this in the config txn above.
+  let v0 = await rawDb.get(VERSION_KEY)
+
   // TODO: Consider implementing a base version so we can prune old operations
 
   let closed = false
   let cancelWatch: null | (() => void) = null
 
-  const capabilities = {
-    // queryTypes: new Set<I.QueryType>(['allkv', 'kv', 'static range', 'range']),
-    queryTypes: new Set<I.QueryType>(['allkv', 'kv', 'static range', 'range']),
-    mutationTypes: new Set<I.ResultType>(['kv']),
-  }
-
   // let mid = 0
 
-  const store: I.SimpleStore<Val> = {
+  const fetch: I.FetchFn<Val> = async (query, opts = {}) => {
+    if (!hasBit(capabilities.queryTypes, query.type)) throw new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`)
+
+    const qops = queryTypes[query.type]
+    let bakedQuery: I.Query | undefined
+    let maxVersion: Uint8Array | null = null
+    let results: I.ResultData<Val>
+
+    const vs = await rawDb.doTn(async rawTn => {
+      // This could be way cleaner.
+      const tn = rawTn.scopedTo(rawDb.withValueEncoding({
+        pack() {throw Error('Cannot write')},
+        unpack: unpackVersion
+      }))
+
+      switch (query.type) {
+        case I.QueryType.KV: {
+          results = new Map<I.Key, Val>()
+          await Promise.all(Array.from(query.q).map(async k => {
+            const result = await tn.get(k)
+            if (result) {
+              const [stamp, value] = result
+              if (value != null) results.set(k, opts.noDocs ? 1 : value)
+              maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
+            }
+          }))
+          break
+        }
+
+        case I.QueryType.AllKV: {
+          // TODO: Make this work with larger databases (>5mb). Currently
+          // this is trying to fetch the whole db contents using a single
+          // txn, which will cause problems if the database is nontrivial.
+
+          // There's a few strategies we could implement here:
+          //
+          // - Lean on fdb's MVCC implementation and create a series of
+          //   transactions at the same version
+          // - Use a series of transactions at incrementing versions, then
+          //   fetch all the operations in the range and run catchup on any
+          //   old data that was returned
+          // - Implement maxDocs and force the client to implement the 
+          //   iterative retry logic
+
+          // Whatever we do should also work on static ranges.
+
+          const resultsList = await tn.getRangeAll(START_KEY, END_KEY)
+          results = new Map<I.Key, Val>()
+          for (const [kbuf, [stamp, value]] of resultsList) {
+            results.set(kbuf.toString('utf8'), opts.noDocs ? 1 : value)
+            maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
+          }
+          break
+        }
+
+        case I.QueryType.StaticRange: {
+          // const q = query.q as I.RangeQuery
+          results = await Promise.all(query.q.map(async ({low, high, reverse}) => {
+            // This is so clean. Its almost like I designed statecraft with
+            // foundationdb in mind... ;)
+            return (await tn.getRangeAll(staticKStoFDBSel(low), staticKStoFDBSel(high), {reverse: reverse}))
+              .map(([kbuf, [stamp, value]]) => {
+                maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
+                return [kbuf.toString('utf8'), opts.noDocs ? 1 : value] as [I.Key, Val]
+              }) //.filter(([k, v]) => v != undefined)
+          }))
+          break
+        }
+
+        case I.QueryType.Range: {
+          // There's a bunch of ways I could write this, but a bit of copy + pasta is the simplest.
+          // bakedQuery = {type: 'static range', q:[]}
+          const baked: I.StaticRangeQuery = []
+          results = await Promise.all(query.q.map(async ({low, high, reverse, limit}, i) => {
+            // console.log('range results', (await tn.getRangeAll(kStoFDBSel(low), kStoFDBSel(high), {reverse: reverse, limit: limit})).length)
+            const vals = (await tn.getRangeAll(kStoFDBSel(low), kStoFDBSel(high), {reverse: reverse, limit: limit}))
+              .map(([kbuf, [stamp, value]]) => {
+                maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
+                // console.log('arr entry', [kbuf.toString('utf8'), value])
+                return [kbuf.toString('utf8'), opts.noDocs ? 1 : value] as [I.Key, Val]
+              }) //.filter(([k, v]) => v != undefined)
+
+            // Note: These aren't tested thoroughly yet. Probably a bit broken.
+            baked[i] = vals.length ? {
+              low: {k: reverse ? vals[vals.length-1][0] : vals[0][0], isAfter: !!reverse},
+              high: {k: reverse ? vals[0][0] : vals[vals.length-1][0], isAfter: !reverse},
+              reverse
+            } : {
+              low: {k: low.k, isAfter: low.isAfter},
+              high: {k: low.k, isAfter: low.isAfter},
+              reverse
+            }
+
+            // console.log('range ->', vals)
+            return vals
+          }))
+          // console.log('range query ->', results)
+          bakedQuery = {type: I.QueryType.StaticRange, q: baked}
+          break
+        }
+
+        default: throw new err.UnsupportedTypeError(`${query.type} not supported by fdb store`)
+      }
+
+      return rawTn.getVersionstampPrefixedValue(VERSION_KEY)
+    })
+
+    return {
+      bakedQuery,
+      results,
+      versions: [{
+        from: maxVersion || NULL_VERSION,
+        to: vs ? vs.stamp : NULL_VERSION
+      }]
+    }
+  }
+
+  const getOps: I.GetOpsFn<Val> = async (query, versions, opts = {}) => {
+    const qtype = query.type
+    const qops = queryTypes[qtype]
+
+    const limitOps = opts.limitOps || -1
+    const vOut: I.FullVersionRange = []
+
+    const reqV = versions[0]
+    if (reqV == null) return {ops: [], versions: []}
+    let {from, to} = reqV
+    if (from.length === 0) from = NULL_VERSION
+    if (to.length === 0) to = END_VERSION
+    if (typeof from === 'number' || typeof to === 'number') throw Error('Invalid version request')
+    if (vCmp(from, to) > 0) return {ops: [], versions: []}
+
+    // TODO: This will have some natural limit based on how big a
+    // transaction can be. Split this up across multiple transactions using
+    // getRangeBatch (we don't need write conflicts or any of that jazz).
+    const ops = await opDb.getRangeAll(
+      keySelector.firstGreaterThan(Buffer.from(from)),
+      keySelector.firstGreaterThan(Buffer.from(to))
+    )
+
+    const result = [] as I.TxnWithMeta<Val>[]
+
+    for (let i = 0; i < ops.length; i++) {
+      const [version, [txnArr, meta]] = ops[i]
+      // console.log('ops', version, txnArr, meta)
+      const txn = qops.adaptTxn(new Map<I.Key, I.Op<Val>>(txnArr), query.q)
+      // console.log('txn', txn)
+      if (txn != null) result.push({txn, meta, versions: [version]})
+    }
+
+    return {
+      ops: result,
+      versions: [{
+        from,
+        to: ops.length ? ops[ops.length-1][0] : from
+      }]
+    }
+  }
+
+  const subGroup = new SubGroup({initialVersion: [v0!], fetch, getOps})
+
+  const store: I.Store<Val> = {
     storeInfo: {
       uid: `fdb(${source})`, // TODO: Consider passing the database prefix (or something like it) in here.
       sources: [source],
@@ -146,7 +312,7 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.SimpleSto
     },
 
     async mutate(type, _txn, versions, opts = {}) {
-      if (type !== 'kv') throw new err.UnsupportedTypeError()
+      if (type !== I.ResultType.KV) throw new err.UnsupportedTypeError()
       const txn = _txn as I.KVTxn<Val>
 
       // const m = mid++
@@ -202,164 +368,9 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.SimpleSto
       return [vs]
     },
 
-    async fetch(query, opts = {}) {
-      if (!capabilities.queryTypes.has(query.type)) throw new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`)
-
-      const qops = queryTypes[query.type]
-      let bakedQuery: I.Query | undefined
-      let maxVersion: Uint8Array | null = null
-      let results: I.ResultData<Val>
-
-      const vs = await rawDb.doTn(async rawTn => {
-        // This could be way cleaner.
-        const tn = rawTn.scopedTo(rawDb.withValueEncoding({
-          pack() {throw Error('Cannot write')},
-          unpack: unpackVersion
-        }))
-
-        switch (query.type) {
-          case 'kv': {
-            results = new Map<I.Key, Val>()
-            await Promise.all(Array.from(query.q).map(async k => {
-              const result = await tn.get(k)
-              if (result) {
-                const [stamp, value] = result
-                if (value != null) results.set(k, opts.noDocs ? 1 : value)
-                maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
-              }
-            }))
-            break
-          }
-
-          case 'allkv': {
-            // TODO: Make this work with larger databases (>5mb). Currently
-            // this is trying to fetch the whole db contents using a single
-            // txn, which will cause problems if the database is nontrivial.
-
-            // There's a few strategies we could implement here:
-            //
-            // - Lean on fdb's MVCC implementation and create a series of
-            //   transactions at the same version
-            // - Use a series of transactions at incrementing versions, then
-            //   fetch all the operations in the range and run catchup on any
-            //   old data that was returned
-            // - Implement maxDocs and force the client to implement the 
-            //   iterative retry logic
-
-            // Whatever we do should also work on static ranges.
-
-            const resultsList = await tn.getRangeAll(START_KEY, END_KEY)
-            results = new Map<I.Key, Val>()
-            for (const [kbuf, [stamp, value]] of resultsList) {
-              results.set(kbuf.toString('utf8'), opts.noDocs ? 1 : value)
-              maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
-            }
-            break
-          }
-
-          case 'static range': {
-            // const q = query.q as I.RangeQuery
-            results = await Promise.all(query.q.map(async ({low, high, reverse}) => {
-              // This is so clean. Its almost like I designed statecraft with
-              // foundationdb in mind... ;)
-              return (await tn.getRangeAll(staticKStoFDBSel(low), staticKStoFDBSel(high), {reverse: reverse}))
-                .map(([kbuf, [stamp, value]]) => {
-                  maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
-                  return [kbuf.toString('utf8'), opts.noDocs ? 1 : value] as [I.Key, Val]
-                }) //.filter(([k, v]) => v != undefined)
-            }))
-            break
-          }
-
-          case 'range': {
-            // There's a bunch of ways I could write this, but a bit of copy + pasta is the simplest.
-            // bakedQuery = {type: 'static range', q:[]}
-            const baked: I.StaticRangeQuery = []
-            results = await Promise.all(query.q.map(async ({low, high, reverse, limit}, i) => {
-              // console.log('range results', (await tn.getRangeAll(kStoFDBSel(low), kStoFDBSel(high), {reverse: reverse, limit: limit})).length)
-              const vals = (await tn.getRangeAll(kStoFDBSel(low), kStoFDBSel(high), {reverse: reverse, limit: limit}))
-                .map(([kbuf, [stamp, value]]) => {
-                  maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
-                  // console.log('arr entry', [kbuf.toString('utf8'), value])
-                  return [kbuf.toString('utf8'), opts.noDocs ? 1 : value] as [I.Key, Val]
-                }) //.filter(([k, v]) => v != undefined)
-
-              // Note: These aren't tested thoroughly yet. Probably a bit broken.
-              baked[i] = vals.length ? {
-                low: {k: reverse ? vals[vals.length-1][0] : vals[0][0], isAfter: !!reverse},
-                high: {k: reverse ? vals[0][0] : vals[vals.length-1][0], isAfter: !reverse},
-                reverse
-              } : {
-                low: {k: low.k, isAfter: low.isAfter},
-                high: {k: low.k, isAfter: low.isAfter},
-                reverse
-              }
-
-              // console.log('range ->', vals)
-              return vals
-            }))
-            // console.log('range query ->', results)
-            bakedQuery = {type: 'static range', q: baked}
-            break
-          }
-
-          default: throw new err.UnsupportedTypeError(`${query.type} not supported by fdb store`)
-        }
-
-        return rawTn.getVersionstampPrefixedValue(VERSION_KEY)
-      })
-
-      return {
-        bakedQuery,
-        results,
-        versions: [{
-          from: maxVersion || NULL_VERSION,
-          to: vs ? vs.stamp : NULL_VERSION
-        }]
-      }
-    },
-
-    async getOps(query, versions, opts = {}) {
-      const qtype = query.type
-      const qops = queryTypes[qtype]
-
-      const limitOps = opts.limitOps || -1
-      const vOut: I.FullVersionRange = []
-
-      const reqV = versions[0]
-      if (reqV == null) return {ops: [], versions: []}
-      let {from, to} = reqV
-      if (from.length === 0) from = NULL_VERSION
-      if (to.length === 0) to = END_VERSION
-      if (typeof from === 'number' || typeof to === 'number') throw Error('Invalid version request')
-      if (vCmp(from, to) >= 0) return {ops: [], versions: []}
-
-      // TODO: This will have some natural limit based on how big a
-      // transaction can be. Split this up across multiple transactions using
-      // getRangeBatch (we don't need write conflicts or any of that jazz).
-      const ops = await opDb.getRangeAll(
-        keySelector.firstGreaterThan(Buffer.from(from)),
-        keySelector.firstGreaterThan(Buffer.from(to))
-      )
-
-      const result = [] as I.TxnWithMeta<Val>[]
-
-      for (let i = 0; i < ops.length; i++) {
-        const [version, [txnArr, meta]] = ops[i]
-        // console.log('ops', version, txnArr, meta)
-        const txn = qops.adaptTxn(new Map<I.Key, I.Op<Val>>(txnArr), query.q)
-        // console.log('txn', txn)
-        if (txn != null) result.push({txn, meta, versions: [version]})
-      }
-
-      return {
-        ops: result,
-        versions: [{
-          from,
-          to: ops.length ? ops[ops.length-1][0] : from
-        }]
-      }
-    },
+    fetch,
+    getOps,
+    subscribe: subGroup.create.bind(subGroup),
 
     close() {
       closed = true
@@ -373,7 +384,7 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.SimpleSto
       // running++
       // await new Promise(resolve => setTimeout(resolve, 1000))
 
-      let v0 = (await rawDb.get(VERSION_KEY)) || BUF_EMPTY
+      if (v0 == null) throw new Error('Inconsistent state - version key missing')
       // console.log('initial version', v0)
 
       while (!closed) {
@@ -388,6 +399,7 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.SimpleSto
           )
 
           // console.log('version', v0, version, ops)
+          const txns: I.TxnWithMeta<Val>[] = []
 
           for (let i = 0; i < ops.length; i++) {
             const [version, v] = ops[i]
@@ -395,14 +407,16 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.SimpleSto
 
             // console.log('v', v0, version)
             assert(vCmp(v0, version) < 0)
-            if (store.onTxn) store.onTxn(
-              source,
-              v0,
-              version,
-              'kv', new Map(op), meta)
-
-            v0 = version
+            txns.push({
+              txn: new Map(op),
+              meta,
+              versions: [version],
+            })
           }
+          
+          // console.log('subgroup', v0, '->', version, ops)
+          subGroup.onOp(0, v0, txns)
+          v0 = version
         }
 
         // If the store was closed between the top of the loop and this point

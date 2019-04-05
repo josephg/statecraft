@@ -6,14 +6,10 @@ import {resultTypes} from './qrtypes'
 export async function* subResults<Val>(type: I.ResultType, sub: I.Subscription<Val>) {
   const rtype = resultTypes[type]
   let last = rtype.create()
-  let versions: I.FullVersion = []
+  let versions: I.FullVersionRange = []
 
   for await (const update of sub) {
     // console.log('upd', update)
-    
-    update.toVersion.forEach((v, si) => {
-      if (v != null) versions[si] = v
-    })
 
     if (update.replace) {
       // TODO: Should we be pulling update.replace.versions in here?
@@ -21,13 +17,28 @@ export async function* subResults<Val>(type: I.ResultType, sub: I.Subscription<V
       // console.log('replace', last, update.replace)
       last = rtype.updateResults(last, update.replace.q, update.replace.with)
       // console.log('->', last)
+      update.replace.versions.forEach((v, si) => {
+        if (v != null) versions[si] = {from:v, to:v}
+      })
     }
-
+    
     for (const txn of update.txns) {
       // This is like this because I haven't implemented apply for range results
       if (rtype.applyMut) rtype.applyMut!(last, txn.txn)
       else (last = rtype.apply(last, txn.txn))
+
+      txn.versions.forEach((v, si) => {
+        // The version *must* exist already in versions.
+        if (v) versions[si]!.from = v
+      })
     }
+    
+    update.toVersion.forEach((v, si) => {
+      if (v != null) {
+        if (versions[si] == null) versions[si] = {from:v, to:v}
+        else versions[si]!.to = v
+      }
+    })
 
     yield {results: last!, versions, raw: update}
   }

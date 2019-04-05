@@ -1,6 +1,5 @@
 import 'mocha'
 import kvStore from '../lib/stores/kvmem'
-import augment from '../lib/augment'
 import createServer from '../lib/net/tcpserver'
 import connectStore from '../lib/stores/tcpclient'
 import runTests from './common'
@@ -13,8 +12,7 @@ import {AddressInfo} from 'net'
 // here. (Eg, version encoding bugs)
 describe('net', () => {
   const serverForStore = new WeakMap<I.Store<any>, any>()
-  runTests(() => new Promise((resolve, reject) => kvStore().then(s => {
-    const store = augment(s)
+  runTests(() => new Promise((resolve, reject) => kvStore().then(store => {
     const server = createServer(store)
     server.listen(0, () => {
       const port = (server.address() as AddressInfo).port

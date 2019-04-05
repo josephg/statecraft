@@ -3,7 +3,6 @@ import net from 'net'
 import os from 'os'
 
 import singleMem, {setSingle} from '../../lib/stores/singlemem'
-import augment from '../../lib/augment'
 import { serveToSocket } from '../../lib/net/tcpserver';
 
 process.on('unhandledRejection', err => {
@@ -21,7 +20,7 @@ type ClientInfo = {
   const port = process.env.PORT || 3003
   const host = process.env.HOST || 'localhost'
 
-  const localStore = augment(singleMem<ClientInfo | null>(null))
+  const localStore = singleMem<ClientInfo | null>(null)
 
   let listening = false
   const listen = async () => {

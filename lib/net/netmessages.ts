@@ -6,7 +6,7 @@ export type Ref = /*string |*/ number
 export type NetKVTxn = [I.Key, I.Op<any>][]
 export type NetTxn = I.SingleTxn<any> | NetKVTxn
 
-export type NetQuery = 'single' | 'allkv' | [I.QueryType, any]
+export type NetQuery = I.QueryType.Single | I.QueryType.AllKV | [I.QueryType, any]
 
 export type NetVersion = number[] // This makes me really sad. Not needed with msgpack; only for json.
 export type NetVersionRange = [NetVersion, NetVersion]
@@ -86,7 +86,7 @@ export interface HelloMsg {
   pv: number,
   uid: string,
   sources: I.Source[], // ??? TODO: Still not sure whether to allow unknown sources.
-  capabilities: any[]
+  capabilities: number[]
 }
 
 export interface FetchResponse {
@@ -128,6 +128,7 @@ export interface SubUpdate {
   q?: NetQuery, // active query diff
   r?: any, // replacement
   rv?: NetFullVersion,
+  u: boolean,
 
   txns: NetTxnWithMeta[], // updates on top of replacement
   

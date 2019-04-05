@@ -6,10 +6,9 @@ import binsearch from 'binary-search'
 import {vCmp, vEq} from './version'
 
 export interface OpCacheOpts {
-  readonly sources: I.Source[],
   readonly qtype?: I.QueryType,
   readonly maxTime?: number, // in milliseconds. 0 = ignore.
-  readonly maxNum?: number, // Max number of ops kept for each source. 0 = ignore
+  readonly maxNum?: number, // Max number of ops kept for each source. 0 = ignore. Defaults to 100.
 }
 
 interface OpsEntry<Val> {
@@ -21,26 +20,20 @@ interface OpsEntry<Val> {
 }
 const cmp = (item: OpsEntry<any>, v: I.Version) => vCmp(item.toV, v)
 
-const opcache = <Val>(opts: OpCacheOpts): {
-  onOp(source: I.Source, fromV: I.Version, toV: I.Version, type: I.ResultType, txn: I.Txn<Val>, meta: I.Metadata): void,
-  getOps: I.GetOpsFn,
+const opcache = <Val>(opts: OpCacheOpts = {}): {
+  onOp(sourceIdx: number, fromV: I.Version, toV: I.Version, type: I.ResultType, txn: I.Txn<Val>, meta: I.Metadata): void,
+  getOps: I.GetOpsFn<Val>,
 } => {
-  const maxNum = opts.maxNum || 0
+  const maxNum = opts.maxNum || 100
   const maxTime = opts.maxTime || 0
   // List is sorted in order and accessed using binary search.
 
   // source => list of ops entries sorted by version
-  const opsForSource: OpsEntry<Val>[][] = new Array(opts.sources.length)
+  const opsForSource: OpsEntry<Val>[][] = []
 
-  const getOpsForSource = (source: I.Source) => {
-    const idx = opts.sources.indexOf(source)
-
-    // There might be times we want to silently ignore this error, but until
-    // we find them this code will throw.
-    if (idx < 0) throw Error('Cannot get ops for unknown source')
-
-    let ops = opsForSource[idx]
-    if (ops == null) opsForSource[idx] = ops = []
+  const getOpsForSource = (si: number) => {
+    let ops = opsForSource[si]
+    if (ops == null) opsForSource[si] = ops = []
     return ops
   }
 
@@ -103,7 +96,7 @@ const opcache = <Val>(opts: OpCacheOpts): {
           vTo = item.toV
           if (limitOps > 0 && --limitOps === 0) break
         }
-        if (vTo !== vFrom) vOut[si] = {from: vFrom, to: vTo}
+        /*if (vTo !== vFrom)*/ vOut[si] = {from: vFrom, to: vTo}
 
         if (limitOps === 0) break
       }

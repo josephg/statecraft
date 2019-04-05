@@ -8,6 +8,7 @@ import * as I from './interfaces'
 import fieldOps from './types/field'
 import {typeOrThrow} from './typeregistry'
 import genSource from './gensource'
+import { hasBit } from './bit';
 
 const xf = <Val, Op>(type: I.AnyOTType, client: Op | null, server: I.SingleOp<Val> | null): [Op | null, I.SingleOp<Val> | null] => {
   if (client == null || server == null) return [client, server]
@@ -56,8 +57,8 @@ const otDoc = async <Val, Op>(
     listener: (op: I.SingleOp<Val>, resultingVal: any) => void
 ) => {
   const capabilities = store.storeInfo.capabilities
-  if (!capabilities.queryTypes.has('single')
-      || !capabilities.mutationTypes.has('single')) {
+  if (!hasBit(capabilities.queryTypes, I.QueryType.Single)
+      || !hasBit(capabilities.mutationTypes, I.ResultType.Single)) {
     throw Error('Wrapped store does not support type')
   }
 
@@ -69,7 +70,7 @@ const otDoc = async <Val, Op>(
   if (!type.compose || !type.transform) throw Error('Missing compose / transform on your OT type')
 
   // TODO: knownDocs
-  const sub = store.subscribe({type: 'single', q: true}, {
+  const sub = store.subscribe({type: I.QueryType.Single, q: true}, {
     fromVersion: opts.initial
       ? (opts.initial.version instanceof Uint8Array
         ? vAtIdx(sourceId, opts.initial.version)
@@ -119,7 +120,7 @@ const otDoc = async <Val, Op>(
     inflightUid = idStem + (nextId++)
     // For now I'm assuming this doesn't fail.
     // TODO: Add metadata to this.
-    /*const resultingVersion =*/ await store.mutate('single',
+    /*const resultingVersion =*/ await store.mutate(I.ResultType.Single,
         {type: typeName, data: inflightTxn},
         vAtIdx(sourceId, version),
         {meta: {uid: inflightUid}}) // Returns the version # of our op

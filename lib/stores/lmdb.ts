@@ -15,6 +15,9 @@ import {vMax, vCmp} from '../version'
 
 import * as I from '../interfaces'
 import err from '../err'
+import { bitSet, hasBit } from '../bit'
+import SubGroup from '../subgroup'
+import resolvable from '../resolvable'
 
 const debug = debugLib('statecraft')
 const CONFIG_KEY = Buffer.from('\x01config')
@@ -30,7 +33,7 @@ const V_ZERO = new Uint8Array(8)
 
 // ... At some point it'll make sense for the caller to get more detailed notifications about catchup state.
 // For now the promise won't be called until catchup is complete.
-const lmdbStore = <Val>(inner: I.OpStore<Val>, location: string): Promise<I.SimpleStore<Val>> => {
+const lmdbStore = <Val>(inner: I.Store<Val>, location: string): Promise<I.Store<Val>> => {
   const env = new lmdb.Env()
 
   // console.log('inner', inner)
@@ -77,13 +80,14 @@ const lmdbStore = <Val>(inner: I.OpStore<Val>, location: string): Promise<I.Simp
   }
   debug('Opened database at version', version)
 
+  const ready = resolvable()
+  // const ready = inner.start!([version])
+
   // TODO: Generate these based on the opstore.
   const capabilities = {
-    queryTypes: new Set<I.QueryType>(['allkv', 'kv', 'static range', 'range']),
-    mutationTypes: new Set<I.ResultType>(['kv']),
-  }
-
-  const ready = inner.start!([version])
+    queryTypes: bitSet(I.QueryType.AllKV, I.QueryType.KV, I.QueryType.StaticRange, I.QueryType.Range),
+    mutationTypes: bitSet(I.ResultType.KV),
+  }  
 
   const decode = (bytes: Buffer | null): [Uint8Array, any] => {
     if (bytes == null) return [V_ZERO, null]
@@ -199,9 +203,8 @@ const lmdbStore = <Val>(inner: I.OpStore<Val>, location: string): Promise<I.Simp
       }
     }
 
-    return {low: lowBake, high: highBake, reverse}
-    
     cursor.close()
+    return {low: lowBake, high: highBake, reverse}
   }
 
   function *rangeContentIter(dbTxn: lmdb.Txn, {low, high, reverse}: I.StaticRange) {
@@ -222,7 +225,64 @@ const lmdbStore = <Val>(inner: I.OpStore<Val>, location: string): Promise<I.Simp
     cursor.close()
   }
 
-  const store: I.SimpleStore<Val> = {
+  const fetch: I.FetchFn<Val> = (query, opts = {}) => {
+    if (!hasBit(capabilities.queryTypes, query.type)) return Promise.reject(new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`))
+    const qops = queryTypes[query.type]
+    let bakedQuery: I.Query | undefined
+
+    const dbTxn = env.beginTxn({readOnly: true})
+
+    let results: I.ResultData<Val>
+    // KV txn. Query is a set of keys.
+    let maxVersion: I.Version
+
+    switch (query.type) {
+      case I.QueryType.KV:
+        results = new Map<I.Key, Val>()
+        maxVersion = getKVResults(dbTxn, query.q, opts, results)
+        break
+      case I.QueryType.AllKV:
+        results = new Map<I.Key, Val>()
+        maxVersion = getAllResults(dbTxn, opts, results)
+        break
+
+      case I.QueryType.Range:
+        bakedQuery = {type: I.QueryType.StaticRange, q: query.q.slice()}
+      case I.QueryType.StaticRange: {
+        const q = query.q as I.RangeQuery // | I.StaticRangeQuery
+        maxVersion = V_ZERO
+        results = q.map((range) => {
+          const staticRange = (query.type === I.QueryType.Range) ? bakeRange(dbTxn, range) : (range as I.StaticRange)
+          const docs = [] // A map might be nicer.
+          for (const [k, bytes] of rangeContentIter(dbTxn, staticRange)) {
+            const [lastMod, doc] = decode(bytes)
+            maxVersion = vMax(maxVersion, lastMod)
+            docs.push([k, doc])
+          }
+          return docs
+        })
+
+        break
+      }
+      default: throw new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`)
+    }
+      // = query.type === 'kv'
+      //  ? getKVResults(dbTxn, query.q, opts, results)
+      //  : getAllResults(dbTxn, opts, results)
+
+    dbTxn.abort()
+
+    // console.log('lmdb fetch', results, maxVersion, version)
+    return Promise.resolve({
+      bakedQuery,
+      results,
+      versions: [{from: maxVersion, to: version}]
+    })
+  }
+
+  const subGroup = new SubGroup({initialVersion: [version], fetch, getOps: inner.getOps.bind(inner)})
+
+  const store: I.Store<Val> = {
     storeInfo: {
       uid: `lmdb(${inner.storeInfo.uid})`, // TODO: Maybe just re-expose inner.storeinfo.uid? All kv wraps should be identical
       sources: [source],
@@ -231,10 +291,10 @@ const lmdbStore = <Val>(inner: I.OpStore<Val>, location: string): Promise<I.Simp
 
     async mutate(type, _txn, versions, opts = {}) {
       // TODO: Refactor this out by implementing internalDidChange
-      if (type !== 'kv') throw new err.UnsupportedTypeError()
+      if (type !== I.ResultType.KV) throw new err.UnsupportedTypeError()
       const txn = _txn as I.KVTxn<Val>
 
-      await ready
+      // await ready
 
       debug('mutate', txn)
 
@@ -266,119 +326,71 @@ const lmdbStore = <Val>(inner: I.OpStore<Val>, location: string): Promise<I.Simp
       // We know its valid at the current version, so we're ok to pass that here.
       const innerV = versions == null ? [version] : versions.slice()
       innerV[0] = version
-      const result = await inner.mutate('kv', txn, innerV, opts)
+      const result = await inner.mutate(I.ResultType.KV, txn, innerV, opts)
 
       debug('mutate cb', result)
       return result
     },
 
-    fetch(query, opts = {}) {
-      if (!capabilities.queryTypes.has(query.type)) return Promise.reject(new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`))
-      const qops = queryTypes[query.type]
-      let bakedQuery: I.Query | undefined
-
-      return ready.then(() => {
-        const dbTxn = env.beginTxn({readOnly: true})
-
-        let results: I.ResultData<Val>
-        // KV txn. Query is a set of keys.
-        let maxVersion: I.Version
-
-        switch (query.type) {
-          case 'kv':
-            results = new Map<I.Key, Val>()
-            maxVersion = getKVResults(dbTxn, query.q, opts, results)
-            break
-          case 'allkv':
-            results = new Map<I.Key, Val>()
-            maxVersion = getAllResults(dbTxn, opts, results)
-            break
-
-          case 'range':
-            bakedQuery = {type: 'static range', q: query.q.slice()}
-          case 'static range': {
-            const q = query.q as I.RangeQuery // | I.StaticRangeQuery
-            maxVersion = V_ZERO
-            results = q.map((range) => {
-              const staticRange = (query.type === 'range') ? bakeRange(dbTxn, range) : (range as I.StaticRange)
-              const docs = [] // A map might be nicer.
-              for (const [k, bytes] of rangeContentIter(dbTxn, staticRange)) {
-                const [lastMod, doc] = decode(bytes)
-                maxVersion = vMax(maxVersion, lastMod)
-                docs.push([k, doc])
-              }
-              return docs
-            })
-
-            break
-          }
-          default: throw new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`)
-        }
-         // = query.type === 'kv'
-         //  ? getKVResults(dbTxn, query.q, opts, results)
-         //  : getAllResults(dbTxn, opts, results)
-
-        dbTxn.abort()
-
-        return {
-          bakedQuery,
-          results,
-          versions: [{from: maxVersion, to: version}]
-        }
-      })
-    },
-
-    getOps: inner.getOps ? inner.getOps.bind(inner) : undefined,
+    fetch,
+    getOps: inner.getOps.bind(inner),
+    subscribe: subGroup.create.bind(subGroup),
 
     close() {
+      // close the lmdb database.
       dbi.close()
       env.close()
 
       // We take ownership, so this makes sense.
       inner.close()
-      // And close the lmdb database.
     },
   }
+  
+  ;(async () => {
+    for await (const cu of inner.subscribe({type: I.QueryType.AllKV, q: true}, {fromVersion: [version]})) {
+      if (cu.replace) throw new Error('Inner store replacing data is not implemented')
+      
+      let evtTxn = env.beginTxn()
+      let nextVersion = new Uint8Array()
 
-  // This is a hack. I really just want to make one transaction for
-  // efficiency, but onTxn will be called for each transaction in the block.
-  // So we'll make a txn and throw it away at the end of the event loop...
-  let evtTxn: lmdb.Txn | null = null
-  let nextVersion = new Uint8Array()
+      for (let i = 0; i < cu.txns.length; i++) {
+        const {txn, meta, versions} = cu.txns[i]
+        const toV = versions[0]
+        if (toV == null) throw new Error('Invalid catchup data - null version in txn')
 
-  inner.onTxn = (source, fromV, toV, type, txn, meta) => {
-    if (evtTxn == null) {
-      evtTxn = env.beginTxn()
-      process.nextTick(() => {
-        setVersion(evtTxn!, nextVersion)
-        evtTxn!.commit()
-        evtTxn = null
-      })
+        const txn_ = txn as I.KVTxn<Val>
+
+        for (const [k, op] of txn_) {
+          // const oldData = fieldOps.create(rawGet(dbTxn, k)[0], op)
+          const oldData = rawGet(evtTxn, k)[1]
+      
+          const newData = fieldOps.apply(oldData, op)
+          // console.log('updated key', k, 'from', oldData, 'to', newData)
+      
+          // I'm leaving an empty entry in the lmdb database even if newData is
+          // null so fetch will correctly report last modified versions.
+          // This can be stripped with a periodically updating baseVersion if
+          // thats useful.
+          evtTxn.putBinary(dbi, k, msgpack.encode([Buffer.from(toV), newData]))
+        }
+        // nextVersion = toV
+      }
+      nextVersion = cu.toVersion[0]!
+
+      // TODO: Consider setting subgroup minversion here.
+      
+      subGroup.onOp(0, version, cu.txns)
+
+      // console.log('setversion', nextVersion)
+      setVersion(evtTxn, nextVersion)
+      evtTxn.commit()
+
+      if (cu.caughtUp) ready.resolve()
     }
-
-    const txn_ = txn as I.KVTxn<Val>
-    // const view = new Map<I.Key, Val>()
-    for (const [k, op] of txn_) {
-      // const oldData = fieldOps.create(rawGet(dbTxn, k)[0], op)
-      const oldData = rawGet(evtTxn, k)[1]
-
-      const newData = fieldOps.apply(oldData, op)
-      // console.log('updated key', k, 'from', oldData, 'to', newData)
-
-      // I'm leaving an empty entry in the lmdb database even if newData is
-      // null so fetch will correctly report last modified versions.
-      // This can be stripped with a periodically updating baseVersion if
-      // thats useful.
-      evtTxn.putBinary(dbi, k, msgpack.encode([Buffer.from(toV), newData]))
-
-      // view.set(k, newData)
-    }
-    nextVersion = toV
-
-    if (store.onTxn) store.onTxn(source, fromV, toV, type, txn, meta)
-  }
+  })()
 
   return ready.then(() => store)
+  // return Promise.resolve(store)
 }
 
 export default lmdbStore

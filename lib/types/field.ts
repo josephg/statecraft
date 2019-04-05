@@ -1,4 +1,4 @@
-import {SingleOp, Op, ResultOps} from '../interfaces'
+import {QueryType, ResultType, SingleOp, Op, ResultOps} from '../interfaces'
 import {typeOrThrow, supportedTypes, typeRegistry} from '../typeregistry'
 
 function appendMut<Val>(a: Op<Val>, b: SingleOp<Val>) {
@@ -34,6 +34,7 @@ const apply2 = <T, R>(x: T, fn: (x: T, y: null) => R) => fn(x, null)
 
 const type: ResultOps<any, any, Op<any>> = {
   name: 'single',
+  type: ResultType.Single,
 
   create(data) {
     // Remember, this is creating a document.
@@ -113,7 +114,7 @@ const type: ResultOps<any, any, Op<any>> = {
   opFromJSON: id,
 
 
-  getCorrespondingQuery(data) { return {type: 'single', q: true} },
+  getCorrespondingQuery(data) { return {type: QueryType.Single, q: true} },
 
   filterSupportedOps(txn, view, supportedTypes) {
     if (Array.isArray(txn)) {

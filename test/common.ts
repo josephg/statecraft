@@ -3,7 +3,9 @@ import 'mocha'
 import assert from 'assert'
 import {queryTypes} from '../lib/qrtypes'
 import sel from '../lib/sel'
-import {vCmp, vDec} from '../lib/version'
+import {vCmp, vDec, V_EMPTY, vToRange} from '../lib/version'
+import {hasBit} from '../lib/bit'
+import {subResults} from '../lib/subvalues'
 import {inspect} from 'util'
 import {Console} from 'console'
 
@@ -49,7 +51,7 @@ const fullVersionSatisfies = (r1: I.FullVersion | I.FullVersionRange, r2: I.Full
 }
 
 const assertEqualResults = (actual: SimpleResult, expected: SimpleResult, strictVersionCheck: boolean = false) => {
-  // console.log('ev', expected.versions, 'av', actual.versions)
+  // console.log('ev', expected.versions, '\nav', actual.versions)
   // assert.deepStrictEqual(actual.versions, expected.versions)
   if (strictVersionCheck) assert.deepStrictEqual(actual.versions, expected.versions)
   else assert(fullVersionSatisfies(expected.versions, actual.versions))
@@ -72,19 +74,21 @@ const filter = <K, V>(orig: Map<K, V>, keep: Set<K>) => {
 const toKVMap = <T>(qtype: I.QueryType, keys: Set<I.Key>, m: Map<I.Key, T> | [I.Key, T][][]): Map<I.Key, T> => (
   !(m instanceof Map)
     ? new Map(flatMap(m, id))
-    : qtype === 'kv' ? m
+    : qtype === I.QueryType.KV ? m
     : filter(m, keys)
 )
 
+// let nextId = 1
 // Fetch using fetch() and through subscribe.
-const eachFetchMethod = async <Val>(store: I.Store<Val>, query: I.Query, keys: Set<I.Key>): Promise<SimpleResult<Val>> => {
+const eachFetchMethod = async <Val>(store: I.Store<Val>, query: I.Query, minVersion: I.FullVersion, keys: Set<I.Key>): Promise<SimpleResult<Val>> => {
   const qtype = query.type
-  assert(store.storeInfo.capabilities.queryTypes.has(qtype),
+  assert(hasBit(store.storeInfo.capabilities.queryTypes, qtype),
     `${qtype} queries not supported by store`)
 
+  // let id = nextId++
   const results: SimpleResult[] = await Promise.all([
     (async () => {
-      let {results, versions, bakedQuery} = await store.fetch(query)
+      let {results, versions, bakedQuery} = await store.fetch(query, {minVersion})
 
       if (bakedQuery) {
         const r2 = await store.fetch(bakedQuery)
@@ -92,45 +96,29 @@ const eachFetchMethod = async <Val>(store: I.Store<Val>, query: I.Query, keys: S
         // TODO: And versions?
       }
 
+      // console.log(id, 'fetch finished', versions)
       return {results: toKVMap(query.type, keys, results), versions}
     })(),
     // new Promise<SimpleResult>((resolve, reject) => {
     (async () => {
       const rtype = queryTypes[qtype].resultType
-      let r: any = rtype.create()
-
       const sub = store.subscribe(query, {supportedTypes: new Set()})
-
-      const versions: I.FullVersionRange = []
-
-      // We'll just pull off the first update.
-      const update = (await sub.next()).value!
-      // console.log('catchup update', qtype, rtype.name, ins(update))
-
-      if (update.replace) {
-        // console.log('r1', ins(r), ins(update))
-        r = rtype.updateResults(r, update.replace.q, update.replace.with)
-        // console.log('r2', ins(r))
-
-        // TODO: This behaviour should match subvalues.
-        const vs = update.replace.versions
-        vs.forEach((v, i) => {
-          if (v != null) versions[i] = {from: v, to: v}
-        })
-      }
-
-      update.txns.forEach(txn => {rtype.applyMut!(r, txn.txn)})
-
-      update.toVersion.forEach((v, i) => {
-        if (v != null) {
-          if (versions[i] != null) versions[i]!.to = v
-          else versions[i] = {from: v, to: v}
+      outer: for await (const {results, versions} of subResults(rtype.type!, sub)) {
+        for (let i = 0; i < minVersion.length; i++) {
+          const mv = minVersion[i]
+          if (mv && vCmp(versions[i]!.to, mv) < 0) {
+            console.log(id, 'waitting...', mv, versions)
+            continue outer
+          }
         }
-      })
-
-      sub.return()
-      // console.log(query.type, 'r', r)
-      return {results: toKVMap(query.type, keys, r), versions}
+        // console.log(id, 'sub finished')
+        // console.log('ok')
+        // Ok we're done.
+        sub.return()
+        // console.log(query.type, 'r', versions)
+        return {results: toKVMap(query.type, keys, results), versions}
+      }
+      throw Error('Subscription closed prematurely')
     })()
   ])
 
@@ -153,23 +141,22 @@ async function runAllKVQueries<T>(
     allowRange: boolean
     // checkEq: (a: T, b: T) => void
 ): Promise<T[]> {
-
-  assert(store.storeInfo.capabilities.queryTypes.has('kv'))
+  assert(hasBit(store.storeInfo.capabilities.queryTypes, I.QueryType.KV), 'Store does not support KV queries')
 
   // TODO: Add regular ranges here as well.
   // const promises = (['range'] as I.QueryType[])
-  const types: I.QueryType[] = ['kv', 'allkv', 'static range']
+  const types: I.QueryType[] = [I.QueryType.KV, I.QueryType.AllKV, I.QueryType.StaticRange]
   // const types: I.QueryType[] = []
-  if (allowRange) types.push('range')
+  if (allowRange) types.push(I.QueryType.Range)
 
-  const promises = types.filter(qtype => store.storeInfo.capabilities.queryTypes.has(qtype))
+  const promises = types.filter(qtype => hasBit(store.storeInfo.capabilities.queryTypes, qtype))
   .map(qtype => {
-    const query = qtype === 'static range' || qtype === 'range'
+    const query = qtype === I.QueryType.StaticRange || qtype === I.QueryType.Range
       ? Array.from(keys).map(k => ({
           low: sel(k, false),
           high: sel(k, true),
         }))
-      : qtype === 'kv' ? keys
+      : qtype === I.QueryType.KV ? keys
       : true
 
     return fn({type: qtype, q: query} as I.Query, keys)
@@ -184,13 +171,14 @@ async function runAllKVQueries<T>(
 async function assertKVResults<Val>(
     store: I.Store<Val>,
     keys: I.Key[],
+    minVersion: I.FullVersion,
     expectedVals: [I.Key, Val][],
     expectedVers?: I.FullVersion | I.FullVersionRange) {
 
   const results = await runAllKVQueries<SimpleResult<Val>>(
     store,
     new Set(keys),
-    (query, keys) => eachFetchMethod(store, query, keys),
+    (query, keys) => eachFetchMethod(store, query, minVersion, keys),
     true
   )
   // console.log('expected', ins(expectedVals), ins(expectedVers))
@@ -201,7 +189,7 @@ async function assertKVResults<Val>(
     // console.log('rv', r.versions)
     // console.log('ev', expectedVers)
     // if (expectedVers) console.log('satisfies', fullVersionSatisfies(expectedVers, r.versions))
-    if (expectedVers != null) assert(fullVersionSatisfies(expectedVers, r.versions))
+    if (expectedVers != null) assert(fullVersionSatisfies(expectedVers, r.versions), 'Version does not match')
   })
 
   // TODO: Then take the queryRun and pass it back into the store & check we
@@ -210,14 +198,14 @@ async function assertKVResults<Val>(
 }
 
 const getOpsBoth = async (store: I.Store<any>, keys: I.Key[], versions: I.FullVersionRange, opts: I.GetOpsOptions = {}) => {
-  const vals = await runAllKVQueries<I.GetOpsResult>(
+  const vals = await runAllKVQueries<I.GetOpsResult<any>>(
     store,
     new Set(keys),
     async (query, keys) => {
       let results = await store.getOps(query, versions, opts)
-      if (query.type === 'allkv') {
+      if (query.type === I.QueryType.AllKV) {
         results.ops.filter(txn => {
-          const txn_ = queryTypes.kv.adaptTxn(txn.txn, keys)
+          const txn_ = queryTypes[I.QueryType.KV].adaptTxn(txn.txn, keys)
           if (txn_ == null) return false
           else {
             txn.txn = txn_
@@ -265,20 +253,20 @@ const ssTxn = <Val>(k: I.Key, v: Val): I.KVTxn<Val> => new Map([[k, {type:'set',
 const setSingle = async <Val>(store: I.Store<Val>, key: I.Key, value: Val, versions: I.FullVersion = []): Promise<SingleVersion<I.Version>> => {
   // if (typeof versions === 'function') [versions, callback] = [{}, versions]
   const txn = ssTxn(key, value)
-  const vs = await store.mutate('kv', txn, versions, {})
+  const vs = await store.mutate(I.ResultType.KV, txn, versions, {})
   return splitSingleVersions(store, vs)
 }
 
 const delSingle = async (store: I.Store<any>, key: I.Key): Promise<SingleVersion<I.Version>> => {
   // if (typeof versions === 'function') [versions, callback] = [{}, versions]
   const txn = new Map([[key, {type:'rm'}]])
-  const vs = await store.mutate('kv', txn)
+  const vs = await store.mutate(I.ResultType.KV, txn)
   return splitSingleVersions(store, vs)
 }
 
 type SingleValue<Val = any> = {source: I.Source, version: I.VersionRange, value: Val}
 const getSingle = async <Val>(store: I.Store<Val>, key: I.Key, opts?: I.FetchOpts) => {
-  const r = await store.fetch({type:'kv', q:new Set([key])}, opts)
+  const r = await store.fetch({type:I.QueryType.KV, q:new Set([key])}, opts)
   const results = r.results as Map<I.Key, Val>
   assert(results.size <= 1)
 
@@ -292,7 +280,7 @@ const getSingle = async <Val>(store: I.Store<Val>, key: I.Key, opts?: I.FetchOpt
 
 const getVersionForKeys = async (store: I.Store<any>, _keys: I.Key[] | I.Key): Promise<SingleVersion<I.VersionRange>> => {
   const keys = Array.isArray(_keys) ? new Set(_keys) : new Set([_keys])
-  const {versions} = await store.fetch({type:'kv', q:keys}, {noDocs:true})
+  const {versions} = await store.fetch({type:I.QueryType.KV, q:keys}, {noDocs:true})
   return splitSingleVersions(store, versions)
 }
 
@@ -324,16 +312,16 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
 
     // Some simple sanity tests
     it('returns nothing when running an empty query', async function() {
-      await assertKVResults(this.store, [], [])
+      await assertKVResults(this.store, [], [], [])
     })
 
     it('returns nothing when fetching a nonexistant document', async function() {
-      await assertKVResults(this.store, ['doesnotexist'], [])
+      await assertKVResults(this.store, ['doesnotexist'], [], [])
     })
 
     it('can store things and return them', async function() {
       const txn = new Map([['a', {type:'set', data:'hi there'}]])
-      const vs = await (this.store as I.Store<any>).mutate('kv', txn, [], {})
+      const vs = await (this.store as I.Store<any>).mutate(I.ResultType.KV, txn, [], {})
 
       // The version we get back here should contain exactly 1 source with a
       // single integer version.
@@ -341,7 +329,7 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
 
       assert(Object.values(vs!)[0] instanceof Uint8Array)
 
-      await assertKVResults(this.store, ['a'], [['a', 'hi there']], vs!)
+      await assertKVResults(this.store, ['a'], vs, [['a', 'hi there']], vs!)
     })
 
     it('allows you to delete a key', async function() {
@@ -349,7 +337,7 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
       const v2 = (await delSingle(this.store, 'a')).version
       assert(vCmp(v2, v1) > 0)
 
-      const r = await getSingle(this.store, 'a')
+      const r = await getSingle(this.store, 'a', {minVersion: [v2]})
       const expected: SingleValue = {source: r.source, version: {from: v2, to: v2}, value: null}
 
       assert.deepStrictEqual(r, expected)
@@ -357,7 +345,7 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
 
     it('allows you to delete a nonexistant key', async function() {
       const {version} = await delSingle(this.store, 'a')
-      const r = await getSingle(this.store, 'a')
+      const r = await getSingle(this.store, 'a', {minVersion: [version]})
       assert.equal(r.value, null)
       assert.deepStrictEqual(version, r.version.from)
       assert.deepStrictEqual(version, r.version.to)
@@ -371,14 +359,14 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
       const v3 = (await setSingle(this.store, 'c', 3)).version
 
       assert(vCmp(v1, v2) < 0 && vCmp(v2, v3) < 0)
-      await assertKVResults(this.store, ['a'], [['a', 1]], sparseSV(source, this.store, {from:v1, to:v3}))
+      await assertKVResults(this.store, ['a'], [v3], [['a', 1]], sparseSV(source, this.store, {from:v1, to:v3}))
     })
 
     it('makes conflicting edits to the same key collide', async function() {
       // TODO: Make a parallel version of this function.
       const {source, version} = await getVersionForKeys(this.store, 'a')
       const v = version.to
-      assert(v >= new Uint8Array()) // The version should be defined - normally 0.
+      assert(vCmp(v, new Uint8Array()) > 0, 'Empty version in fetch') // The version should be defined - normally zeros.
 
       // Now set it. This should succeed...
       await setSingle(this.store, 'a', 1, sparseSV(source, this.store, v))
@@ -399,7 +387,7 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
 
     it('supports opts.noDocs in fetch', async function() {
       const v1 = (await setSingle(this.store, 'a', {some:'big object'})).version
-      const {value, version: v2} = await getSingle(this.store, 'a', {noDocs:true})
+      const {value, version: v2} = await getSingle(this.store, 'a', {noDocs:true, minVersion: [v1]})
 
       assert(value === true || value === 1, 'Store should not fetch document')
       assert.deepStrictEqual(v1, v2.to)
@@ -411,16 +399,16 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
     describe('object model', () => {
       it('a document that was never created does not appear in a kv result set', async function() {
         const store = (this as Context).store
-        if (!store.storeInfo.capabilities.queryTypes.has('kv')) this.skip()
+        if (!hasBit(store.storeInfo.capabilities.queryTypes, I.QueryType.KV)) this.skip()
 
 
-        const result = await store.fetch({type:'kv', q:new Set(['x'])})
+        const result = await store.fetch({type:I.QueryType.KV, q:new Set(['x'])})
         assert(!result.results.has('x'))
       })
 
       it('a document with value null does not appear in a kv result set', async function() {
         const store = (this as Context).store
-        if (!store.storeInfo.capabilities.queryTypes.has('kv')) this.skip()
+        if (!hasBit(store.storeInfo.capabilities.queryTypes, I.QueryType.KV)) this.skip()
 
         await setSingle(store, 'x', 123)
         await setSingle(store, 'x', null)
@@ -428,7 +416,7 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
         await setSingle(store, 'y', 321)
         await delSingle(store, 'y')
 
-        const result = await store.fetch({type:'kv', q:new Set(['x', 'y'])})
+        const result = await store.fetch({type:I.QueryType.KV, q:new Set(['x', 'y'])})
         assert.strictEqual(result.results.size, 0)
       })
 
@@ -469,7 +457,7 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
         this.allVersions = sparseSV(source, this.store, {from: vDec(this.v1), to: this.v4})
       })
 
-      const emptyOpsResult: I.GetOpsResult = Object.freeze({ops: [], versions: []})
+      const emptyOpsResult: I.GetOpsResult<any> = Object.freeze({ops: [], versions: []})
 
       it('returns an empty list when no versions are requested', async function() {
         const result = await getOpsBoth(this.store, ['a', 'b', 'c', 'd'], [])
@@ -478,11 +466,17 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
 
       it('returns an empty list for closed ranges', async function() {
         const result = await getOpsBoth(this.store, ['a', 'b', 'c', 'd'], sparseSV(this.source, this.store, {from:this.v1, to:this.v1}))
-        assert.deepStrictEqual(result, emptyOpsResult)
+        // TODO: I'm not sure if this should return [from:v1, to:v1] or just [].
+        assert.deepStrictEqual(result, {ops:[], versions: [{from:this.v1, to:this.v1}]})
+      })
+      
+      it('returns an empty list with the current version when the top of the range is unbounded', async function() {        
+        const result = await getOpsBoth(this.store, ['a', 'b', 'c', 'd'], sparseSV(this.source, this.store, {from:this.v4, to:V_EMPTY}))
+        assert.deepStrictEqual(result, {ops:[], versions: [{from:this.v4, to:this.v4}]})
       })
 
       it('gets all ops when the top range is unbound', async function() {
-        const result = await getOpsBoth(this.store, ['a', 'b'], sparseSV(this.source, this.store, {from:vDec(this.v1), to:new Uint8Array()}))
+        const result = await getOpsBoth(this.store, ['a', 'b'], sparseSV(this.source, this.store, {from:vDec(this.v1), to:V_EMPTY}))
         assert.deepStrictEqual(result.versions, this.allVersions)
         assert.deepStrictEqual(result.ops, this.expectedOps)
       })
@@ -518,7 +512,7 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
       })
 
       it('allows you to subscribe from the current version, specified explicitly', async function() {
-        const sub = (this.store as I.Store<any>).subscribe({type: 'kv', q: new Set(['a'])}, {fromVersion: sparseSV(this.source, this.store, this.v1)})
+        const sub = (this.store as I.Store<any>).subscribe({type: I.QueryType.KV, q: new Set(['a'])}, {fromVersion: sparseSV(this.source, this.store, this.v1)})
 
         // The first message will be a catchup, which should be empty.
         const {value: catchup} = await sub.next()
@@ -534,7 +528,7 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
       it('allows you to subscribe from the previous version, specified explicitly', async function() {
         const v2 = (await setSingle(this.store, 'a', 2)).version
 
-        const sub = (this.store as I.Store<any>).subscribe({type: 'kv', q: new Set(['a'])}, {fromVersion: sparseSV(this.source, this.store, this.v1)})
+        const sub = (this.store as I.Store<any>).subscribe({type: I.QueryType.KV, q: new Set(['a'])}, {fromVersion: sparseSV(this.source, this.store, this.v1)})
 
         // The first message will be a catchup, which should bring us to v2.
         const {value: catchup} = await sub.next()

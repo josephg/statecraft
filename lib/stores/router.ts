@@ -14,6 +14,7 @@ import {vIntersectMut, vEq, vSparse} from '../version'
 import sel from '../sel'
 import {vMax, vMin, vCmp} from '../version'
 import iterGuard from '../iterGuard'
+import { bitSet } from '../bit'
 
 // import {inspect} from 'util'
 // const ins = (x: any) => inspect(x, {depth: null, colors: true})
@@ -85,7 +86,7 @@ const mapVersionsBackToFront = <V>(versions: (V | null)[], sourceMap: number[]):
 }
 
 const mapKVResults = <T>(from: Map<I.Key, T>, routes: Map<I.Key, Route>): Map<I.Key, T> => (
-  resultTypes['kv'].mapEntries(from, (bk, v) => {
+  resultTypes[I.ResultType.KV].mapEntries(from, (bk, v) => {
     const route = (routes as Map<I.Key, Route>).get(bk!)
     return route == null ? null : [changePrefix(bk!, route.bPrefix, route.fPrefix), v]
   })
@@ -101,7 +102,7 @@ const mapRangeResults = <T>(from: [I.Key, T][][], routes: Route[]): [I.Key, T][]
 )
 
 const mapResults = <T>(qtype: I.QueryType, from: Map<I.Key, T> | [I.Key, T][][], routes: Map<I.Key, Route> | Route[]) => (
-  qtype === 'kv'
+  qtype === I.QueryType.KV
     ? mapKVResults(from as Map<I.Key, T>, routes as Map<I.Key, Route>)
     : mapRangeResults(from as [I.Key, T][][], routes as Route[])
 )
@@ -128,15 +129,15 @@ const mergeRangeResults = <T>(from: (T[][] | null)[], res: RangeRes): T[][] => (
 
 // const mergeResults = <T>(qtype: I.QueryType, from: (Map<I.Key, T> | null)[] | ([I.Key, T][][] | null)[], res: any, q: I.QueryData) => (
 const mergeResults = <T>(qtype: I.QueryType, from: (Map<I.Key, T> | [I.Key, T][][] | null)[], res: any) => (
-  qtype === 'kv' ? mergeKVResults(from as (Map<I.Key, T> | null)[])
+  qtype === I.QueryType.KV ? mergeKVResults(from as (Map<I.Key, T> | null)[])
     : mergeRangeResults(from as ([I.Key, T][][] | null)[], res)
 )
 
 
 const mapCRKeys = (qtype: I.QueryType, data: I.ReplaceQueryData, mapFn: (k: I.Key, i: number) => I.Key | null) => (
-  qtype === 'kv'
-    ? queryTypes['kv'].mapKeys!(data, mapFn)
-    : (data as I.StaticRangeQuery[]).map(r => queryTypes['static range'].mapKeys!(r, mapFn))
+  qtype === I.QueryType.KV
+    ? queryTypes[I.QueryType.KV].mapKeys!(data, mapFn)
+    : (data as I.StaticRangeQuery[]).map(r => queryTypes[I.QueryType.StaticRange].mapKeys!(r, mapFn))
 )
 
 // Consumes data. (It rewrites it in-place)
@@ -148,14 +149,14 @@ const mapCatchupMut = <Val>(data: I.CatchupData<Val>, qtype: I.QueryType, routes
     // fetches, but the data format for ranges is subtly different. What a
     // mess.
     data.replace.q.q = mapCRKeys(qtype, data.replace.q.q, (bk, i) => {
-      const route = qtype === 'kv'
+      const route = qtype === I.QueryType.KV
         ? (routes as Map<I.Key, Route>).get(bk)
         : (routes as Route[])[i]
       // TODO: Why would route be unset here?
       assert(route)
       return route ? changePrefix(bk, route.bPrefix, route.fPrefix) : null
     })
-    data.replace.with = qtype === 'kv'
+    data.replace.with = qtype === I.QueryType.KV
       ? mapResults(qtype, data.replace.with, routes)
       : (data.replace.with as [I.Key, Val][][][]).map(d => mapResults(qtype, d, routes))
 
@@ -201,7 +202,7 @@ const composeCatchupsMut = <Val>(qtype: I.QueryType, a: I.CatchupData<Val>, b: I
     }
 
     // Trim out any transaction data in a that has been replaced by b.
-    if (qtype === 'kv') {
+    if (qtype === I.QueryType.KV) {
       let i = 0
       while (i < a.txns.length) {
         const txn = (a.txns[i].txn as I.KVTxn<Val>)
@@ -243,14 +244,14 @@ const mergeRangeQueries = <T>(from: (I.StaticRange[][] | null)[], res: RangeRes)
 )
 
 const mergeQueries = <T>(qtype: I.QueryType, from: (Set<I.Key> | I.StaticRange[][] | null)[], res: any) => (
-  qtype === 'kv'
+  qtype === I.QueryType.KV
     ? mergeKVQueries(from as (Set<I.Key> | null)[])
     : mergeRangeQueries(from as (I.StaticRange[][] | null)[], res)
 )
 
 // const noopRange = (): I.StaticRange => ({from: sel(''), to: sel('')})
 const mergeCatchups = <Val>(qtype: I.QueryType, cd: I.CatchupData<Val>[], res: any): I.CatchupData<Val> => {
-  const result: I.CatchupData<Val> = {txns: [], toVersion: []}
+  const result: I.CatchupData<Val> = {txns: [], toVersion: [], caughtUp: false}
 
   // Check if any of the catchup data contains a replace block
   if (cd.reduce((v, cd) => !!cd.replace || v, false)) {
@@ -300,6 +301,8 @@ const mergeCatchups = <Val>(qtype: I.QueryType, cd: I.CatchupData<Val>[], res: a
       if (dv == null) result.toVersion[i] = src.toVersion[i]
       else if (!vEq(dv, src.toVersion[i]!)) throw Error('Subscription ops misaligned')
     }
+
+    if (src.caughtUp) result.caughtUp = true
   }
 
   return result
@@ -405,8 +408,8 @@ export default function router<Val>(): Router<Val> {
   }
 
   const splitQueryByStore = (q: I.Query): [ByStore[], any] => {
-    if (q.type === 'kv') return [splitKeysByStore(q.q), null]
-    else if (q.type === 'static range') return splitRangeQuery(q.q)
+    if (q.type === I.QueryType.KV) return [splitKeysByStore(q.q), null]
+    else if (q.type === I.QueryType.StaticRange) return splitRangeQuery(q.q)
     else throw new err.UnsupportedTypeError('Router only supports kv queries')
   }
 
@@ -424,8 +427,8 @@ export default function router<Val>(): Router<Val> {
       uid: `router(UNKNOWN)`, // TODO: Depend on routes to generate this!!!
       sources,
       capabilities: {
-        queryTypes: new Set<I.QueryType>(['kv', 'static range']),
-        mutationTypes: new Set<I.ResultType>(['kv']),
+        queryTypes: bitSet(I.QueryType.KV, I.QueryType.StaticRange),
+        mutationTypes: bitSet(I.ResultType.KV),
       }
     },
 
@@ -482,7 +485,7 @@ export default function router<Val>(): Router<Val> {
       // implementations.
 
       const {type: qtype, q} = query
-      if (qtype !== 'kv' && qtype !== 'static range') {
+      if (qtype !== I.QueryType.KV && qtype !== I.QueryType.StaticRange) {
         throw new err.UnsupportedTypeError('Invalid type in range query ' + qtype)
       }
 
@@ -511,7 +514,7 @@ export default function router<Val>(): Router<Val> {
 
     async getOps(query, queryVersions, opts) {
       const qtype = query.type
-      if (qtype !== 'kv' && qtype !== 'static range') throw new err.UnsupportedTypeError()
+      if (qtype !== I.QueryType.KV && qtype !== I.QueryType.StaticRange) throw new err.UnsupportedTypeError()
       const [byStore, res] = splitQueryByStore(query)
 
       let validRange: I.FullVersionRange = [] // Output valid version range
@@ -554,7 +557,7 @@ export default function router<Val>(): Router<Val> {
 
           // Destructively rewrite the keys in each op
           return <SingleTxnData>{
-            txn: qtype === 'kv'
+            txn: qtype === I.QueryType.KV
               ? mapKVResults(op.txn as I.KVTxn<Val>, routes as Map<I.Key, Route>)
               : mapRangeResults(op.txn as I.RangeTxn<Val>, routes as Route[]),
             v: op.versions[backSourceIdx],
@@ -617,7 +620,7 @@ export default function router<Val>(): Router<Val> {
       // console.log(id, 'q', q)
       
       const qtype = q.type
-      if (qtype !== 'kv' && qtype !== 'static range') {
+      if (qtype !== I.QueryType.KV && qtype !== I.QueryType.StaticRange) {
         throw new err.UnsupportedTypeError('Router only supports kv and static range queries')
       }
 
@@ -835,7 +838,7 @@ export default function router<Val>(): Router<Val> {
     // transactions is too hard / impossible with the current architecture.
     // We'll only allow transactions which hit one store.
     async mutate(type, fTxn, versions, opts) {
-      if (type !== 'kv') throw new err.UnsupportedTypeError('Only kv mutations supported')
+      if (type !== I.ResultType.KV) throw new err.UnsupportedTypeError('Only kv mutations supported')
       fTxn = fTxn as I.KVTxn<Val>
 
       let store = null
@@ -856,7 +859,7 @@ export default function router<Val>(): Router<Val> {
       }
 
       if (store == null) return []
-      else return store.mutate('kv', bTxn, versions, opts)
+      else return store.mutate(I.ResultType.KV, bTxn, versions, opts)
     },
     
     close() {

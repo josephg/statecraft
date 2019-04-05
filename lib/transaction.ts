@@ -7,6 +7,7 @@ import err from './err'
 import {vRangeTo, vToRange, vIntersectMut} from './version'
 import streamToIter, {AsyncIterableIteratorWithRet} from './streamToIter'
 import rtype from './types/map'
+import { hasBit } from './bit';
 
 export interface TxnOpts<Val> {
   readOnly?: boolean
@@ -25,7 +26,7 @@ export class Transaction<Val = any> {
 
   constructor(store: I.Store<Val>, opts: TxnOpts<Val>) {
     // Consider relaxing this constraint here and just letting things work themselves out
-    if (!store.storeInfo.capabilities.queryTypes.has('kv')) {
+    if (!hasBit(store.storeInfo.capabilities.queryTypes, I.QueryType.KV)) {
       throw new err.UnsupportedTypeError('transaction needs a kv store')
     }
     this._writeCache = new Map()
@@ -53,7 +54,7 @@ export class Transaction<Val = any> {
     // versions, then this is less efficient.
     // TODO: Eventually pass the requested version to fetch.
     const {results, versions} = await this._store.fetch(
-      {type:'kv', q:new Set([k])},
+      {type:I.QueryType.KV, q:new Set([k])},
       {atVersion: vRangeTo(this._v)}
     )
     const version = vIntersectMut(this._v, versions)
@@ -87,7 +88,7 @@ export class Transaction<Val = any> {
 
   async commit() {
     if (this._writeCache.size > 0) {
-      return this._store.mutate('kv', this._writeCache, vRangeTo(this._v), {
+      return this._store.mutate(I.ResultType.KV, this._writeCache, vRangeTo(this._v), {
         conflictKeys: Array.from(this.docsRead)
       })
     }
@@ -146,7 +147,7 @@ export const txnSubscribe = <Val, T>(store: I.Store<Val>, fn: (txn: Transaction<
 
     while (true) {
       // console.log('making sub', Array.from(txn.docsRead))
-      let sub = store.subscribe({type: 'kv', q: txn.docsRead}, {
+      let sub = store.subscribe({type: I.QueryType.KV, q: txn.docsRead}, {
         fromVersion: v,
         aggregate: 'yes',
       })
@@ -156,7 +157,7 @@ export const txnSubscribe = <Val, T>(store: I.Store<Val>, fn: (txn: Transaction<
         // console.log('catchup', catchup)
 
         if (catchup.replace) {
-          if (catchup.replace.q.type !== 'kv') throw new err.UnsupportedTypeError('only kv subscribe txns supported')
+          if (catchup.replace.q.type !== I.QueryType.KV) throw new err.UnsupportedTypeError('only kv subscribe txns supported')
           rtype.updateResults(cache, catchup.replace.q, catchup.replace.with)
         }
         catchup.txns.forEach(txn => {rtype.applyMut!(cache, txn.txn as I.KVTxn<Val>)})

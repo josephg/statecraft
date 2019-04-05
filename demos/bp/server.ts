@@ -1,6 +1,5 @@
 import * as I from '../../lib/interfaces'
 import lmdbStore from '../../lib/stores/lmdb'
-import augment from '../../lib/augment'
 import kvStore from '../../lib/stores/kvmem'
 import mapStore from '../../lib/stores/map'
 import router, {ALL} from '../../lib/stores/router'
@@ -42,7 +41,7 @@ const data = new Map<string, BPWorld>(
 // console.log(data)
 
 ;(async () => {
-  const rootStore = augment(await kvStore(data, {inner: opmem({source: 'rootstore'})}))
+  const rootStore = await kvStore(data, {inner: opmem({source: 'rootstore'})})
   const imgStore = mapStore(rootStore, (v, k) => {
     console.log('v', v)
     return Buffer.from(mod.convert(v.img, 8, 1, 2) as any)
@@ -76,7 +75,7 @@ const data = new Map<string, BPWorld>(
     // Try to answer request using a rendered statecraft store
     const key = url.parse(req.url).pathname!.slice(1)
     // console.log('key', key)
-    const result = await store.fetch({type: 'kv', q: new Set([key])})
+    const result = await store.fetch({type: I.QueryType.KV, q: new Set([key])})
     // console.log('result', result)
     let value = result.results.get(key)
     if (value == null) return next()
@@ -111,7 +110,7 @@ const data = new Map<string, BPWorld>(
   app.get('/:user/:key.json', async (req, res, next) => {
     const {user, key} = req.params
     const k = `world/${user}/${key}`
-    const result = await store.fetch({type: 'kv', q: new Set([k])})
+    const result = await store.fetch({type: I.QueryType.KV, q: new Set([k])})
     const value = result.results.get(k)
     if (value == null) return next()
     res.setHeader('x-sc-version', JSON.stringify(result.versions))
@@ -126,7 +125,7 @@ const data = new Map<string, BPWorld>(
   app.put('/:user/:key.json', async (req, res, next) => {
     const {user, key} = req.params
     const txn = new Map([[`world/${user}/${key}`, {type:'set', data: req.body.data}]])
-    const result = await store.mutate('kv', txn)
+    const result = await store.mutate(I.ResultType.KV, txn)
     console.log(result)
     res.end()
   })

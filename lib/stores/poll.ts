@@ -15,7 +15,7 @@ const wait = (timeout: number) => new Promise(resolve => setTimeout(resolve, tim
 // into...
 export default async function poller<Val>(
     poll: () => Promise<Val>,
-    opts: PollOpts = {}): Promise<I.SimpleStore<Val>> {
+    opts: PollOpts = {}): Promise<I.Store<Val>> {
   const initial = await poll()
   const inner = singlemem(initial, opts.source, opts.initialVersion)
 

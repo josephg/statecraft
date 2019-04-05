@@ -19,7 +19,7 @@ export default function createMock(): PClient {
     conflictKeys: string[],
   }
 
-  const base = 1//1001
+  const base = 0xff01 // Pretend the mock starts at some offset in the file
   const events: MockEvent[] = []
   const nextVersion = () => base + events.length
 

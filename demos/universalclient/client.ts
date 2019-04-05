@@ -6,12 +6,13 @@ import * as I from '../../lib/interfaces'
 import reconnecter from '../../lib/stores/reconnectingclient'
 import {connect} from '../../lib/stores/wsclient'
 import subValues, { subResults } from '../../lib/subvalues'
-import augment from '../../lib/augment'
 import sel from '../../lib/sel'
 
 import {type as texttype} from 'ot-text-unicode'
 import {register} from '../../lib/typeregistry'
-import { resultTypes } from '../../lib/qrtypes';
+import { queryTypes } from '../../lib/qrtypes'
+import { hasBit } from '../../lib/bit'
+import { vRangeTo } from '../../lib/version'
 
 register(texttype)
 
@@ -145,7 +146,7 @@ const kvView = (state: State, emit: any) => {
     ;(async () => {
       // Using augment here is a very ... high level solution. It pulls in a lot more code.
       // It'd be good to have a subValues equivalent kind of function for simple stores.
-      for await (const status of subValues('single', augment(statusStore).subscribe({type: 'single', q: true}))) {
+      for await (const status of subValues(I.ResultType.Single, statusStore.subscribe({type: I.QueryType.Single, q: true}))) {
         console.log('status', status)
         state.connectionStatus = status
         emitter.emit('render')
@@ -171,23 +172,22 @@ const kvView = (state: State, emit: any) => {
 
     ;(async () => {
       const qt = store.storeInfo.capabilities.queryTypes
-      const q: I.Query = qt.has('allkv') ? {type: 'allkv', q:true}
-        : qt.has('static range') ? {type: 'static range', q: [{low: sel(''), high: sel('\xff')}]}
+      const q: I.Query = hasBit(qt, I.QueryType.AllKV) ? {type: I.QueryType.AllKV, q:true}
+        : hasBit(qt, I.QueryType.StaticRange) ? {type: I.QueryType.StaticRange, q: [{low: sel(''), high: sel('\xff')}]}
         // : qt.has('static range') ? {type: 'static range', q: [{low: sel('mdraw/'), high: sel('mdraw/~')}]}
-        : {type: 'single', q:true}
-      const rtypeName = ({allkv: 'kv', single: 'single', 'static range': 'range'} as any)[q.type]
-      const rtype = resultTypes[rtypeName]
+        : {type: I.QueryType.Single, q:true}
+      const rtype = queryTypes[q.type].resultType
 
       // I would love to just use subResults here, but 
-      for await (const {raw, results, versions} of subResults(rtypeName, store.subscribe(q))) {
+      for await (const {raw, results, versions} of subResults(rtype.type!, store.subscribe(q))) {
         console.log('results', results)
         
-        state.data = rtypeName === 'range'
+        state.data = rtype.type! === I.ResultType.Range
           ? new Map(results[0])
           : results
         // console.log('val', results, state.data, versions)
 
-        const v = versions
+        const v = vRangeTo(versions)
         if (raw.replace) {
           rtype.mapReplace<any, void>(raw.replace.with, (val, k) => {
             getOps(k == null ? 'single' : k).unshift({v, replace: val})
@@ -201,7 +201,7 @@ const kvView = (state: State, emit: any) => {
           })
         })
 
-        state.versions = versions
+        state.versions = v
         emitter.emit('render')
       }
     })()

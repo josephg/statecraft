@@ -3,20 +3,20 @@
 
 import * as I from '../interfaces'
 import err from '../err'
-import assert from 'assert'
+import { bitSet, hasBit } from '../bit';
 
 const capabilities = {
-  queryTypes: new Set<I.QueryType>(['single']),
-  mutationTypes: new Set<I.ResultType>(['single']),
+  queryTypes: bitSet(I.QueryType.Single),
+  mutationTypes: bitSet(I.ResultType.Single),
   // ops: <I.OpsSupport>'none',
 }
 
 const onekey = <Val>(innerStore: I.Store<Val>, key: I.Key): I.Store<Val> => {
-  const canMutate = innerStore.storeInfo.capabilities.mutationTypes.has('kv')
+  const canMutate = hasBit(innerStore.storeInfo.capabilities.mutationTypes, I.ResultType.KV)
   // console.log('cm', canMutate, innerStore.storeInfo)
 
-  const innerQuery: I.Query = {type: 'kv', q: new Set([key])}
-  if (!innerStore.storeInfo.capabilities.queryTypes.has('kv')) throw new err.UnsupportedTypeError('Inner store must support KV queries')
+  const innerQuery: I.Query = {type: I.QueryType.KV, q: new Set([key])}
+  if (!hasBit(innerStore.storeInfo.capabilities.queryTypes, I.QueryType.KV)) throw new err.UnsupportedTypeError('Inner store must support KV queries')
 
   const unwrapTxns = (txns: I.TxnWithMeta<Val>[]): I.TxnWithMeta<Val>[] => (
     txns.map(txn => {
@@ -32,18 +32,18 @@ const onekey = <Val>(innerStore: I.Store<Val>, key: I.Key): I.Store<Val> => {
     let hasReplace = false
     if (data.replace) {
       const replaceQ = data.replace.q
-      if (replaceQ.type !== 'kv') throw new err.InvalidDataError()
+      if (replaceQ.type !== I.QueryType.KV) throw new err.InvalidDataError()
       if (replaceQ.q.has(key)) hasReplace = true
     }
 
     return {
+      ...data,
       replace: hasReplace ? {
-        q: {type: 'single', q: true},
+        q: {type: I.QueryType.Single, q: true},
         with: data.replace!.with.get(key),
         versions: data.replace!.versions,
       } : undefined,
       txns: unwrapTxns(data.txns),
-      toVersion: data.toVersion,
     }
   }
 
@@ -58,7 +58,7 @@ const onekey = <Val>(innerStore: I.Store<Val>, key: I.Key): I.Store<Val> => {
     },
 
     async fetch(query, opts) {
-      if (query.type !== 'single') throw new err.UnsupportedTypeError()
+      if (query.type !== I.QueryType.Single) throw new err.UnsupportedTypeError()
 
       const results = await innerStore.fetch(innerQuery, opts)
       // if (results.type !== 'kv') throw new err.InvalidDataError()
@@ -72,10 +72,10 @@ const onekey = <Val>(innerStore: I.Store<Val>, key: I.Key): I.Store<Val> => {
 
     async mutate(type, txn, versions, opts = {}) {
       if (!canMutate) throw new err.UnsupportedTypeError('Underlying store is read only')
-      if (type !== 'single') throw new err.UnsupportedTypeError()
+      if (type !== I.ResultType.Single) throw new err.UnsupportedTypeError()
 
       const innerTxn = new Map([[key, txn as I.Op<Val>]])
-      return await innerStore.mutate('kv', innerTxn, versions, {
+      return await innerStore.mutate(I.ResultType.KV, innerTxn, versions, {
         ...opts,
         // conflictKeys: opts.conflictKeys && opts.conflictKeys.includes(key) ? [''] : undefined,
       })
@@ -85,7 +85,7 @@ const onekey = <Val>(innerStore: I.Store<Val>, key: I.Key): I.Store<Val> => {
     close() { innerStore.close() },
 
     async getOps(query, reqVersions, opts) {
-      if (query.type !== 'single') throw new err.UnsupportedTypeError()
+      if (query.type !== I.QueryType.Single) throw new err.UnsupportedTypeError()
 
       const {ops, versions} = await innerStore.getOps(innerQuery, reqVersions, opts)
 
@@ -104,7 +104,7 @@ const onekey = <Val>(innerStore: I.Store<Val>, key: I.Key): I.Store<Val> => {
     // TODO: Map catchup if it exists in the underlying store.
 
     subscribe(query, opts = {}) {
-      if (query.type !== 'single') throw new err.UnsupportedTypeError()
+      if (query.type !== I.QueryType.Single) throw new err.UnsupportedTypeError()
 
       const innerSub = innerStore.subscribe(innerQuery, opts)
 

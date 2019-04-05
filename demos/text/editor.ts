@@ -11,7 +11,7 @@ import fieldOps from '../../lib/types/field'
 import {type as texttype, TextOp} from 'ot-text-unicode'
 import otDoc from '../../lib/otdoc'
 import {register} from '../../lib/typeregistry'
-import simpleValuesSingle from '../../lib/simplevalues'
+import subvalues from '../../lib/subvalues'
 
 register(texttype)
 
@@ -105,7 +105,7 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
   const [statusStore, storeP] = createStore<string>(() => connect(wsurl))
 
   ;(async () => {
-    for await (const status of simpleValuesSingle(statusStore)) {
+    for await (const status of subvalues(I.ResultType.Single, statusStore.subscribe({type: I.QueryType.Single, q:true}))) {
       document.getElementById('connstatus')!.className = status
     }
   })()
@@ -115,7 +115,7 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
 
   if (config.initialValue == null) {
     console.log('Creating the document on the server...')
-    await store.mutate('single', {type: 'set', data: ''})
+    await store.mutate(I.ResultType.Single, {type: 'set', data: ''})
   }
 
   // The version is sent as an array of numbers. Base64 would be better, but

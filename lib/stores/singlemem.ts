@@ -4,46 +4,59 @@ import fieldOps from '../types/field'
 import genSource from '../gensource'
 import err from '../err'
 import {V64, vCmp} from '../version'
+import {bitSet} from '../bit'
+import streamToIter from '../streamToIter'
+import SubGroup from '../subgroup'
+import makeOpCache from '../opcache'
 
 const capabilities = {
-  queryTypes: new Set<I.QueryType>(['single']),
-  mutationTypes: new Set<I.ResultType>(['single']),
+  queryTypes: bitSet(I.QueryType.Single),
+  mutationTypes: bitSet(I.ResultType.Single),
   // ops: <I.OpsSupport>'none',
 }
 
-export default function singleStore<Val = any>(initialValue: Val, source: I.Source = genSource(), initialVersionNum: number = 0): I.SimpleStore<Val> {
+export default function singleStore<Val = any>(initialValue: Val, source: I.Source = genSource(), initialVersionNum: number = 0): I.Store<Val> {
   let version: number = initialVersionNum
   let data = initialValue
 
-  const store: I.SimpleStore<Val> = {
+  const fetch: I.FetchFn<Val> = async (query, opts) => {
+    if (query.type !== I.QueryType.Single) throw new err.UnsupportedTypeError()
+
+    return {
+      results: data,
+      queryRun: query,
+      versions: [{from:V64(version), to:V64(version)}],
+    }
+  }
+
+  const opcache = makeOpCache<Val>()
+  const subGroup = new SubGroup({initialVersion: [V64(version)], fetch, getOps: opcache.getOps})
+
+  const store: I.Store<Val> = {
     storeInfo: {
       uid: `single(${source})`,
       capabilities,
       sources: [source]
     },
     
-    async fetch(query, opts) {
-      if (query.type !== 'single') throw new err.UnsupportedTypeError()
+    fetch,
+    getOps: opcache.getOps,
 
-      return {
-        results: data,
-        queryRun: query,
-        versions: [{from:V64(version), to:V64(version)}],
-      }
-    },
+    subscribe: subGroup.create.bind(subGroup),
 
-    async mutate(type, txn, versions, opts = {}) {
-      if (type !== 'single') throw new err.UnsupportedTypeError()
-      const op = txn as I.Op<Val>
+    async mutate(type, _txn, versions, opts = {}) {
+      if (type !== I.ResultType.Single) throw new err.UnsupportedTypeError()
+      const txn = _txn as I.Op<Val>
 
       const expectv = versions && versions[0]
       const currentv = V64(version)
       if (expectv != null && vCmp(expectv, currentv) < 0) throw new err.VersionTooOldError()
 
-      if (op) data = fieldOps.apply(data, op)
+      if (txn) data = fieldOps.apply(data, txn)
       const newv = V64(++version)
 
-      store.onTxn && store.onTxn(source, currentv, newv, type, op, opts.meta || {})
+      opcache.onOp(0, currentv, newv, I.ResultType.Single, txn, opts.meta || {})
+      subGroup.onOp(0, currentv, [{txn, meta: opts.meta || {}, versions: [newv]}])
       return [newv]
     },
 
@@ -53,6 +66,6 @@ export default function singleStore<Val = any>(initialValue: Val, source: I.Sour
   return store
 }
 
-export function setSingle<Val>(store: I.SimpleStore<Val>, value: Val) {
-  return store.mutate('single', {type: 'set', data: value})
+export function setSingle<Val>(store: I.Store<Val>, value: Val) {
+  return store.mutate(I.ResultType.Single, {type: 'set', data: value})
 }

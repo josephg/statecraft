@@ -1,9 +1,8 @@
+import * as I from '../../lib/interfaces'
 import {connect} from '../../lib/stores/wsclient'
 import singleMem, {setSingle} from '../../lib/stores/singlemem'
-import augment from '../../lib/augment'
 import connectMux, { BothMsg } from '../../lib/net/clientservermux'
 import subValues from '../../lib/subvalues'
-import { request } from 'https';
 
 const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws`
 
@@ -13,7 +12,7 @@ type Pos = {
   gamepad?: {
     id: string,
     buttons: number[],
-    axes: number[]
+    axes: readonly number[],
   }
 }
 type DbVal = {[id: string]: Pos}
@@ -21,7 +20,7 @@ type DbVal = {[id: string]: Pos}
 let data = new Map<string, Pos>()
 
 // The local store that holds our mouse location
-const localStore = augment(singleMem<Pos>({x:0, y:0}))
+const localStore = singleMem<Pos>({x:0, y:0})
 
 const canvas = document.getElementsByTagName('canvas')[0]
 let ctx: CanvasRenderingContext2D
@@ -91,8 +90,8 @@ window.addEventListener("gamepadconnected", e => {
     setSingle(localStore, mouse)
   }
 
-  const sub = remoteStore.subscribe({type: 'allkv', q:true})
-  for await (const d of subValues('kv', sub)) {
+  const sub = remoteStore.subscribe({type: I.QueryType.AllKV, q:true})
+  for await (const d of subValues(I.ResultType.KV, sub)) {
     // console.log('d', d)
     data = d
     draw()

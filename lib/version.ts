@@ -40,7 +40,8 @@ export const vDec = (v: Uint8Array) => vDecMut(new Uint8Array(v))
 // Lexographical comparison, though in reality versions should probably always
 // have the same length. This is included so we don't need to bundle all of
 // Buffer in the browser.
-export const vCmp = (a: Uint8Array, b: Uint8Array) => {
+export const vCmp = (a: Uint8Array, b: Uint8Array): number => {
+  if (a === b) return 0 // Shortcut
   let i
   for (i = 0; i < a.length; i++) {
     if (i >= b.length) return 1

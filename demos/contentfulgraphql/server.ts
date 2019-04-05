@@ -8,9 +8,6 @@ import * as I from '../../lib/interfaces'
 import createContentful from '../../lib/stores/contentful';
 import kvMem from '../../lib/stores/kvmem'
 import gqlmr, {Ctx} from '../../lib/stores/graphqlmapreduce'
-import augment from '../../lib/augment'
-import sel from '../../lib/sel'
-import subValues from '../../lib/subvalues';
 import {Console} from 'console'
 
 // For debugging
@@ -86,7 +83,7 @@ const genEtag = (versions: I.FullVersion): string => {
     accessToken: keys.contentAPI,
   })
   // Ideally this wouldn't return until after we get the initial sync.
-  const cfstore = augment(await kvMem(undefined, {inner: ops}))
+  const cfstore = await kvMem(undefined, {inner: ops})
 
   const store = await gqlmr(cfstore, {
     schema,
@@ -111,7 +108,7 @@ const genEtag = (versions: I.FullVersion): string => {
   app.use(express.static(`${__dirname}/public`))
 
   app.get('/post/:slug', async (req, res, next) => {
-    const r = await store.fetch({type: 'kv', q: new Set([req.params.slug])})
+    const r = await store.fetch({type: I.QueryType.KV, q: new Set([req.params.slug])})
     const html = r.results.get(req.params.slug)
     if (html == null) return next()
     else {

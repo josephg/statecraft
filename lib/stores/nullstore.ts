@@ -10,8 +10,8 @@ const nullstore: I.Store<any> = {
     sources: [],
 
     capabilities: {
-      queryTypes: new Set(),
-      mutationTypes: new Set(),
+      queryTypes: 0,
+      mutationTypes: 0,
     },
   },
 

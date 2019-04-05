@@ -15,8 +15,6 @@ import * as fdb from 'foundationdb'
 import fdbStore from '../../lib/stores/fdb'
 
 import kvStore from '../../lib/stores/kvmem'
-
-import augment from '../../lib/augment'
 import otStore from '../../lib/stores/ot'
 import prozessOps from '../../lib/stores/prozessops'
 import mapStore from '../../lib/stores/map'
@@ -73,7 +71,7 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
   const backend = await fdbStore<string>(fdbConn)
 
   // const backend = lmdbStore(
-  const rootStore = otStore(augment(backend))
+  const rootStore = otStore(backend)
 
   const store = router()
   store.mount(rootStore, 'raw/', ALL, '', true)
@@ -168,7 +166,7 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
     async (req, res, next) => {
       try {
         const k = getKey(req.params)
-        const result = await store.fetch({type: 'kv', q: new Set([k])})
+        const result = await store.fetch({type: I.QueryType.KV, q: new Set([k])})
         // console.log('Got result from', k, result.results)
         let value = result.results.get(k)
         if (value == null && getDefault) value = getDefault(req.params, result.versions)
@@ -210,7 +208,7 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
   app.get('/raw/:name', async (req, res, next) => {
     const {name} = req.params
     const k = `raw/${name}`
-    const result = await store.fetch({type: 'kv', q: new Set([k])})
+    const result = await store.fetch({type: I.QueryType.KV, q: new Set([k])})
     const value = result.results.get(k)
     if (value == null) return next()
     // res.setHeader('x-sc-version', JSON.stringify(result.versions))
@@ -219,7 +217,7 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
   })
 
   app.get('/', async (req, res) => {
-    const result = await store.fetch({type: 'static range', q: [{low: sel('raw/'), high: sel('raw/~')}]})
+    const result = await store.fetch({type: I.QueryType.StaticRange, q: [{low: sel('raw/'), high: sel('raw/~')}]})
     // res.setHeader('x-sc-version', JSON.stringify(result.versions))
     res.setHeader('content-type', 'text/html')
     res.send(`<!doctype html>

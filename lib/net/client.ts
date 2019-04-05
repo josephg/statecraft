@@ -27,8 +27,8 @@ const parseStoreInfo = (helloMsg: N.HelloMsg): I.StoreInfo => ({
   sources: helloMsg.sources,
 
   capabilities: {
-    queryTypes: new Set(helloMsg.capabilities[0]),
-    mutationTypes: new Set(helloMsg.capabilities[1])
+    queryTypes: helloMsg.capabilities[0],
+    mutationTypes: helloMsg.capabilities[1]
   },
 })
 
@@ -159,7 +159,7 @@ function storeFromStreams<Val>(reader: TinyReader<N.SCMsg>,
         const {ref, ops, v} = <N.GetOpsResponse>msg
         const {resolve, args: [q]} = takeCallback(ref)
         const type = queryTypes[q.type]!
-        resolve(<I.GetOpsResult>{
+        resolve(<I.GetOpsResult<Val>>{
           ops: parseTxnsWithMeta(type.resultType, ops),
           versions: fullVersionRangeFromNet(v),
         })
@@ -186,7 +186,7 @@ function storeFromStreams<Val>(reader: TinyReader<N.SCMsg>,
       }
 
       case N.Action.SubUpdate: {
-        const {ref, q, r, rv, txns, tv} = msg
+        const {ref, q, r, rv, txns, tv, u} = msg
         const sub = subByRef.get(ref)
 
         // Will happen if the client closes the sub and the server has
@@ -207,6 +207,7 @@ function storeFromStreams<Val>(reader: TinyReader<N.SCMsg>,
           txns: parseTxnsWithMeta(type.resultType, txns),
 
           toVersion,
+          caughtUp: u,
         }
 
         // Update fromVersion so if we need to resubscribe we'll request

@@ -8,7 +8,6 @@ import createMock from './prozess-mock'
 import {PClient} from 'prozess-client'
 import lmdb from '../lib/stores/lmdb'
 import prozessOps from '../lib/stores/prozessops'
-import augment from '../lib/augment'
 import runTests from './common'
 
 const rmdir = (path: string) => {
@@ -32,7 +31,7 @@ const create = async () => {
     path = '_test' + _dbid++
   } while (fs.existsSync(path))
 
-  const store = augment(await lmdb(prozessOps(createMock()), path))
+  const store = await lmdb(prozessOps(createMock()), path)
   pathOfDb.set(store, path)
   return store
 }

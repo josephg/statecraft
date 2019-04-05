@@ -46,14 +46,14 @@ type World = any
 ;(async () => {
   const store = onekey(await connect<World>('ws://localhost:2000/'), config.key)
 
-  const sub = store.subscribe({type: 'single', q: true}, {
+  const sub = store.subscribe({type: I.QueryType.Single, q: true}, {
     fromVersion: config.initialVersions,
   })
 
   let last: any = null
 
   // const r = new Map()
-  for await (const update of sub) {
+  for await (const update of sub) { // TODO
     if (update.replace) {
       const val = update.replace.with
       setObj(val)

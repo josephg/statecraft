@@ -1,7 +1,6 @@
 import 'mocha'
 import * as I from '../lib/interfaces'
 import fdbStore from '../lib/stores/fdb'
-import augment from '../lib/augment'
 import runTests from './common'
 import assert from 'assert'
 
@@ -17,7 +16,7 @@ const create = async () => {
   const prefix = TEST_PREFIX + _dbid++
   const db = fdb.openSync().at(prefix)
   await db.clearRange('', Buffer.from([0xff])) // Hope there's no bugs in this one!
-  const store = augment(await fdbStore(db))
+  const store = await fdbStore(db)
   // console.log('got store at prefix', prefix)
   storeDb.set(store, db)
   return store

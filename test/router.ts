@@ -1,12 +1,11 @@
 import 'mocha'
 import kvmem from '../lib/stores/kvmem'
 import router, {ALL} from '../lib/stores/router'
-import augment from '../lib/augment'
 import runTests from './common'
 
 describe('router', () => {
   runTests(async () => {
-    const root = augment(await kvmem())
+    const root = await kvmem()
     const store = router()
 
     // This is really dumb - we're just mounting it all the way through.
