@@ -12,7 +12,7 @@ export const wrapWebSocket = <R, W>(socket: WebSocket): [TinyReader<R>, TinyWrit
   const reader: TinyReader<R> = {buf: [], isClosed: false}
 
   socket.on("message", data => {
-    if (!isProd) console.log('C->S', data)
+    // if (!isProd) console.log('C->S', data)
     onMsg(reader, JSON.parse(data as any))
   })
 
@@ -21,7 +21,7 @@ export const wrapWebSocket = <R, W>(socket: WebSocket): [TinyReader<R>, TinyWrit
   const writer = new Writable({
     objectMode: true,
     write(data, _, callback) {
-      if (!isProd) console.log('S->C', data)
+      // if (!isProd) console.log('S->C', data)
       if (socket.readyState === socket.OPEN) {
         // TODO: Should this pass the callback? Will that make backpressure
         // work?

@@ -162,6 +162,11 @@
     "@types/express-serve-static-core" "*"
     "@types/mime" "*"
 
+"@types/webmidi@^2.0.3":
+  version "2.0.3"
+  resolved "https://registry.yarnpkg.com/@types/webmidi/-/webmidi-2.0.3.tgz#2c04998688e4d0b558b2fa3b84af1a705c5a6ec3"
+  integrity sha512-ui4QxwMIf1I601Pw1FgWJqBOOitrWbeox8XENUIR/R7iQ2r3/BROXBpaYq8fKkk6AvGmBKN9oolURHC36KUI0Q==
+
 "@types/ws@^6.0.1":
   version "6.0.1"
   resolved "https://registry.yarnpkg.com/@types/ws/-/ws-6.0.1.tgz#ca7a3f3756aa12f62a0a62145ed14c6db25d5a28"

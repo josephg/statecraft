@@ -46,6 +46,6 @@ export async function* subResults<Val>(type: I.ResultType, sub: I.Subscription<V
 
 export default async function* subValues<Val>(type: I.ResultType, sub: I.Subscription<Val>) {
   for await (const {results} of subResults(type, sub)) {
-    yield results
+    yield results as Val
   }
 }

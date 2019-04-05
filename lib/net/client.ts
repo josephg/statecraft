@@ -3,7 +3,7 @@
 
 import * as I from '../interfaces'
 import * as N from './netmessages'
-import {errToJSON, errFromJSON} from '../err'
+import err, {errToJSON, errFromJSON} from '../err'
 
 import {
   queryToNet, queryFromNet,
@@ -94,9 +94,10 @@ const checkHello = (hello: N.HelloMsg, ref?: I.StoreInfo) => {
   if (hello.a !== N.Action.Hello || hello.p !== 'statecraft') throw Error('Invalid hello message')
   if (hello.pv !== 0) throw Error('Incompatible protocol versions')
 
-  if (ref) {
+  if (ref && ref.uid !== hello.uid) {
     // TODO: Check that the storeinfo is compatible.
-    console.warn('Warning: Not validating reconnection storeinfo data')
+    console.warn('Warning: Store has changed.')
+    throw new err.StoreChangedError()
   }
 }
 

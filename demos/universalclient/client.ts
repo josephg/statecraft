@@ -16,10 +16,12 @@ import { vRangeTo } from '../../lib/version'
 
 register(texttype)
 
-type Ops = {v: (I.Version | null)[], op?: I.Op<any>, replace?: any}[]
+type Op = {v: (I.Version | null)[], op?: I.Op<any>, replace?: any}
+type Ops = Op[]
 
 interface State extends IState {
   sources: I.Source[]
+  uid: string,
   versions: I.FullVersion
   data: any
   // selectedKey?: string
@@ -33,11 +35,11 @@ const hex = (v: Uint8Array): string => (
 )
 
 const header = (state: State, emit: any) => {
-  const {sources, versions, connectionStatus, prefer} = state
+  const {sources, uid, versions, connectionStatus, prefer} = state
   // console.log('v', versions)
   return html`
     <div id=header class=${connectionStatus}>
-      Store: <span class=mon>${sources.join(', ')}</span>
+      Store: <span class=mon>${uid}</span>
       <span style="display: inline-block; width: 2em;"></span>
       Version: <span class=mon>${sources.map((s, i) => versions[i] && hex(versions[i]!)).join(', ')}</span>
       <span style="display: inline-block; width: 2em;"></span>
@@ -92,10 +94,14 @@ const kvView = (state: State, emit: any) => {
   const data = state.data as Map<string, any>
   
   const keys = Array.from(data.keys()).sort()
-  console.log('params', state.params)
-  const selectedKey = state.params.wildcard
-  console.log('key', selectedKey)
-  const selectedData = selectedKey ? data.get(selectedKey) : null
+  // console.log('params', state.params)
+  let selectedKey = state.params.wildcard
+  // console.log('key', selectedKey)
+
+  // If we have nothing selected, just select the first key in the data set.
+  if (selectedKey == null || !data.has(selectedKey)) selectedKey = data.keys().next().value
+
+  const selectedData = data.get(selectedKey)
 
   // ${keys.map(k => html`<div
   //   class=${k === selectedKey ? 'selected' : ''}
@@ -128,7 +134,8 @@ const kvView = (state: State, emit: any) => {
 (async () => {
   const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws/`
   console.log('connecting to ws', wsurl, '...')
-  const [statusStore, storeP] = reconnecter<any>(() => connect(wsurl))
+  const [statusStore, storeP, uidChanged] = reconnecter<any>(() => connect(wsurl))
+  uidChanged.catch(e => { location.reload() })
 
   // console.log('x')
   // statusStore.onTxn = (source, fromV, toV, type, txn, rv, meta) => {
@@ -157,6 +164,7 @@ const kvView = (state: State, emit: any) => {
   app.use((_state, emitter) => {
     const state = _state as State
     state.sources = store.storeInfo.sources
+    state.uid = store.storeInfo.uid
     state.data = null
     state.versions = []
     state.opsForKey = new Map()
@@ -170,6 +178,12 @@ const kvView = (state: State, emit: any) => {
       return ops
     }
 
+    const pushOp = (k: string | null, op: Op) => {
+      const ops = getOps(k == null ? 'single' : k)
+      ops.unshift(op)
+      if (ops.length > 20) ops.pop()
+    }
+
     ;(async () => {
       const qt = store.storeInfo.capabilities.queryTypes
       const q: I.Query = hasBit(qt, I.QueryType.AllKV) ? {type: I.QueryType.AllKV, q:true}
@@ -180,7 +194,7 @@ const kvView = (state: State, emit: any) => {
 
       // I would love to just use subResults here, but 
       for await (const {raw, results, versions} of subResults(rtype.type!, store.subscribe(q))) {
-        console.log('results', results)
+        // console.log('results', results)
         
         state.data = rtype.type! === I.ResultType.Range
           ? new Map(results[0])
@@ -190,13 +204,13 @@ const kvView = (state: State, emit: any) => {
         const v = vRangeTo(versions)
         if (raw.replace) {
           rtype.mapReplace<any, void>(raw.replace.with, (val, k) => {
-            getOps(k == null ? 'single' : k).unshift({v, replace: val})
+            pushOp(k, {v, replace: val})
           })
         }
 
         raw.txns.forEach(({txn}) => {
           rtype.mapTxn<any, void>(txn, (op, k) => {
-            getOps(k == null ? 'single' : k).unshift({v, op})
+            pushOp(k, {v, op})
             return null as any as I.Op<void> // It'd be better to have a forEach .. .eh.
           })
         })

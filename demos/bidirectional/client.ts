@@ -15,7 +15,7 @@ type Pos = {
     axes: readonly number[],
   }
 }
-type DbVal = {[id: string]: Pos}
+// type DbVal = {[id: string]: Pos}
 
 let data = new Map<string, Pos>()
 
@@ -81,7 +81,7 @@ window.addEventListener("gamepadconnected", e => {
 
 ;(async () => {
   const [reader, writer] = await connect<BothMsg, BothMsg>(wsurl)
-  const remoteStore = await connectMux<DbVal>(reader, writer, localStore, true)
+  const remoteStore = await connectMux<typeof data>(reader, writer, localStore, true)
 
   document.body.onmousemove = e => {
     // console.log('setting', e.clientX)

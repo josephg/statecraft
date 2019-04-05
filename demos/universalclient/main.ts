@@ -39,29 +39,38 @@ global.console = new (Console as any)({
   // TODO: Pick a default port number for statecraft
   // const store = type === 'ws' ? await wsClient(urlStr)
   //   : await tcpClient(+(port || 3000), host!)
-  const [status, storeP] = reconnector(type === 'ws'
-    ? () => connectWS(urlStr)
-    : () => createStreams(+(port || 3000), hostname)
-  )
-  const store = await storeP
+  while (true) {
+    const [status, storeP, uidChanged] = reconnector(type === 'ws'
+      ? () => connectWS(urlStr)
+      : () => createStreams(+(port || 3000), hostname)
+    )
+    const store = await storeP
 
-  // TODO: Listen to status...
-    
-  console.log('got store', store.storeInfo)
+    // TODO: Listen to status...
+      
+    console.log('got store', store.storeInfo)
 
-  // Ok, now host the client app.
-  const app = express()
-  app.use(express.static(`${__dirname}/public`))
+    // Ok, now host the client app.
+    const app = express()
+    app.use(express.static(`${__dirname}/public`))
 
-  const webServer = http.createServer(app)
+    const webServer = http.createServer(app)
 
-  serveWS({server: webServer}, store)
+    const wss = serveWS({server: webServer}, store)
 
-  const listenPort = process.env.PORT || 3333
-  webServer.listen(listenPort, (err: any) => {
-    if (err) throw err
-    console.log('http server listening on', listenPort)
-  })
+    const listenPort = process.env.PORT || 3333
+    webServer.listen(listenPort, (err: any) => {
+      if (err) throw err
+      console.log('http server listening on', listenPort)
+    })
+
+    await uidChanged.catch(() => {})
+    console.log('UID changed. Re-hosting.')
+
+    // Closing the server entirely forces all ws clients to reconnect
+    await new Promise(resolve => wss.close(resolve))
+    await new Promise(resolve => webServer.close(resolve))
+  }
 
   // const sub = store.subscribe({type: 'static range', q: [{low: sel(''), high: sel('\xff')}]})
   // for await (const cu of subValues('range', sub)) {

@@ -25,7 +25,7 @@ export const connect = <R, W>(wsurl: string): Promise<[TinyReader<R>, TinyWriter
   const writer: TinyWriter<W> = {
     write(data) {
       if (ws.readyState === ws.OPEN) {
-        console.log('sending', data)
+        // console.log('sending', data)
         ws.send(JSON.stringify(data))
       } else {
         // On regular connections this won't happen because the first

@@ -19,6 +19,7 @@
     "@types/graphql": "^14.0.7",
     "@types/react": "^16.8.6",
     "@types/react-dom": "^16.8.2",
+    "@types/webmidi": "^2.0.3",
     "apollo-link-retry": "^2.2.10",
     "binary-search": "^1.3.2",
     "chokidar": "^2.0.3",

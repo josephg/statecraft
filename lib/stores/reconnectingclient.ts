@@ -3,6 +3,8 @@ import {TinyReader, TinyWriter} from '../net/tinystream'
 import * as N from '../net/netmessages'
 import createStore, {NetStore, ClientOpts} from '../net/client'
 import singleMem, {setSingle} from './singlemem'
+import err from '../err'
+import resolvable from '../resolvable'
 
 const wait = (timeout: number) => new Promise(resolve => setTimeout(resolve, timeout))
 
@@ -13,13 +15,14 @@ const wait = (timeout: number) => new Promise(resolve => setTimeout(resolve, tim
 // - stopped
 type Status = string
 
-const reconnector = <Val>(connect: (() => Promise<[TinyReader<N.SCMsg>, TinyWriter<N.CSMsg>]>)): [I.Store<Status>, Promise<I.Store<Val>>] => {
+const reconnector = <Val>(connect: (() => Promise<[TinyReader<N.SCMsg>, TinyWriter<N.CSMsg>]>)): [I.Store<Status>, Promise<I.Store<Val>>, Promise<void>] => {
   // This is a tiny store that the client can use to track & display whether
   // or not we're currently connected. Ite tempting to make a metastore be a
   // default feature.
   const status = singleMem('waiting')
   let innerStore: NetStore<Val> | null = null
   let shouldReconnect = true
+  const uidChanged = resolvable()
 
   // const initialStoreP = 
   // initialStoreP.then(store => { innerStore = store; })
@@ -37,10 +40,19 @@ const reconnector = <Val>(connect: (() => Promise<[TinyReader<N.SCMsg>, TinyWrit
           while (shouldReconnect) {
             console.log('... trying to reconnect ...')
 
+            let r: TinyReader<N.SCMsg>, w: TinyWriter<N.CSMsg>
+            let netConnected = false
             try {
               setSingle(status, 'connecting')
-              const [r, w] = await connect()
-              await createStore(r, w, {
+              ;[r, w] = await connect()
+              netConnected = true
+            } catch (e) {
+              console.warn('Reconnection failed', e.message)
+            }
+
+            if (netConnected) try {
+              console.log('createStore')
+              await createStore(r!, w!, {
                 ...opts,
                 restoreFrom: innerStore!,
                 syncReady(store) {
@@ -55,7 +67,14 @@ const reconnector = <Val>(connect: (() => Promise<[TinyReader<N.SCMsg>, TinyWrit
               })
               break
             } catch (e) {
-              console.warn('Reconnection failed', e.message)
+              // TODO: Consider calling reject instead of resolve here - so the
+              // error makes an exception by default.
+              if (e instanceof err.StoreChangedError) {
+                console.log('uid changed')
+                w!.close()
+                uidChanged.reject(e)
+                break
+              } else throw e
             }
 
             setSingle(status, 'waiting')
@@ -93,7 +112,7 @@ const reconnector = <Val>(connect: (() => Promise<[TinyReader<N.SCMsg>, TinyWrit
     }, reject)
   })
 
-  return [status, ready]
+  return [status, ready, uidChanged]
 }
 
 export default reconnector
