@@ -31,6 +31,7 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
 
   const protoErr = (err: Error) => {
     console.error('Invalid client', err)
+    writer.close()
   }
 
   const write = (data: N.SCMsg) => {
@@ -194,7 +195,6 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
         if (sub != null) sub.return() // This will confirm via 'sub ret'.
         break
       }
-
 
       default:
         protoErr(new Error('Invalid msg: ' + msg))
