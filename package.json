@@ -63,8 +63,8 @@
     "mocha": "^5.2.0",
     "tinyify": "^2.5.0",
     "ts-node": "^8.0.2",
-    "tsify": "^4.0.0",
-    "typescript": "^3.2.2",
+    "tsify": "^4.0.1",
+    "typescript": "^3.4.1",
     "watchify": "^3.11.0"
   }
 }
