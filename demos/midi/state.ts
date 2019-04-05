@@ -44,6 +44,8 @@ export interface MIDIInput extends MIDIPort {
   }[],
   pots: number[],
   sliders: number[],
+  pitch: number,
+  modulation: number,
 }
   
 export default interface State {

@@ -31,6 +31,8 @@ console.log('wsurl', wsurl)
     keys: [],
     pots: [],
     sliders: [],
+    pitch: 64,
+    modulation: 0,
   })
 
   const data: State = {
@@ -58,15 +60,20 @@ console.log('wsurl', wsurl)
         case 144: // Note press
           keys[oper1] = {held: true, pressure: oper2, timestamp: m.timeStamp}
           break
-        case 128:
+        case 128: // Note release
           keys[oper1] = {held: false, pressure: 0, timestamp: m.timeStamp}
           break
-        case 176: {
-          if (oper1 >= 0x15 && oper1 <= 0x1c) pots[oper1 - 0x15] = oper2
+        case 176: { // Pots and sliders
+          if (oper1 === 1) inputData.modulation = oper2
+          else if (oper1 >= 0x15 && oper1 <= 0x1c) pots[oper1 - 0x15] = oper2
           // else if (oper1 >= 0x29 && oper1 <= 0x) pots[oper1 - 0x15] = oper2
           else if (oper1 === 0x7) sliders[0] = oper2 // Slider 9 / master
+          else console.log('unknown 176 /', oper1, oper2)
           break
         }
+        case 224: // Pitch slider
+          inputData.pitch = oper2
+          break
         default:
           console.log('unknown message', mtype, oper1, oper2)
           break
