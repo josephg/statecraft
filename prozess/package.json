@@ -1,0 +1,11 @@
+{
+  "name": "@statecraft/prozess",
+  "version": "0.1.0",
+  "description": "Statecraft prozess binding",
+  "main": "index.js",
+  "author": "Seph Gentle <me@josephg.com>",
+  "license": "ISC",
+  "dependencies": {
+    "prozess-client": "*"
+  }
+}

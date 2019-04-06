@@ -9,3 +9,4 @@ bundle.js
 *.tmp-browserify*
 oldlib
 oldtest
+yarn-error.log
