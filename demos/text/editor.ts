@@ -1,7 +1,5 @@
 // This runs in the browser and is compiled to public/bundle.js
 
-import html from 'nanohtml'
-
 import {I, otDoc, registerType, subValues} from '@statecraft/core'
 import {connectToWS, reconnectingclient} from '@statecraft/net'
 import {type as texttype, TextOp} from 'ot-text-unicode'

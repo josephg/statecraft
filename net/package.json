@@ -6,6 +6,11 @@
   "types": "dist/lib/index.d.js",
   "author": "Seph Gentle <me@josephg.com>",
   "license": "ISC",
+  "browser": {
+    "./dist/lib/tcpserver.js": false,
+    "./dist/lib/wsserver.js": false,
+    "./dist/lib/tcpclient.js": false
+  },
   "dependencies": {
     "@statecraft/core": "0.1.0",
     "@josephg/resolvable": "^1.0.0",

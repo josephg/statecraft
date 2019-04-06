@@ -10,7 +10,8 @@
     "build": "tsc"
   },
   "browser": {
-    "./lib/gensource.ts": "./lib/gensource.web.ts"
+    "./lib/gensource.ts": "./lib/gensource.web.ts",
+    "./dist/lib/gensource.js": "./dist/lib/gensource.web.js"
   },
   "files": [
     "dist/lib/**",

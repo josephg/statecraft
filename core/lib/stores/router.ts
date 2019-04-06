@@ -7,7 +7,6 @@
 
 import * as I from '../interfaces'
 import err from '../err'
-import assert from 'assert'
 import {queryTypes, resultTypes} from '../qrtypes'
 import {vIntersectMut, vEq, vSparse} from '../version'
 import sel from '../sel'
@@ -20,6 +19,10 @@ import streamToIter from 'ministreamiterator'
 // import {inspect} from 'util'
 // const ins = (x: any) => inspect(x, {depth: null, colors: true})
 
+
+const assert = (v: any, msg?: string) => {
+  if (!v) throw Error('assertion failed: ' + msg)
+}
 
 // Selector utilities.
 type Sel = I.StaticKeySelector

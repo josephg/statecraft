@@ -4,6 +4,9 @@
   "description": "Statecraft collaborative text editor demo",
   "main": "server.ts",
   "license": "ISC",
+  "scripts": {
+    "build": "browserify -p tsify editor.ts -o public/bundle.js"
+  },
   "dependencies": {
     "@statecraft/core": "0.1.0",
     "@statecraft/net": "0.1.0",
