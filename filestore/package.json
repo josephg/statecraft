@@ -1,0 +1,11 @@
+{
+  "name": "@statecraft/filestore",
+  "version": "0.1.0",
+  "description": "Statecraft file store",
+  "main": "index.js",
+  "author": "Seph Gentle <me@josephg.com>",
+  "license": "ISC",
+  "dependencies": {
+    "chokidar": "^2.1.5"
+  }
+}

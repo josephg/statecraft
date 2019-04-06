@@ -10,3 +10,5 @@ bundle.js
 oldlib
 oldtest
 yarn-error.log
+scratch*
+*.cluster
