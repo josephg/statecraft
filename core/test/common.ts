@@ -4,7 +4,7 @@ import assert from 'assert'
 import {queryTypes} from '../lib/qrtypes'
 import sel from '../lib/sel'
 import {vCmp, vDec, V_EMPTY, vToRange} from '../lib/version'
-import {hasBit} from '../lib/bit'
+import {bitHas} from '../lib/bit'
 import {subResults} from '../lib/subvalues'
 import {inspect} from 'util'
 import {Console} from 'console'
@@ -82,7 +82,7 @@ const toKVMap = <T>(qtype: I.QueryType, keys: Set<I.Key>, m: Map<I.Key, T> | [I.
 // Fetch using fetch() and through subscribe.
 const eachFetchMethod = async <Val>(store: I.Store<Val>, query: I.Query, minVersion: I.FullVersion, keys: Set<I.Key>): Promise<SimpleResult<Val>> => {
   const qtype = query.type
-  assert(hasBit(store.storeInfo.capabilities.queryTypes, qtype),
+  assert(bitHas(store.storeInfo.capabilities.queryTypes, qtype),
     `${qtype} queries not supported by store`)
 
   // let id = nextId++
@@ -141,7 +141,7 @@ async function runAllKVQueries<T>(
     allowRange: boolean
     // checkEq: (a: T, b: T) => void
 ): Promise<T[]> {
-  assert(hasBit(store.storeInfo.capabilities.queryTypes, I.QueryType.KV), 'Store does not support KV queries')
+  assert(bitHas(store.storeInfo.capabilities.queryTypes, I.QueryType.KV), 'Store does not support KV queries')
 
   // TODO: Add regular ranges here as well.
   // const promises = (['range'] as I.QueryType[])
@@ -149,7 +149,7 @@ async function runAllKVQueries<T>(
   // const types: I.QueryType[] = []
   if (allowRange) types.push(I.QueryType.Range)
 
-  const promises = types.filter(qtype => hasBit(store.storeInfo.capabilities.queryTypes, qtype))
+  const promises = types.filter(qtype => bitHas(store.storeInfo.capabilities.queryTypes, qtype))
   .map(qtype => {
     const query = qtype === I.QueryType.StaticRange || qtype === I.QueryType.Range
       ? Array.from(keys).map(k => ({
@@ -399,7 +399,7 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
     describe('object model', () => {
       it('a document that was never created does not appear in a kv result set', async function() {
         const store = (this as Context).store
-        if (!hasBit(store.storeInfo.capabilities.queryTypes, I.QueryType.KV)) this.skip()
+        if (!bitHas(store.storeInfo.capabilities.queryTypes, I.QueryType.KV)) this.skip()
 
 
         const result = await store.fetch({type:I.QueryType.KV, q:new Set(['x'])})
@@ -408,7 +408,7 @@ export default function runTests(createStore: () => Promise<I.Store<any>>, teard
 
       it('a document with value null does not appear in a kv result set', async function() {
         const store = (this as Context).store
-        if (!hasBit(store.storeInfo.capabilities.queryTypes, I.QueryType.KV)) this.skip()
+        if (!bitHas(store.storeInfo.capabilities.queryTypes, I.QueryType.KV)) this.skip()
 
         await setSingle(store, 'x', 123)
         await setSingle(store, 'x', null)

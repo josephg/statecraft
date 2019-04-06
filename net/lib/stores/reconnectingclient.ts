@@ -1,11 +1,11 @@
-import * as I from '../interfaces'
-import {TinyReader, TinyWriter} from '../net/tinystream'
-import * as N from '../net/netmessages'
-import createStore, {NetStore, ClientOpts} from '../net/client'
-import singleMem, {setSingle} from './singlemem'
-import err from '../err'
-import resolvable from '../resolvable'
+import {I, err, setSingle, stores} from '@statecraft/core'
+import {TinyReader, TinyWriter} from '../tinystream'
+import * as N from '../netmessages'
+import createStore, {NetStore, ClientOpts} from '../client'
+// import singleMem, {setSingle} from './singlemem'
+import resolvable from '@josephg/resolvable'
 
+const {singlemem} = stores
 const wait = (timeout: number) => new Promise(resolve => setTimeout(resolve, timeout))
 
 // Connection states:
@@ -19,7 +19,7 @@ const reconnector = <Val>(connect: (() => Promise<[TinyReader<N.SCMsg>, TinyWrit
   // This is a tiny store that the client can use to track & display whether
   // or not we're currently connected. Ite tempting to make a metastore be a
   // default feature.
-  const status = singleMem('waiting')
+  const status = singlemem('waiting')
   let innerStore: NetStore<Val> | null = null
   let shouldReconnect = true
   const uidChanged = resolvable()

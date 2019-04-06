@@ -65,7 +65,3 @@ export default function singleStore<Val = any>(initialValue: Val, source: I.Sour
 
   return store
 }
-
-export function setSingle<Val>(store: I.Store<Val>, value: Val) {
-  return store.mutate(I.ResultType.Single, {type: 'set', data: value})
-}

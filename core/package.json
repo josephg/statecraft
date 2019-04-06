@@ -1,5 +1,5 @@
 {
-  "name": "statecraft",
+  "name": "@statecraft/core",
   "version": "0.0.1",
   "description": "",
   "main": "dist/lib/index.js",

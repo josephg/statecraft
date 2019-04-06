@@ -1,7 +1,7 @@
-import * as I from '../interfaces'
-import * as N from '../net/netmessages'
-import createStore from '../net/client'
-import {TinyReader, TinyWriter, onMsg} from '../net/tinystream'
+import {I} from '@statecraft/core'
+import * as N from '../netmessages'
+import createStore from '../client'
+import {TinyReader, TinyWriter, onMsg} from '../tinystream'
 import WebSocket from 'isomorphic-ws'
 
 // const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws`

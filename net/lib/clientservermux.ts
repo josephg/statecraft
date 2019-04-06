@@ -1,6 +1,6 @@
 // This implements a mux server which symmetrically both exposes and consumes
 // a store.
-import * as I from '../interfaces'
+import {I} from '@statecraft/core'
 import * as N from './netmessages'
 
 import createStore from './client'

@@ -19,7 +19,7 @@ import {V64} from './version'
 
 import subValues from './subvalues'
 import {Console} from 'console'
-import { setKV } from './kv'
+import { setKV } from './simple'
 
 const ins = (x: any) => inspect(x, {depth: null, colors: true})
 

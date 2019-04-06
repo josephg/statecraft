@@ -1,4 +1,4 @@
-import * as I from '../interfaces'
+import {I, queryTypes, resultTypes, err, errToJSON, bitHas} from '@statecraft/core'
 import * as N from './netmessages'
 
 import {
@@ -6,13 +6,10 @@ import {
   fullVersionToNet, fullVersionFromNet,
   fullVersionRangeToNet, fullVersionRangeFromNet,
 } from './util'
-import {queryTypes, resultTypes} from '../qrtypes'
 import {TinyReader, TinyWriter, listen} from './tinystream'
-import errs, {errToJSON, errFromJSON} from '../err'
 
 // import {Readable, Writable} from 'stream'
 import assert from 'assert'
-import { hasBit } from '../bit';
 
 const capabilitiesToJSON = (c: I.Capabilities): any[] => [c.queryTypes, c.mutationTypes]
 
@@ -39,12 +36,12 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
     writer.write(data)
   }
 
-  const writeErr = (ref: N.Ref, err: Error) => {
+  const writeErr = (ref: N.Ref, e: Error) => {
     // Should probably ignore most errors here.
-    if (!(err instanceof errs.WriteConflictError)) {
-      console.warn('Warning: Error processing client data', err)
+    if (!(e instanceof err.WriteConflictError)) {
+      console.warn('Warning: Error processing client data', e)
     }
-    write({a: N.Action.Err, ref, err: errToJSON(err)})
+    write({a: N.Action.Err, ref, err: errToJSON(e)})
   }
 
   // let closed = false
@@ -75,12 +72,12 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
         const {ref, query: netQuery, opts} = (msg as N.FetchRequest)
         const query = queryFromNet(netQuery) as I.Query
         const qtype = query.type
-        if (!hasBit(store.storeInfo.capabilities.queryTypes, qtype)) {
-          return writeErr(ref, new errs.UnsupportedTypeError(`query type ${qtype} not supported in fetch`))
+        if (!bitHas(store.storeInfo.capabilities.queryTypes, qtype)) {
+          return writeErr(ref, new err.UnsupportedTypeError(`query type ${qtype} not supported in fetch`))
         }
 
         const type = queryTypes[qtype]
-        if (!type) return write({a: N.Action.Err, ref, err: errToJSON(new errs.InvalidDataError('Invalid query type'))})
+        if (!type) return write({a: N.Action.Err, ref, err: errToJSON(new err.InvalidDataError('Invalid query type'))})
 
         store.fetch(query, opts).then(data => {
           write({
@@ -101,12 +98,12 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
         const query = queryFromNet(netQuery) as I.Query
         const qtype = query.type
 
-        if (!hasBit(store.storeInfo.capabilities.queryTypes, qtype)) {
-          return writeErr(ref, new errs.UnsupportedTypeError(`query type ${qtype} not supported in getops`))
+        if (!bitHas(store.storeInfo.capabilities.queryTypes, qtype)) {
+          return writeErr(ref, new err.UnsupportedTypeError(`query type ${qtype} not supported in getops`))
         }
 
         const type = queryTypes[qtype]
-        if (!type) return writeErr(ref, new errs.InvalidDataError('Invalid query type'))
+        if (!type) return writeErr(ref, new err.InvalidDataError('Invalid query type'))
 
         store.getOps(query, fullVersionRangeFromNet(v), opts).then(data => {
           write({
@@ -124,8 +121,8 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
 
       case N.Action.Mutate: {
         const {ref, mtype, txn, v, opts} = <N.MutateRequest>msg
-        if (!hasBit(store.storeInfo.capabilities.mutationTypes, mtype)) {
-          return writeErr(ref, new errs.UnsupportedTypeError(`mutation type ${mtype} not supported`))
+        if (!bitHas(store.storeInfo.capabilities.mutationTypes, mtype)) {
+          return writeErr(ref, new err.UnsupportedTypeError(`mutation type ${mtype} not supported`))
         }
 
         const type = resultTypes[mtype]

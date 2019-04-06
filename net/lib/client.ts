@@ -1,23 +1,24 @@
 // This is designed to be used from both TCP clients over msgpack (+ framing)
 // and via a browser through JSON-over-websockets
 
-import * as I from '../interfaces'
+import {
+  I,
+  supportedTypes,
+  queryTypes, resultTypes,
+  err, errFromJSON, errToJSON,
+} from '@statecraft/core'
+
 import * as N from './netmessages'
-import err, {errToJSON, errFromJSON} from '../err'
 
 import {
   queryToNet, queryFromNet,
   fullVersionToNet, fullVersionFromNet,
   fullVersionRangeToNet, fullVersionRangeFromNet,
 } from './util'
-import {
-  queryTypes, resultTypes,
-  wrapQuery
-} from '../qrtypes'
 import {TinyReader, TinyWriter, listen} from './tinystream'
-import streamToIter, {Stream} from '../streamToIter'
+import streamToIter, {Stream} from 'ministreamiterator'
 import {Readable, Writable, Duplex} from 'stream'
-import {supportedTypes} from '../typeregistry'
+
 // import assert from 'assert'
 
 const assert = (a: any) => { if (!a) throw Error('Assertion error: ' + a) }

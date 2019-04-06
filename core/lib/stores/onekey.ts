@@ -3,7 +3,7 @@
 
 import * as I from '../interfaces'
 import err from '../err'
-import { bitSet, hasBit } from '../bit';
+import { bitSet, bitHas } from '../bit';
 
 const capabilities = {
   queryTypes: bitSet(I.QueryType.Single),
@@ -12,11 +12,11 @@ const capabilities = {
 }
 
 const onekey = <Val>(innerStore: I.Store<Val>, key: I.Key): I.Store<Val> => {
-  const canMutate = hasBit(innerStore.storeInfo.capabilities.mutationTypes, I.ResultType.KV)
+  const canMutate = bitHas(innerStore.storeInfo.capabilities.mutationTypes, I.ResultType.KV)
   // console.log('cm', canMutate, innerStore.storeInfo)
 
   const innerQuery: I.Query = {type: I.QueryType.KV, q: new Set([key])}
-  if (!hasBit(innerStore.storeInfo.capabilities.queryTypes, I.QueryType.KV)) throw new err.UnsupportedTypeError('Inner store must support KV queries')
+  if (!bitHas(innerStore.storeInfo.capabilities.queryTypes, I.QueryType.KV)) throw new err.UnsupportedTypeError('Inner store must support KV queries')
 
   const unwrapTxns = (txns: I.TxnWithMeta<Val>[]): I.TxnWithMeta<Val>[] => (
     txns.map(txn => {

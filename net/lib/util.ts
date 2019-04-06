@@ -1,6 +1,5 @@
-import * as I from '../interfaces'
+import {I, queryTypes} from '@statecraft/core'
 import * as N from './netmessages'
-import {queryTypes} from '../qrtypes'
 
 export const queryToNet = (q: I.Query | I.ReplaceQuery): N.NetQuery => {
   if (q.type === I.QueryType.Single || q.type === I.QueryType.AllKV) return q.type

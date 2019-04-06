@@ -1,25 +1,36 @@
-import * as types from './interfaces'
+import * as I from './interfaces'
 import stores from './stores'
-import * as kv from './kv'
-import subValues, {subResults} from './subvalues'
-import err from './err'
-import genSource from './gensource'
+import err, {errFromJSON, errToJSON} from './err'
+
 import otDoc from './otdoc'
+import genSource from './gensource'
+import {getSingle, setSingle, getKV, rmKV, setKV} from './simple'
 import sel from './sel'
-import transaction from './transaction'
 import * as version from './version'
+import subValues, {subResults} from './subvalues'
+
+import transaction from './transaction'
+
+import {supportedTypes, typeOrThrow} from './typeregistry'
+import {queryTypes, resultTypes, wrapQuery} from './qrtypes'
+import {bitHas, bitSet} from './bit'
 
 export {
-  types, // TODO: Its weird exposing this as types.
+  I, // TODO: Its weird exposing this as types.
   stores,
   subValues, subResults,
-  err,
+  err, errFromJSON, errToJSON,
   genSource,
   otDoc,
 
-  kv,
+  getSingle, setSingle, getKV, rmKV, setKV,
   sel,
   version,
 
+  supportedTypes, typeOrThrow,
+  queryTypes, resultTypes, wrapQuery,
+
   transaction,
+
+  bitSet, bitHas,
 }

@@ -1,6 +1,5 @@
-import * as I from '../interfaces'
+import {I, bitHas} from '@statecraft/core'
 import http from 'http'
-import { hasBit } from '../bit'
 
 const id = <T>(x: T) => x
 
@@ -26,7 +25,7 @@ const defaultOpts: HttpOpts = {
 // This function should really return an express / connect Router or
 // something.
 export default function handler<Val>(store: I.Store<Val>, optsIn?: HttpOpts) {
-  if (!hasBit(store.storeInfo.capabilities.queryTypes, I.QueryType.KV)) {
+  if (!bitHas(store.storeInfo.capabilities.queryTypes, I.QueryType.KV)) {
     throw Error('Httpserver needs kv support')
   }
 

@@ -14,6 +14,7 @@ import poll from './poll'
 export default {
   opmem, kvmem, singlemem,
   
+  // TODO: These should probably beCapitalizedLikeThis.
   ot, map, onekey, readonly, router, splitwrites,
 
   poll,

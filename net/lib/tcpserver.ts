@@ -1,4 +1,4 @@
-import * as I from '../interfaces'
+import {I} from '@statecraft/core'
 import serve from './server'
 import {wrapReader, wrapWriter} from './tinystream'
 

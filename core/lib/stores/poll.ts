@@ -1,7 +1,8 @@
 import * as I from '../interfaces'
 // import kvmem from './kvmem'
-import singlemem, {setSingle} from './singlemem'
+import singlemem from './singlemem'
 import readonly from './readonly'
+import {setSingle} from '../simple'
 
 export interface PollOpts {
   periodMS?: number,

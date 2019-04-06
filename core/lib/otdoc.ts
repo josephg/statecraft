@@ -8,7 +8,7 @@ import * as I from './interfaces'
 import fieldOps from './types/field'
 import {typeOrThrow} from './typeregistry'
 import genSource from './gensource'
-import { hasBit } from './bit';
+import { bitHas } from './bit';
 
 const xf = <Val, Op>(type: I.AnyOTType, client: Op | null, server: I.SingleOp<Val> | null): [Op | null, I.SingleOp<Val> | null] => {
   if (client == null || server == null) return [client, server]
@@ -57,8 +57,8 @@ const otDoc = async <Val, Op>(
     listener: (op: I.SingleOp<Val>, resultingVal: any) => void
 ) => {
   const capabilities = store.storeInfo.capabilities
-  if (!hasBit(capabilities.queryTypes, I.QueryType.Single)
-      || !hasBit(capabilities.mutationTypes, I.ResultType.Single)) {
+  if (!bitHas(capabilities.queryTypes, I.QueryType.Single)
+      || !bitHas(capabilities.mutationTypes, I.ResultType.Single)) {
     throw Error('Wrapped store does not support type')
   }
 

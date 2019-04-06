@@ -7,7 +7,7 @@ import err from './err'
 import {vRangeTo, vToRange, vIntersectMut} from './version'
 import streamToIter, {AsyncIterableIteratorWithRet} from 'ministreamiterator'
 import rtype from './types/map'
-import { hasBit } from './bit';
+import { bitHas } from './bit';
 
 export interface TxnOpts<Val> {
   readOnly?: boolean
@@ -26,7 +26,7 @@ export class Transaction<Val = any> {
 
   constructor(store: I.Store<Val>, opts: TxnOpts<Val>) {
     // Consider relaxing this constraint here and just letting things work themselves out
-    if (!hasBit(store.storeInfo.capabilities.queryTypes, I.QueryType.KV)) {
+    if (!bitHas(store.storeInfo.capabilities.queryTypes, I.QueryType.KV)) {
       throw new err.UnsupportedTypeError('transaction needs a kv store')
     }
     this._writeCache = new Map()

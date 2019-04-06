@@ -5,7 +5,7 @@ import runTests from './common'
 import map from '../lib/stores/map'
 import splitWrites from '../lib/stores/splitwrites'
 import assert from 'assert'
-import { setKV } from '../lib/kv';
+import { setKV } from '../lib/simple'
 
 describe('map', () => {
   it('maps simple values', async () => {
