@@ -1,0 +1,23 @@
+{
+  "name": "@statecraft/midi-demo",
+  "version": "1.0.0",
+  "description": "Statecraft midi demo",
+  "main": "server.ts",
+  "author": "Seph Gentle <me@josephg.com>",
+  "license": "ISC",
+  "dependencies": {
+    "@statecraft/core": "0.1.0",
+    "@statecraft/net": "0.1.0",
+    "@types/node": "^11.13.0",
+    "@types/webmidi": "^2.0.3",
+    "express": "^4.16.4"
+  },
+  "devDependencies": {
+    "@types/express": "^4.16.1",
+    "@types/node": "^11.13.0",
+    "browserify": "^16.2.3",
+    "tinyify": "^2.5.0",
+    "tsify": "^4.0.1",
+    "typescript": "^3.4.2"
+  }
+}

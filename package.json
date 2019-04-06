@@ -1,4 +1,4 @@
 {
   "private": true,
-  "workspaces": ["core", "net", "demos/text"]
+  "workspaces": ["core", "net", "demos/text", "demos/midi"]
 }

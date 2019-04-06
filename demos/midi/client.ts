@@ -1,9 +1,8 @@
-import * as I from '../../lib/interfaces'
-import {connect} from '../../lib/stores/wsclient'
-import singleMem, {setSingle} from '../../lib/stores/singlemem'
-import connectMux, { BothMsg } from '../../lib/net/clientservermux'
-import subValues from '../../lib/subvalues'
+import {I, stores, subValues, setSingle} from '@statecraft/core'
+import {connectToWS, connectMux, BothMsg} from '@statecraft/net'
 import State, {MIDIPort, MIDIInput} from './state'
+
+const {singlemem} = stores
 
 const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws`
 console.log('wsurl', wsurl)
@@ -43,9 +42,9 @@ console.log('wsurl', wsurl)
 
   console.log('state', data)
   console.log(inputs[0].connection, inputs[0].state)
-  const localStore = singleMem<State>(data)
+  const localStore = singlemem<State>(data)
 
-  const [reader, writer] = await connect<BothMsg, BothMsg>(wsurl)
+  const [reader, writer] = await connectToWS<BothMsg, BothMsg>(wsurl)
   const remoteStore = await connectMux<void>(reader, writer, localStore, true)
 
   const subscribeToInput = (input: WebMidi.MIDIInput, i: number) => {

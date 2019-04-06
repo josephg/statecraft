@@ -1,25 +1,22 @@
-import * as I from '../../lib/interfaces'
+import {I, stores, rmKV, setKV, subValues} from '@statecraft/core'
+import {wrapWebSocket, connectMux, BothMsg, tcpserver} from '@statecraft/net'
 import express from 'express'
 import WebSocket from 'ws'
 import http from 'http'
 
-import {wrapWebSocket} from '../../lib/net/wsserver'
-import kvMem from '../../lib/stores/kvmem'
-// import singleMem, {setSingle} from '../../lib/stores/singlemem'
-import connectMux, { BothMsg } from '../../lib/net/clientservermux'
-import subValues from '../../lib/subvalues'
-import { rmKV, setKV } from '../../lib/kv'
+// import kvMem from '../../lib/stores/kvmem'
 import State from './state'
-import serveTCP from '../../lib/net/tcpserver'
+
+const {kvmem} = stores
 
 process.on('unhandledRejection', err => {
-  console.error(err.stack)
+  console.error((err as any).stack)
   process.exit(1)
 })
 
 ;(async () => {
   // The store is a kv store mapping from client ID (incrementing numbers) => latest position.
-  const store = await kvMem<State>()
+  const store = await kvmem<State>()
 
   const app = express()
   app.use(express.static(`${__dirname}/public`))
@@ -53,14 +50,13 @@ process.on('unhandledRejection', err => {
   })
 
   const port = process.env.PORT || 2444
-  server.listen(port, (err: any) => {
-    if (err) throw err
+  server.listen(port, () => {
     console.log('listening on', port)
   })
 
 
   if (process.env.NODE_ENV !== 'production') {
-    const tcpServer = serveTCP(store)
+    const tcpServer = tcpserver(store)
     tcpServer.listen(2002, 'localhost')
     console.log('Debugging server listening on tcp://localhost:2002')
   }

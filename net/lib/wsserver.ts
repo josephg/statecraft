@@ -9,6 +9,7 @@ import { CSMsg, SCMsg } from './netmessages';
 const isProd = process.env.NODE_ENV === 'production'
 
 export const wrapWebSocket = <R, W>(socket: WebSocket): [TinyReader<R>, TinyWriter<W>] => {
+  // TODO: Consider using the code in wsclient instead to convert a socket to a reader/writer pair.
   const reader: TinyReader<R> = {buf: [], isClosed: false}
 
   socket.on("message", data => {
