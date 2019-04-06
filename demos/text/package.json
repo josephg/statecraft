@@ -5,8 +5,8 @@
   "main": "server.ts",
   "license": "ISC",
   "dependencies": {
-    "@statecraft/core": "*",
-    "@statecraft/net": "*",
+    "@statecraft/core": "0.1.0",
+    "@statecraft/net": "0.1.0",
     "@types/commonmark": "^0.27.3",
     "@types/express": "^4.16.1",
     "@types/fresh": "^0.5.0",
@@ -19,5 +19,10 @@
     "msgpack-lite": "^0.1.26",
     "nanohtml": "^1.5.0",
     "ot-text-unicode": "^3.0.0"
+  },
+  "devDependencies": {
+    "browserify": "^16.2.3",
+    "tinyify": "^2.5.0",
+    "tsify": "^4.0.1"
   }
 }

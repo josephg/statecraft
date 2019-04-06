@@ -1,6 +1,6 @@
 {
   "name": "@statecraft/core",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "",
   "main": "dist/lib/index.js",
   "types": "dist/lib/index.d.ts",
@@ -12,6 +12,10 @@
   "browser": {
     "./lib/gensource.ts": "./lib/gensource.web.ts"
   },
+  "files": [
+    "dist/lib/**",
+    "lib/**"
+  ],
   "author": "Joseph Gentle <me@josephg.com>",
   "license": "ISC",
   "dependencies": {

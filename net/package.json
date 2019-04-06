@@ -7,8 +7,8 @@
   "author": "Seph Gentle <me@josephg.com>",
   "license": "ISC",
   "dependencies": {
+    "@statecraft/core": "0.1.0",
     "@josephg/resolvable": "^1.0.0",
-    "@statecraft/core": "*",
     "isomorphic-ws": "^4.0.1",
     "ministreamiterator": "^1.0.0",
     "ws": "^6.2.1"
