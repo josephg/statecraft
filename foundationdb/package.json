@@ -4,7 +4,7 @@
   "description": "Statecraft foundationdb bindings",
   "main": "index.js",
   "author": "Seph Gentle",
-  "license": "MIT",
+  "license": "ISC",
   "dependencies": {
     "foundationdb": "^0.9.2"
   }
