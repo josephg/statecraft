@@ -5,9 +5,6 @@
 
 // The code here should eventually make its way into a test suite.
 
-
-import assert from 'assert'
-
 import * as I from './interfaces'
 
 import singleStore from './stores/singlemem'
@@ -19,10 +16,8 @@ import router, {ALL} from './stores/router'
 import sel from './sel'
 import doTxn, {txnSubscribe} from './transaction'
 import {V64} from './version'
-import * as textType from 'ot-text-unicode'
 
-import { readFileSync } from 'fs';
-import subValues from './subvalues';
+import subValues from './subvalues'
 import {Console} from 'console'
 import { setKV } from './kv'
 
