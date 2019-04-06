@@ -1,0 +1,10 @@
+{
+  "name": "@statecraft/lmdb",
+  "version": "0.1.0",
+  "main": "index.js",
+  "author": "Seph Gentle <me@josephg.com>",
+  "license": "ISC",
+  "dependencies": {
+    "node-lmdb": "^0.6.2"
+  }
+}
