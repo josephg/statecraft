@@ -1,0 +1,7 @@
+{
+  "name": "@statecraft/text-demo",
+  "version": "1.0.0",
+  "description": "Statecraft collaborative text editor demo",
+  "main": "server.ts",
+  "license": "ISC"
+}
