@@ -1,0 +1,18 @@
+{
+  "name": "@statecraft/demos-universalclient",
+  "version": "1.0.0",
+  "description": "Statecraft univeral debugger",
+  "main": "main.js",
+  "author": "Seph Gentle <me@josephg.com>",
+  "license": "ISC",
+  "dependencies": {
+    "@statecraft/core": "^0.1.0",
+    "@statecraft/net": "^0.1.0",
+    "@types/express": "^4.16.1",
+    "@types/node": "^11.13.0",
+    "choo": "^6.13.3",
+    "express": "^4.16.4",
+    "ot-text-unicode": "^3.0.0",
+    "typescript": "^3.4.2"
+  }
+}

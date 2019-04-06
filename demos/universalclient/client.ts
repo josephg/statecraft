@@ -2,19 +2,12 @@
 import choo, { IState } from 'choo'
 import html from 'choo/html'
 
-import * as I from '../../lib/interfaces'
-import reconnecter from '../../lib/stores/reconnectingclient'
-import {connect} from '../../lib/stores/wsclient'
-import subValues, { subResults } from '../../lib/subvalues'
-import sel from '../../lib/sel'
+import {I, subValues, subResults, sel, registerType, queryTypes, bitHas, version} from '@statecraft/core'
+import {reconnectingclient, connectToWS} from '@statecraft/net'
 
 import {type as texttype} from 'ot-text-unicode'
-import {register} from '../../lib/typeregistry'
-import { queryTypes } from '../../lib/qrtypes'
-import { hasBit } from '../../lib/bit'
-import { vRangeTo } from '../../lib/version'
 
-register(texttype)
+registerType(texttype)
 
 type Op = {v: (I.Version | null)[], op?: I.Op<any>, replace?: any}
 type Ops = Op[]
@@ -134,7 +127,7 @@ const kvView = (state: State, emit: any) => {
 (async () => {
   const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws/`
   console.log('connecting to ws', wsurl, '...')
-  const [statusStore, storeP, uidChanged] = reconnecter<any>(() => connect(wsurl))
+  const [statusStore, storeP, uidChanged] = reconnectingclient<any>(() => connectToWS(wsurl))
   uidChanged.catch(e => { location.reload() })
 
   // console.log('x')
@@ -186,8 +179,8 @@ const kvView = (state: State, emit: any) => {
 
     ;(async () => {
       const qt = store.storeInfo.capabilities.queryTypes
-      const q: I.Query = hasBit(qt, I.QueryType.AllKV) ? {type: I.QueryType.AllKV, q:true}
-        : hasBit(qt, I.QueryType.StaticRange) ? {type: I.QueryType.StaticRange, q: [{low: sel(''), high: sel('\xff')}]}
+      const q: I.Query = bitHas(qt, I.QueryType.AllKV) ? {type: I.QueryType.AllKV, q:true}
+        : bitHas(qt, I.QueryType.StaticRange) ? {type: I.QueryType.StaticRange, q: [{low: sel(''), high: sel('\xff')}]}
         // : qt.has('static range') ? {type: 'static range', q: [{low: sel('mdraw/'), high: sel('mdraw/~')}]}
         : {type: I.QueryType.Single, q:true}
       const rtype = queryTypes[q.type].resultType
@@ -201,7 +194,7 @@ const kvView = (state: State, emit: any) => {
           : results
         // console.log('val', results, state.data, versions)
 
-        const v = vRangeTo(versions)
+        const v = version.vRangeTo(versions)
         if (raw.replace) {
           rtype.mapReplace<any, void>(raw.replace.with, (val, k) => {
             pushOp(k, {v, replace: val})

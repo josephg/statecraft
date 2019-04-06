@@ -4,16 +4,11 @@ import net from 'net'
 import url from 'url'
 import {Console} from 'console'
 
-import * as I from '../../lib/interfaces'
-import tcpClient, { createStreams } from '../../lib/stores/tcpclient'
-import wsClient, {connect as connectWS} from '../../lib/stores/wsclient'
-import reconnector from '../../lib/stores/reconnectingclient'
-import serveWS from '../../lib/net/wsserver'
-import sel from '../../lib/sel';
-import subValues from '../../lib/subvalues';
+import {I, sel, subValues} from '@statecraft/core'
+import {tcpclient, createTCPStreams, wsclient, connectToWS, reconnectingclient, wsserver} from '@statecraft/net'
 
 process.on('unhandledRejection', err => {
-  console.error(err.stack)
+  console.error((err as any).stack)
   process.exit(1)
 })
 
@@ -40,9 +35,9 @@ global.console = new (Console as any)({
   // const store = type === 'ws' ? await wsClient(urlStr)
   //   : await tcpClient(+(port || 3000), host!)
   while (true) {
-    const [status, storeP, uidChanged] = reconnector(type === 'ws'
-      ? () => connectWS(urlStr)
-      : () => createStreams(+(port || 3000), hostname)
+    const [status, storeP, uidChanged] = reconnectingclient(type === 'ws'
+      ? () => connectToWS(urlStr)
+      : () => createTCPStreams(+(port || 3000), hostname)
     )
     const store = await storeP
 
@@ -56,11 +51,10 @@ global.console = new (Console as any)({
 
     const webServer = http.createServer(app)
 
-    const wss = serveWS({server: webServer}, store)
+    const wss = wsserver({server: webServer}, store)
 
     const listenPort = process.env.PORT || 3333
-    webServer.listen(listenPort, (err: any) => {
-      if (err) throw err
+    webServer.listen(listenPort, () => {
       console.log('http server listening on', listenPort)
     })
 
