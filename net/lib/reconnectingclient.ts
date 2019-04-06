@@ -1,7 +1,7 @@
 import {I, err, setSingle, stores} from '@statecraft/core'
-import {TinyReader, TinyWriter} from '../tinystream'
-import * as N from '../netmessages'
-import createStore, {NetStore, ClientOpts} from '../client'
+import {TinyReader, TinyWriter} from './tinystream'
+import * as N from './netmessages'
+import createStore, {NetStore, ClientOpts} from './client'
 // import singleMem, {setSingle} from './singlemem'
 import resolvable from '@josephg/resolvable'
 

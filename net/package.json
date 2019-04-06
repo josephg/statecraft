@@ -2,7 +2,8 @@
   "name": "@statecraft/net",
   "version": "0.1.0",
   "description": "Statecraft network server & client",
-  "main": "index.js",
+  "main": "dist/lib/index.js",
+  "types": "dist/lib/index.d.js",
   "author": "Seph Gentle <me@josephg.com>",
   "license": "ISC",
   "dependencies": {

@@ -35,4 +35,3 @@ export const fullVersionRangeToNet = (vs: I.FullVersionRange): N.NetFullVersionR
 export const fullVersionRangeFromNet = (nvs: N.NetFullVersionRange): I.FullVersionRange => (
   nvs.map(nv => nv ? versionRangeFromNet(nv) : null)
 )
-

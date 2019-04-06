@@ -1,6 +1,6 @@
 import {I, stores} from '@statecraft/core'
 import server from './lib/tcpserver'
-import remoteStore from './lib/stores/tcpclient'
+import remoteStore from './lib/tcpclient'
 
 const listen = async () => {
   const localStore = await stores.kvmem()

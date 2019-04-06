@@ -1,7 +1,7 @@
 import {I} from '@statecraft/core'
-import * as N from '../netmessages'
-import createStore from '../client'
-import {wrapReader, wrapWriter, TinyReader, TinyWriter} from '../tinystream'
+import * as N from './netmessages'
+import createStore from './client'
+import {wrapReader, wrapWriter, TinyReader, TinyWriter} from './tinystream'
 
 import net, {Socket} from 'net'
 import msgpack from 'msgpack-lite'

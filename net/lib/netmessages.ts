@@ -1,5 +1,4 @@
-import * as I from '../interfaces'
-import {ErrJson} from '../err'
+import {I, ErrJson} from '@statecraft/core'
 
 export type Ref = /*string |*/ number
 

@@ -1,6 +1,6 @@
 import * as I from './interfaces'
 import stores from './stores'
-import err, {errFromJSON, errToJSON} from './err'
+import err, {errFromJSON, errToJSON, ErrJson} from './err'
 
 import otDoc from './otdoc'
 import genSource from './gensource'
@@ -19,7 +19,7 @@ export {
   I, // TODO: Its weird exposing this as types.
   stores,
   subValues, subResults,
-  err, errFromJSON, errToJSON,
+  err, errFromJSON, errToJSON, ErrJson,
   genSource,
   otDoc,
 
