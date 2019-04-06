@@ -8,13 +8,14 @@
 import * as I from '../interfaces'
 import err from '../err'
 import assert from 'assert'
-import streamToIter from '../streamToIter'
 import {queryTypes, resultTypes} from '../qrtypes'
 import {vIntersectMut, vEq, vSparse} from '../version'
 import sel from '../sel'
 import {vMax, vMin, vCmp} from '../version'
 import iterGuard from '../iterGuard'
 import { bitSet } from '../bit'
+
+import streamToIter from 'ministreamiterator'
 
 // import {inspect} from 'util'
 // const ins = (x: any) => inspect(x, {depth: null, colors: true})

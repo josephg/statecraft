@@ -5,7 +5,7 @@ import genSource from '../gensource'
 import err from '../err'
 import {V64, vCmp} from '../version'
 import {bitSet} from '../bit'
-import streamToIter from '../streamToIter'
+import streamToIter from 'ministreamiterator'
 import SubGroup from '../subgroup'
 import makeOpCache from '../opcache'
 

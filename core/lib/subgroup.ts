@@ -1,9 +1,9 @@
 import * as I from './interfaces'
-import streamToIter, {Stream} from './streamToIter'
+import streamToIter, {Stream} from 'ministreamiterator'
 import err from './err'
 import {queryTypes, resultTypes} from './qrtypes'
 import {vEq, vCmp, V_EMPTY} from './version'
-import resolvable, { Resolvable } from './resolvable'
+import resolvable, { Resolvable } from '@josephg/resolvable'
 
 const splitFullVersions = (v: I.FullVersionRange): [I.FullVersion, I.FullVersion] => {
   const from: I.FullVersion = []

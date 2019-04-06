@@ -5,7 +5,7 @@
 import * as I from './interfaces'
 import err from './err'
 import {vRangeTo, vToRange, vIntersectMut} from './version'
-import streamToIter, {AsyncIterableIteratorWithRet} from './streamToIter'
+import streamToIter, {AsyncIterableIteratorWithRet} from 'ministreamiterator'
 import rtype from './types/map'
 import { hasBit } from './bit';
 

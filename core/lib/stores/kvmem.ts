@@ -10,7 +10,7 @@ import {findRangeStatic} from '../types/range'
 import opmem from './opmem';
 import { bitSet } from '../bit'
 import SubGroup from '../subgroup'
-import resolvablePromise, { Resolvable } from '../resolvable'
+import resolvablePromise, { Resolvable } from '@josephg/resolvable'
 
 
 const bakeSel = (sel: I.KeySelector, rawpos: number, resultpos: number, keys: ArrayLike<I.Key>) => {
