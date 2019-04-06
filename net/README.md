@@ -1,5 +1,7 @@
 # Statecraft networking
 
+> *Status:* Beta. Working & tested, but I want to simplify the protocol slightly before 1.0.
+
 The goal of this module is to allow clients to transparently use remote statecraft stores as if they were local.
 
 There are currently two transports available:

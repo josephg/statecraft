@@ -2,18 +2,11 @@
 
 import html from 'nanohtml'
 
-// Should be able to use an alias here... but alas.
-import * as I from '../../lib/interfaces'
-// import connect from '../../lib/stores/wsclient'
-import {connect} from '../../lib/stores/wsclient'
-import createStore from '../../lib/stores/reconnectingclient'
-import fieldOps from '../../lib/types/field'
+import {I, otDoc, registerType, subValues} from '@statecraft/core'
+import {connectToWS, reconnectingclient} from '@statecraft/net'
 import {type as texttype, TextOp} from 'ot-text-unicode'
-import otDoc from '../../lib/otdoc'
-import {register} from '../../lib/typeregistry'
-import subvalues from '../../lib/subvalues'
 
-register(texttype)
+registerType(texttype)
 
 declare const config: {
   key: string,
@@ -102,10 +95,10 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
 ;(async () => {
   const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws/${config.key}`
   console.log('connecting to ws', wsurl, '...')
-  const [statusStore, storeP] = createStore<string>(() => connect(wsurl))
+  const [statusStore, storeP] = reconnectingclient<string>(() => connectToWS(wsurl))
 
   ;(async () => {
-    for await (const status of subvalues(I.ResultType.Single, statusStore.subscribe({type: I.QueryType.Single, q:true}))) {
+    for await (const status of subValues(I.ResultType.Single, statusStore.subscribe({type: I.QueryType.Single, q:true}))) {
       document.getElementById('connstatus')!.className = status
     }
   })()

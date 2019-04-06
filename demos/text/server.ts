@@ -6,25 +6,11 @@
 // TODO:
 // - Security around the editing capability
 
-import * as I from '../../lib/interfaces'
+import {I, registerType, stores, sel, version} from '@statecraft/core'
+import {wsserver, tcpserver} from '@statecraft/net'
 
-// import lmdbStore from '../../lib/stores/lmdb'
-// import {reconnecter, PClient} from 'prozess-client'
-
-import * as fdb from 'foundationdb'
-import fdbStore from '../../lib/stores/fdb'
-
-import kvStore from '../../lib/stores/kvmem'
-import otStore from '../../lib/stores/ot'
-import prozessOps from '../../lib/stores/prozessops'
-import mapStore from '../../lib/stores/map'
-import router, {ALL} from '../../lib/stores/router'
-import onekey from '../../lib/stores/onekey'
-import serveWS from '../../lib/net/wsserver'
-import serveTCP from '../../lib/net/tcpserver'
-import {register} from '../../lib/typeregistry'
-import sel from '../../lib/sel'
-import { vRangeTo } from '../../lib/version';
+// import * as fdb from 'foundationdb'
+// import fdbStore from '../../lib/stores/fdb'
 
 import http from 'http'
 
@@ -39,14 +25,13 @@ import fresh from 'fresh'
 import html from 'nanohtml'
 import {Console} from 'console'
 
-process.on('unhandledRejection', err => {
+process.on('unhandledRejection', (_err) => {
+  const err = _err as any
   console.log('unhandled rejection', err.message, err.code, err.stack)
   throw err
 })
 
-fdb.setAPIVersion(600)
-
-register(texttype)
+registerType(texttype)
 
 const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
   assert(k.startsWith(fromPrefix), `'${k}' does not start with ${fromPrefix}`)
@@ -55,28 +40,18 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
 
 
 ;(async () => {
-  // const backend = await kvStore<string>()
+  const backend = await stores.kvmem<string>()
 
-  // const pclient = await new Promise<PClient>((resolve, reject) => {
-  //   const pclient = reconnecter(9999, 'localhost', err => {
-  //     if (err) reject(err)
-  //     else resolve(pclient)
-  //   })
-  // })
+  // fdb.setAPIVersion(600)
+  // const fdbConn = fdb.openSync().at('textdemo') // TODO: Directory layer stuff.
+  // const backend = await fdbStore<string>(fdbConn)
 
-  // const LMDBPATH = process.env.LMDBPATH || 'textdemo_db'
-  // const backend = await lmdbStore(prozessOps(pclient), LMDBPATH)
+  const rootStore = stores.ot(backend)
 
-  const fdbConn = fdb.openSync().at('textdemo') // TODO: Directory layer stuff.
-  const backend = await fdbStore<string>(fdbConn)
+  const store = stores.router()
+  store.mount(rootStore, 'raw/', null, '', true)
 
-  // const backend = lmdbStore(
-  const rootStore = otStore(backend)
-
-  const store = router()
-  store.mount(rootStore, 'raw/', ALL, '', true)
-
-  const mdstore = mapStore(rootStore, (v, k) => {
+  const mdstore = stores.map(rootStore, (v, k) => {
     // console.log('v', v)
     const parser = new commonmark.Parser({smart: true})
     const writer = new commonmark.HtmlRenderer({smart: true, safe: true})
@@ -85,7 +60,7 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
     return writer.render(tree)
     // return Buffer.from(mod.convert(v.img, 8, 1, 2) as any)
   })
-  store.mount(mdstore, 'mdraw/', ALL, '', false)
+  store.mount(mdstore, 'mdraw/', null, '', false)
 
   interface HTMLDocData {
     headers: {[k: string]: string},
@@ -128,8 +103,8 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
   )
 
   store.mount(
-    mapStore(rootStore, (value, key, versions) => renderEditor(value, 'raw/' + key!, versions)),
-    'editor/', ALL, '', false
+    stores.map(rootStore, (value, key, versions) => renderEditor(value, 'raw/' + key!, versions)),
+    'editor/', null, '', false
   )
 
   const renderMarkdown = (value: string, key: I.Key, versions: I.FullVersion): HTMLDocData => (
@@ -152,8 +127,8 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
   // })
 
   store.mount(
-    mapStore(mdstore, (value, key, versions) => renderMarkdown(value, key!, versions)),
-    'md/', ALL, '', false
+    stores.map(mdstore, (value, key, versions) => renderMarkdown(value, key!, versions)),
+    'md/', null, '', false
   )
 
 
@@ -185,7 +160,7 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
 
   app.get('/edit/:name', scHandler(
     ({name}) => `editor/${name}`,
-    (params, versions) => renderEditor(null, `raw/${params.name}`, vRangeTo(versions))
+    (params, versions) => renderEditor(null, `raw/${params.name}`, version.vRangeTo(versions))
   ))
 
   app.get('/md/:name', scHandler(
@@ -236,13 +211,13 @@ ${result.results[0]
 
   const server = http.createServer(app)
 
-  serveWS({server}, (client, req) => {
+  wsserver({server}, (client, req) => {
     if (!req.url!.startsWith('/ws/')) {
       console.warn('client connected at invalid url', req.url)
       client.close()
     } else {
       const key = changePrefix(req.url!, '/ws/')
-      return onekey(store, key)
+      return stores.onekey(store, key)
     }
   })
 
@@ -257,7 +232,7 @@ ${result.results[0]
       inspectOptions: {depth: null}
     })
     
-    const tcpServer = serveTCP(store)
+    const tcpServer = tcpserver(store)
     tcpServer.listen(2002, 'localhost')
     console.log('Debugging server listening on tcp://localhost:2002')
   }

@@ -11,7 +11,7 @@ import subValues, {subResults} from './subvalues'
 
 import transaction from './transaction'
 
-import {supportedTypes, typeOrThrow} from './typeregistry'
+import {register as registerType, supportedTypes, typeOrThrow} from './typeregistry'
 import {queryTypes, resultTypes, wrapQuery} from './qrtypes'
 import {bitHas, bitSet} from './bit'
 
@@ -27,7 +27,7 @@ export {
   sel,
   version,
 
-  supportedTypes, typeOrThrow,
+  registerType, supportedTypes, typeOrThrow,
   queryTypes, resultTypes, wrapQuery,
 
   transaction,

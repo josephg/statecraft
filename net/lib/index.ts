@@ -1,16 +1,17 @@
 import wsserver from './wsserver'
-import wsclient from './wsclient'
+import wsclient, {connect as connectToWS} from './wsclient'
 import tcpserver from './tcpserver'
-import tcpclient from './tcpclient'
+import tcpclient, {connectToSocket, createStreams as createTCPStreams} from './tcpclient'
 import reconnectingclient from './reconnectingclient'
 import WebSocket from 'ws'
 
 import * as tinyStream from './tinystream'
 
-export default {
+export {
   WebSocket, wsserver, tcpserver,
 
-  wsclient, tcpclient,
+  wsclient, connectToWS,
+  tcpclient, connectToSocket, createTCPStreams,
 
   reconnectingclient,
 
