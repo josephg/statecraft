@@ -1,0 +1,11 @@
+{
+  "name": "@statecraft/foundationdb",
+  "version": "0.1.0",
+  "description": "Statecraft foundationdb bindings",
+  "main": "index.js",
+  "author": "Seph Gentle",
+  "license": "MIT",
+  "dependencies": {
+    "foundationdb": "^0.9.2"
+  }
+}
