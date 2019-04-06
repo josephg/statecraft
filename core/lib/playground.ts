@@ -12,28 +12,19 @@ import * as I from './interfaces'
 
 import singleStore from './stores/singlemem'
 import kvStore from './stores/kvmem'
-import prozessOps from './stores/prozessops'
-import lmdbStore from './stores/lmdb'
-import remoteStore from './stores/tcpclient'
 import poll from './stores/poll'
 import mapStore from './stores/map'
 import {inspect} from 'util'
-import {PClient, reconnecter} from 'prozess-client'
-import server from './net/tcpserver'
 import router, {ALL} from './stores/router'
 import sel from './sel'
 import doTxn, {txnSubscribe} from './transaction'
 import {V64} from './version'
 import * as textType from 'ot-text-unicode'
 
-import * as fdb from 'foundationdb'
-import fdbStore from './stores/fdb'
-import createContentful from './stores/contentful';
 import { readFileSync } from 'fs';
 import subValues from './subvalues';
 import {Console} from 'console'
-import { setKV } from './kv';
-fdb.setAPIVersion(600)
+import { setKV } from './kv'
 
 const ins = (x: any) => inspect(x, {depth: null, colors: true})
 
@@ -138,70 +129,6 @@ const testRange = async () => {
   await store.mutate(I.ResultType.KV, new Map([['c', {type: 'set', data: 10}]]))
 }
 
-const connectProzess = (): Promise<PClient> => new Promise((resolve, reject) => {
-  const client = reconnecter(9999, 'localhost', err => {
-    if (err) reject(err)
-    else resolve(client)
-  }) as PClient
-})
-
-const testProzess = async () => {
-  const client = await connectProzess()
-  const store = prozessOps(client)
-
-  const sub = store.subscribe({type: I.QueryType.AllKV, q: true})
-  ;(async () => {
-    for await (const cu of sub) {
-      console.log('cu', cu)
-    }
-  })
-
-  const txn = new Map([['x', {type:'set', data: {x: 10}}]])
-  const v = await store.mutate(I.ResultType.KV, txn, [new Uint8Array()])
-  console.log('mutate cb', v)
-}
-
-const testLmdb = async () => {
-  const client = await connectProzess()
-
-  const store = await lmdbStore(prozessOps(client), process.argv[2] || 'testdb')
-
-  const sub = store.subscribe({type:I.QueryType.KV, q:new Set(['x', 'q', 'y'])}, {})
-  ;(async () => {
-    for await (const data of sub) {
-      console.log('subscribe data', inspect(data, false, 10, true))
-    }
-  })()
-
-  // store.onTxn = (source, from, to, type, txn) => {
-  //   console.log('ontxn', source, from, to, type, txn)
-  // }
-  const txn = new Map([['a', {type:'inc', data: 10}]])
-  // const txn = new Map([['x', {type:'set', data: {ddd: (Math.random() * 100)|0}}]])
-  // const txn = new Map([['q', {type:'set', data: (Math.random() * 100)|0}]])
-  console.log('source', store.storeInfo.sources)
-  const v = await store.mutate(I.ResultType.KV, txn, [new Uint8Array()])
-  console.log('mutate cb', v)
-
-  const results = await store.fetch({type:I.QueryType.AllKV, q: true})
-  console.log('fetch results', results)
-
-  // store.close()
-}
-
-const listen = async () => {
-  const localStore = await kvStore()
-  server(localStore).listen(3334)
-  console.log('listening on 3334')
-}
-
-const testNet = async () => {
-  await listen()
-
-  const store = await remoteStore(3334, 'localhost')
-  const results = await store.fetch({type: I.QueryType.KV, q:new Set(['x'])})
-  console.log(results)
-}
 
 const setSingle = <Val>(k: I.Key, v: Val): I.KVTxn<Val> => new Map([[k, {type:'set', data: v}]])
 
@@ -266,68 +193,6 @@ const testPoll = async () => {
 }
 
 
-const retryTest = async () => {
-  const concurrentWrites = 10
-
-  const client = await connectProzess()
-  // const localStore = augment(await lmdbStore(prozessOps(client), process.argv[2] || 'testdb'))
-  const localStore = await kvStore<number>()
-
-  // Using net to give it a lil' latency.
-  // const s = server(localStore).listen(3334)
-  // const store = await remoteStore(3334, 'localhost')
-
-  const store = localStore
-
-  await store.mutate(I.ResultType.KV, setSingle('x', 0))
-  // await db.set('x', numToBuf(0))
-
-  let txnAttempts = 0
-  const sync = await Promise.all(new Array(concurrentWrites).fill(0).map((_, i) => (
-    doTxn(store, async txn => {
-      const val = await txn.get('x')
-      txn.set('x', val+1)
-      return txnAttempts++
-    })
-  )))
-
-  const result = await doTxn(store, txn => txn.get('x'))
-  assert.strictEqual(result, concurrentWrites)
-
-  // This doesn't necessarily mean there's an error, but if there weren't
-  // more attempts than there were increments, the database is running
-  // serially and this test is doing nothing.
-  assert(txnAttempts > concurrentWrites)
-
-  console.log('attempts', txnAttempts)
-  console.log(sync)
-
-  client.close()
-  store.close()
-  // s.close()
-}
-
-const getOps = async () => {
-  const fdbConn = fdb.openSync().at('textdemo') // TODO: Directory layer stuff.
-  const backend = await fdbStore<string>(fdbConn)
-
-  // const backend = lmdbStore(
-  const store = backend
-  const source = store.storeInfo.sources[0]
-  const ops = await store.getOps({type: I.QueryType.KV, q:new Set(['asdf'])}, [{from: Buffer.alloc(0), to:  Buffer.alloc(0)}])
-
-  let doc: any = null
-  ops.ops.forEach(o => {
-    const op = (o.txn as I.KVTxn<string>).get('asdf') as I.SingleOp<string>
-    if (op.type === 'set') doc = op.data
-    else if (op.type === 'text-unicode') doc = textType.type.apply(doc, op.data)
-    console.log({
-      version: Array.from(o.versions[0]!),
-      len: doc.length, op: op.data, meta: o.meta}, doc)
-  })
-
-  store.close()
-}
 
 const txnSub = async () => {
   // const client = await connectProzess()
@@ -368,28 +233,6 @@ const txnSub = async () => {
     store.mutate(I.ResultType.KV, mut)
 
   }, 1000)
-}
-
-const contentful = async () => {
-  const keys = JSON.parse(readFileSync('keys.json', 'utf8'))
-  const ops = createContentful(await kvStore(), {
-    space: keys.space,
-    accessToken: keys.contentAPI,
-
-  })
-
-  const store = await kvStore(undefined, {inner: ops})
-  const sub = store.subscribe({type: I.QueryType.StaticRange, q: [{
-    low: sel(''),
-    // low: sel('post/'),
-    high: sel('post/\xff'),
-  }]})
-  // for await (const r of sub) {
-  //   console.log('results', ins(r))
-  // }
-  for await (const r of subValues(I.ResultType.Range, sub)) {
-    console.log('results', ins(r))
-  }
 }
 
 const reproMapRouterBug = async () => {
