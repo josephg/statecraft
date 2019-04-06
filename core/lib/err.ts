@@ -1,11 +1,11 @@
 import ExtendableError from 'es6-error'
 
-class VersionTooOldError extends ExtendableError {}
-class WriteConflictError extends ExtendableError {}
-class UnsupportedTypeError extends ExtendableError {}
-class AccessDeniedError extends ExtendableError {}
-class InvalidDataError extends ExtendableError {}
-class StoreChangedError extends ExtendableError {}
+export class VersionTooOldError extends ExtendableError {}
+export class WriteConflictError extends ExtendableError {}
+export class UnsupportedTypeError extends ExtendableError {}
+export class AccessDeniedError extends ExtendableError {}
+export class InvalidDataError extends ExtendableError {}
+export class StoreChangedError extends ExtendableError {}
 
 const constructors = {VersionTooOldError, WriteConflictError, UnsupportedTypeError, AccessDeniedError, InvalidDataError, StoreChangedError}
 export default constructors

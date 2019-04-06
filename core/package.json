@@ -19,8 +19,7 @@
     "binary-search": "^1.3.2",
     "debug": "^2.2.0",
     "es6-error": "^4.1.1",
-    "ministreamiterator": "^1.0.0",
-    "set2": "^1.0.0"
+    "ministreamiterator": "^1.0.0"
   },
   "devDependencies": {
     "@types/debug": "^0.0.30",
