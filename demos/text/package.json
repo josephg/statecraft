@@ -5,7 +5,8 @@
   "main": "server.ts",
   "license": "ISC",
   "scripts": {
-    "build": "browserify -p tsify editor.ts -o public/bundle.js"
+    "build": "browserify -p tsify editor.ts -o public/bundle.js",
+    "start": "ts-node server.ts"
   },
   "dependencies": {
     "@statecraft/core": "0.1.0",
