@@ -1,6 +1,9 @@
-import {I, stores, subValues, setSingle} from '@statecraft/core'
+import {I, stores, subValues, setSingle, registerType} from '@statecraft/core'
 import {connectToWS, connectMux, BothMsg} from '@statecraft/net'
 import State, {MIDIPort, MIDIInput} from './state'
+
+import {type as jsonType, insertOp, replaceOp, JSONOp, removeOp} from 'ot-json1'
+registerType(jsonType)
 
 const {singlemem} = stores
 
@@ -27,14 +30,14 @@ console.log('wsurl', wsurl)
   })
   const inputPortData = (port: WebMidi.MIDIPort): MIDIInput => ({
     ...portData(port),
-    keys: [],
-    pots: [],
-    sliders: [],
+    keys: {},//new Array(128).fill(null),
+    pots: new Array(8).fill(NaN), //[],
+    sliders: [NaN],
     pitch: 64,
     modulation: 0,
   })
 
-  const data: State = {
+  let data: State = {
     timeOrigin: performance.timeOrigin,
     inputs: inputs.map(inputPortData),
     outputs: outputs.map(portData),
@@ -47,6 +50,13 @@ console.log('wsurl', wsurl)
   const [reader, writer] = await connectToWS<BothMsg, BothMsg>(wsurl)
   const remoteStore = await connectMux<void>(reader, writer, localStore, true)
 
+  const apply = (op: JSONOp) => {
+    console.log('before', data, 'op', op)
+    data = jsonType.apply(data, op)
+    console.log('after', data)
+    return localStore.mutate(I.ResultType.Single, {type: 'json1', data: op})
+  }
+
   const subscribeToInput = (input: WebMidi.MIDIInput, i: number) => {
     // console.log(i)
     input.onmidimessage = m => {
@@ -56,28 +66,28 @@ console.log('wsurl', wsurl)
       const inputData = data.inputs[i]
       const {keys, pots, sliders} = inputData
       switch (mtype) {
-        case 144: // Note press
-          keys[oper1] = {held: true, pressure: oper2, timestamp: m.timeStamp}
+        case 0x90: // Note ON
+          apply(replaceOp(['inputs', i, 'keys', ''+oper1], keys[oper1], {held: true, pressure: oper2, timestamp: m.timeStamp}))
           break
-        case 128: // Note release
-          keys[oper1] = {held: false, pressure: 0, timestamp: m.timeStamp}
+        case 0x80: // Note OFF
+          apply(replaceOp(['inputs', i, 'keys', ''+oper1], keys[oper1], {held: false, pressure: 0, timestamp: m.timeStamp}))
           break
         case 176: { // Pots and sliders
-          if (oper1 === 1) inputData.modulation = oper2
-          else if (oper1 >= 0x15 && oper1 <= 0x1c) pots[oper1 - 0x15] = oper2
-          // else if (oper1 >= 0x29 && oper1 <= 0x) pots[oper1 - 0x15] = oper2
-          else if (oper1 === 0x7) sliders[0] = oper2 // Slider 9 / master
-          else console.log('unknown 176 /', oper1, oper2)
+          const field = oper1 === 1 ? ['modulation']
+            : (oper1 >= 0x15 && oper1 <= 0x1c) ? ['pots', oper1 - 0x15]
+            : (oper1 === 0x7) ? ['sliders', 0]
+            : null
+          if (field == null) console.log('unknown CC /', oper1, oper2)
+          else apply(replaceOp(['inputs', i, ...field], true, oper2))
           break
         }
         case 224: // Pitch slider
-          inputData.pitch = oper2
+          apply(replaceOp(['inputs', i, 'pitch'], inputData.pitch, oper2))
           break
         default:
           console.log('unknown message', mtype, oper1, oper2)
           break
       }
-      setSingle(localStore, data)
     }
   }
   inputs.forEach(subscribeToInput)

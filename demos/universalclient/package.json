@@ -5,6 +5,9 @@
   "main": "main.js",
   "author": "Seph Gentle <me@josephg.com>",
   "license": "ISC",
+  "scripts": {
+    "build": "browserify -p tsify client.ts -o public/bundle.js"
+  },
   "dependencies": {
     "@statecraft/core": "^0.1.0",
     "@statecraft/net": "^0.1.0",
@@ -14,5 +17,9 @@
     "express": "^4.16.4",
     "ot-text-unicode": "^3.0.0",
     "typescript": "^3.4.2"
+  },
+  "devDependencies": {
+    "browserify": "^16.2.3",
+    "tsify": "^4.0.1"
   }
 }

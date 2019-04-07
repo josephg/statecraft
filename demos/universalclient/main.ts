@@ -4,8 +4,14 @@ import net from 'net'
 import url from 'url'
 import {Console} from 'console'
 
-import {I, sel, subValues} from '@statecraft/core'
+import {I, sel, subValues, registerType} from '@statecraft/core'
 import {tcpclient, createTCPStreams, wsclient, connectToWS, reconnectingclient, wsserver} from '@statecraft/net'
+
+// import {type as texttype} from 'ot-text-unicode'
+// import {type as jsontype} from 'ot-json1'
+
+// registerType(texttype)
+// registerType(jsontype)
 
 process.on('unhandledRejection', err => {
   console.error((err as any).stack)

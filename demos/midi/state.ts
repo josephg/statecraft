@@ -37,11 +37,11 @@ export interface MIDIPort {
 }
 
 export interface MIDIInput extends MIDIPort {
-  keys: {
+  keys: {[k: string]: { // The keys are actually numbers, but :/
     held: boolean,
     pressure: number,
     timestamp: number
-  }[],
+  }},
   pots: number[],
   sliders: number[],
   pitch: number,

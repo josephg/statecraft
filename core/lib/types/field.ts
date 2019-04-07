@@ -102,7 +102,7 @@ const type: ResultOps<any, any, Op<any>> = {
   
   map: apply2,
   mapAsync: apply2,
-  mapTxn: apply2,
+  mapTxn: apply2, // TODO: Consider pulling out SingleOp / SingleOp[] in these functions.
   mapTxnAsync: apply2,
 
   mapReplace: apply2,

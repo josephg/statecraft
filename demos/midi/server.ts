@@ -1,4 +1,4 @@
-import {I, stores, rmKV, setKV, subValues} from '@statecraft/core'
+import {I, stores, rmKV, setKV, subValues, registerType, resultTypes, catchupStateMachine} from '@statecraft/core'
 import {wrapWebSocket, connectMux, BothMsg, tcpserver} from '@statecraft/net'
 import express from 'express'
 import WebSocket from 'ws'
@@ -6,6 +6,8 @@ import http from 'http'
 
 // import kvMem from '../../lib/stores/kvmem'
 import State from './state'
+import {type as jsonType, JSONOp} from 'ot-json1'
+registerType(jsonType)
 
 const {kvmem} = stores
 
@@ -43,10 +45,29 @@ process.on('unhandledRejection', err => {
       rmKV(store, id)
     }
 
-    for await (const val of subValues(I.ResultType.Single, sub)) {
-      if (process.env.DEBUG_NET) console.log('client value', val)
-      await setKV(store, id, val)
+    const sm = catchupStateMachine(I.ResultType.Single)
+    for await (const cu of sub) {
+      // Most updates are just going to be a single JSON transaction. If thats the case, just port the transaction.
+
+      // TODO: This code is way more complicated than I'd like. A functionally
+      // equivalent (but much simpler) version is commented below. But, doing it
+      // this way keeps network traffic down. Consider making a utility method
+      // out of this sort of thing in the future.
+      const newVal = sm(cu).results
+
+      // Each transaction in the catchup might be a list or a single item. Throw
+      // everything away except the ops themselves.
+      const ops = ([] as I.SingleOp<State>[]).concat(...cu.txns.map(({txn}) => txn as I.SingleTxn<State>))
+      if (cu.replace || ops.find(op => op.type !== 'json1')) await setKV(store, id, newVal)
+      else {
+        // Flatten ops into a single json1 operation using compose() and send it.
+        const op = ops.map(({data}) => data as JSONOp).reduce(jsonType.compose)
+        await store.mutate(I.ResultType.KV, new Map([[id, {type: 'json1', data: op}]]))
+      }
     }
+    // for await (const val of subValues(I.ResultType.Single, sub)) {
+    //   await setKV(store, id, val)
+    // }
   })
 
   const port = process.env.PORT || 2444

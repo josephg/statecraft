@@ -6,8 +6,11 @@ import {I, subValues, subResults, sel, registerType, queryTypes, bitHas, version
 import {reconnectingclient, connectToWS} from '@statecraft/net'
 
 import {type as texttype} from 'ot-text-unicode'
+import {type as jsontype} from 'ot-json1'
+
 
 registerType(texttype)
+registerType(jsontype)
 
 type Op = {v: (I.Version | null)[], op?: I.Op<any>, replace?: any}
 type Ops = Op[]
