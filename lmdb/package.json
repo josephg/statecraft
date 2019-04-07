@@ -5,6 +5,15 @@
   "author": "Seph Gentle <me@josephg.com>",
   "license": "ISC",
   "dependencies": {
+    "@josephg/resolvable": "^1.0.0",
+    "@statecraft/core": "^0.1.0",
+    "debug": "^4.1.1",
     "node-lmdb": "^0.6.2"
+  },
+  "devDependencies": {
+    "@types/node": "^11.13.0",
+    "mocha": "^6.1.1",
+    "ts-node": "^8.0.3",
+    "typescript": "^3.4.2"
   }
 }

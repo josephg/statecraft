@@ -12,3 +12,4 @@ oldtest
 yarn-error.log
 scratch*
 *.cluster
+testdb

@@ -8,16 +8,13 @@ import fs from 'fs'
 import msgpack from 'msgpack-lite'
 import debugLib from 'debug'
 
-import fieldOps from '../types/field'
-import {queryTypes} from '../qrtypes'
-import sel from '../sel'
-import {vMax, vCmp} from '../version'
+import {I, queryTypes, sel, version as versionLib, err, bitHas, bitSet, resultTypes} from '@statecraft/core'
 
-import * as I from '../interfaces'
-import err from '../err'
-import { bitSet, hasBit } from '../bit'
-import SubGroup from '../subgroup'
-import resolvable from '../resolvable'
+// TODO: Export this cleanly in some way.
+import SubGroup from '@statecraft/core/dist/lib/subgroup'
+import resolvable from '@josephg/resolvable'
+
+const fieldOps = resultTypes[I.ResultType.Single]
 
 const debug = debugLib('statecraft')
 const CONFIG_KEY = Buffer.from('\x01config')
@@ -108,7 +105,7 @@ const lmdbStore = <Val>(inner: I.Store<Val>, location: string): Promise<I.Store<
       const [lastMod, doc] = rawGet(dbTxn, k)
       if (doc != null) resultsOut.set(k, opts.noDocs ? 1 : doc)
       // Note we update maxVersion even if the document is null.
-      maxVersion = vMax(maxVersion, lastMod)
+      maxVersion = versionLib.vMax(maxVersion, lastMod)
     }
 
     return maxVersion
@@ -122,7 +119,7 @@ const lmdbStore = <Val>(inner: I.Store<Val>, location: string): Promise<I.Store<
       const bytes = cursor.getCurrentBinaryUnsafe()
       const [lastMod, doc] = decode(bytes)
       if (doc != null) resultsOut.set(k as string, opts.noDocs ? 1 : doc)
-      maxVersion = vMax(maxVersion, lastMod)
+      maxVersion = versionLib.vMax(maxVersion, lastMod)
 
       k = cursor.goToNext()
     }
@@ -226,7 +223,7 @@ const lmdbStore = <Val>(inner: I.Store<Val>, location: string): Promise<I.Store<
   }
 
   const fetch: I.FetchFn<Val> = (query, opts = {}) => {
-    if (!hasBit(capabilities.queryTypes, query.type)) return Promise.reject(new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`))
+    if (!bitHas(capabilities.queryTypes, query.type)) return Promise.reject(new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`))
     const qops = queryTypes[query.type]
     let bakedQuery: I.Query | undefined
 
@@ -256,7 +253,7 @@ const lmdbStore = <Val>(inner: I.Store<Val>, location: string): Promise<I.Store<
           const docs = [] // A map might be nicer.
           for (const [k, bytes] of rangeContentIter(dbTxn, staticRange)) {
             const [lastMod, doc] = decode(bytes)
-            maxVersion = vMax(maxVersion, lastMod)
+            maxVersion = versionLib.vMax(maxVersion, lastMod)
             docs.push([k, doc])
           }
           return docs
@@ -304,7 +301,7 @@ const lmdbStore = <Val>(inner: I.Store<Val>, location: string): Promise<I.Store<
       const dbTxn = env.beginTxn({readOnly: true})
       for (const [k, op] of txn) {
         const [v, data] = rawGet(dbTxn, k)
-        if (expectedVersion.length && vCmp(v, expectedVersion) > 0) {
+        if (expectedVersion.length && versionLib.vCmp(v, expectedVersion) > 0) {
           dbTxn.abort()
           return Promise.reject(new err.WriteConflictError('Write conflict in key ' + k))
         }

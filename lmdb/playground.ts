@@ -1,13 +1,33 @@
+import {I, stores} from '@statecraft/core'
+import lmdbStore from './lmdb'
+import {Console} from 'console'
+
+const {opmem} = stores
+
+
+process.on('unhandledRejection', err => {
+  console.error(err != null ? (err as any).stack : 'error')
+  process.exit(1)
+})
+
+global.console = new (Console as any)({
+  stdout: process.stdout,
+  stderr: process.stderr,
+  inspectOptions: {depth: null}
+})
+
+
 
 const testLmdb = async () => {
-  const client = await connectProzess()
+  const ops = opmem()
+  // const client = await connectProzess()
 
-  const store = await lmdbStore(prozessOps(client), process.argv[2] || 'testdb')
+  const store = await lmdbStore(ops, process.argv[2] || 'testdb')
 
   const sub = store.subscribe({type:I.QueryType.KV, q:new Set(['x', 'q', 'y'])}, {})
   ;(async () => {
     for await (const data of sub) {
-      console.log('subscribe data', inspect(data, false, 10, true))
+      console.log('subscribe data', data)
     }
   })()
 
@@ -27,3 +47,4 @@ const testLmdb = async () => {
   // store.close()
 }
 
+testLmdb()
