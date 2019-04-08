@@ -6,6 +6,10 @@
   "types": "dist/lib/index.d.js",
   "author": "Seph Gentle <me@josephg.com>",
   "license": "ISC",
+  "scripts": {
+    "prepare": "npm run build",
+    "build": "tsc"
+  },
   "browser": {
     "./dist/lib/tcpserver.js": false,
     "./dist/lib/wsserver.js": false,
