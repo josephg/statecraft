@@ -88,10 +88,11 @@ export default function createKVStore<Val>(
     if (ready) await ready
     // console.log('ready lv', lastVersion)
 
-    if (!opts.minVersion && !opts.atVersion && query.type === I.QueryType.KV) {
-      // We can technically return anything.
-      return {results: new Map(), versions: [{from:V64(0), to:V64(0)}]}
-    }
+    // We can technically return anything if no minVersion is set.
+    // Uncomment this for jerk mode where we do the minimum possible. Tests should still pass.
+    // if (!opts.minVersion && !opts.atVersion && query.type === I.QueryType.KV) {
+    //   return {results: new Map(), versions: [{from:V64(0), to:V64(0)}]}
+    // }
 
     // console.log('fetch query', query)
 
