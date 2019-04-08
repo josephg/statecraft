@@ -109,6 +109,7 @@ export default class SubGroup<Val> {
       throw Error('Invalid call to catchup')
 
     } else if (fromVersion == null || trackValues) {
+      // console.log('catchup with store.fetch()')
       if (!this.opts.fetch) {
         // This should be thrown in the call to .subscribe.
         throw new Error('Invalid state: Cannot catchup')
@@ -164,6 +165,7 @@ export default class SubGroup<Val> {
 
     if (vCmp(this.storeVersion[sourceIdx]!, toV) >= 0) throw Error('Store sent repeated txn versions')
     this.storeVersion[sourceIdx] = toV
+    // console.log('onOp', fromV, '->', toV)
 
     for (const sub of this.allSubs) {
       // console.log(sub.id, 'onOp version', sub.id, 'fv', fromV, 'tv', toV, 'buf', sub.opsBuffer, 'sub ev', sub.expectVersion, 'val', sub.value, 'txn', txn)
@@ -324,15 +326,10 @@ export default class SubGroup<Val> {
 
           // console.log('Got catchup', catchup)
 
-          const catchupVersion = catchup.toVersion
+          const {opsBuffer} = sub
+          if (opsBuffer == null) throw Error('Invalid internal state in subgroup')
 
-          for (let i = 0; i < this.storeVersion.length; i++) {
-            const cuv = catchupVersion[i]
-            if (cuv && vCmp(cuv, this.storeVersion[i]!) < 0) {
-              console.log('cuv', cuv, this.storeVersion)
-              throw new Error('Store catchup returned an old version in subGroup')
-            }
-          }
+          const catchupVersion = catchup.toVersion
 
           if (catchup.replace) {
             // TODO: Is this right?
@@ -349,16 +346,17 @@ export default class SubGroup<Val> {
           }
           // console.log('catchup -> ', catchupVersion, catchup, sub.expectVersion, sub.q, query.type)
           
-          if (sub.opsBuffer == null) throw Error('Invalid internal state in subgroup')
-
           // Replay the operation buffer into the catchup txn
-          for (let i = 0; i < sub.opsBuffer.length; i++) {
-            const {sourceIdx, fromV, toV, txns} = sub.opsBuffer[i]
+          for (let i = 0; i < opsBuffer.length; i++) {
+            const {sourceIdx, fromV, toV, txns} = opsBuffer[i]
             // console.log('pop from opbuffer', source, {fromV, toV}, txn)
             const v = catchupVersion[sourceIdx]
 
             // If the buffered op is behind the catchup version, discard it and continue.
-            if (v != null && vCmp(toV, v) <= 0) continue
+            if (v != null) {
+              if (vCmp(toV, v) <= 0) continue
+              else if (vCmp(fromV, v) > 0) throw new Error('Store catchup returned an old version in subGroup')
+            }
 
             // console.log('adaptTxn', query.type, txn, sub.q!.q)
             for (let t = 0; t < txns.length; t++) {
@@ -381,6 +379,16 @@ export default class SubGroup<Val> {
                 // console.log('v', v, 'fromV', fromV, 'toV', toV)
                 throw Error('Invalid operation data - version span incoherent')
               }
+            }
+          }
+
+          // Ok we've processed the buffer. Now check that the subscription
+          // version always meets or exceeds the store version
+          for (let si = 0; si < this.storeVersion.length; si++) {
+            const cuv = catchupVersion[si]
+            if (cuv && vCmp(cuv, this.storeVersion[si]!) < 0) {
+              // console.log('cuv', cuv, this.storeVersion, opsBuffer)
+              throw new Error('Store catchup returned an old version in subGroup')
             }
           }
           
