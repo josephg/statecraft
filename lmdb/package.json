@@ -1,6 +1,6 @@
 {
   "name": "@statecraft/lmdb",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "main": "dist/lmdb.js",
   "types": "dist/lmdb.d.ts",
   "author": "Seph Gentle <me@josephg.com>",
