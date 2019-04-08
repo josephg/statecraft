@@ -223,6 +223,7 @@ const lmdbStore = <Val>(inner: I.Store<Val>, location: string): Promise<I.Store<
   }
 
   const fetch: I.FetchFn<Val> = (query, opts = {}) => {
+    // console.log('lmdb fetch', query, opts)
     if (!bitHas(capabilities.queryTypes, query.type)) return Promise.reject(new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`))
     const qops = queryTypes[query.type]
     let bakedQuery: I.Query | undefined
@@ -261,7 +262,7 @@ const lmdbStore = <Val>(inner: I.Store<Val>, location: string): Promise<I.Store<
 
         break
       }
-      default: throw new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`)
+      default: return Promise.reject(new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`))
     }
       // = query.type === 'kv'
       //  ? getKVResults(dbTxn, query.q, opts, results)
@@ -345,7 +346,9 @@ const lmdbStore = <Val>(inner: I.Store<Val>, location: string): Promise<I.Store<
   
   ;(async () => {
     for await (const cu of inner.subscribe({type: I.QueryType.AllKV, q: true}, {fromVersion: [version]})) {
-      if (cu.replace) throw new Error('Inner store replacing data is not implemented')
+      if (cu.replace) throw new Error('LMDB stores inner store replacing data is not implemented')
+
+      // console.log('lmdb store got update', cu)
       
       let evtTxn = env.beginTxn()
       let nextVersion = new Uint8Array()

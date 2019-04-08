@@ -31,9 +31,6 @@ const testLmdb = async () => {
     }
   })()
 
-  // store.onTxn = (source, from, to, type, txn) => {
-  //   console.log('ontxn', source, from, to, type, txn)
-  // }
   const txn = new Map([['a', {type:'inc', data: 10}]])
   // const txn = new Map([['x', {type:'set', data: {ddd: (Math.random() * 100)|0}}]])
   // const txn = new Map([['q', {type:'set', data: (Math.random() * 100)|0}]])
