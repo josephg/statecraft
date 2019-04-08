@@ -1,9 +1,11 @@
 {
   "name": "@statecraft/lmdb",
   "version": "0.1.0",
-  "main": "index.js",
+  "main": "dist/lmdb.js",
+  "types": "dist/lmdb.d.ts",
   "author": "Seph Gentle <me@josephg.com>",
   "license": "ISC",
+  "files": ["dist/*", "lmdb.ts", "deps.d.ts"],
   "dependencies": {
     "@josephg/resolvable": "^1.0.0",
     "@statecraft/core": "^0.1.0",
