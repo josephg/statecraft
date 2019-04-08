@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@josephg/resolvable": "^1.0.0",
-    "@statecraft/core": "^0.1.0",
+    "@statecraft/core": "^0.1.1",
     "debug": "^4.1.1",
     "node-lmdb": "^0.6.2"
   },
