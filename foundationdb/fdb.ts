@@ -2,6 +2,9 @@
 // 
 // It supports kv and range queries
 
+import {I, err, genSource, queryTypes, resultTypes, version as versionLib, bitHas, bitSet} from '@statecraft/core'
+import SubGroup from '@statecraft/core/dist/lib/subgroup' // TODO: Remove this.
+
 import {
   TransactionOptionCode,
   Database,
@@ -9,17 +12,12 @@ import {
   openSync,
   keySelector
 } from 'foundationdb'
-import * as I from '../interfaces'
-import err from '../err'
-import genSource from '../gensource'
+
 import msgpack from 'msgpack-lite'
 import assert from 'assert'
 import debugLib from 'debug'
-import fieldOps from '../types/field'
-import {queryTypes} from '../qrtypes'
-import {vMax, vCmp} from '../version'
-import {bitSet, hasBit} from '../bit'
-import SubGroup from '../subgroup'
+
+const fieldOps = resultTypes[I.ResultType.Single]
 
 // All system-managed keys are at 0x00___.
 
@@ -144,7 +142,7 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.Store<Val
   // let mid = 0
 
   const fetch: I.FetchFn<Val> = async (query, opts = {}) => {
-    if (!hasBit(capabilities.queryTypes, query.type)) throw new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`)
+    if (!bitHas(capabilities.queryTypes, query.type)) throw new err.UnsupportedTypeError(`${query.type} not supported by lmdb store`)
 
     const qops = queryTypes[query.type]
     let bakedQuery: I.Query | undefined
@@ -166,7 +164,7 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.Store<Val
             if (result) {
               const [stamp, value] = result
               if (value != null) results.set(k, opts.noDocs ? 1 : value)
-              maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
+              maxVersion = maxVersion ? versionLib.vMax(maxVersion, stamp) : stamp
             }
           }))
           break
@@ -193,7 +191,7 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.Store<Val
           results = new Map<I.Key, Val>()
           for (const [kbuf, [stamp, value]] of resultsList) {
             results.set(kbuf.toString('utf8'), opts.noDocs ? 1 : value)
-            maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
+            maxVersion = maxVersion ? versionLib.vMax(maxVersion, stamp) : stamp
           }
           break
         }
@@ -205,7 +203,7 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.Store<Val
             // foundationdb in mind... ;)
             return (await tn.getRangeAll(staticKStoFDBSel(low), staticKStoFDBSel(high), {reverse: reverse}))
               .map(([kbuf, [stamp, value]]) => {
-                maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
+                maxVersion = maxVersion ? versionLib.vMax(maxVersion, stamp) : stamp
                 return [kbuf.toString('utf8'), opts.noDocs ? 1 : value] as [I.Key, Val]
               }) //.filter(([k, v]) => v != undefined)
           }))
@@ -220,7 +218,7 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.Store<Val
             // console.log('range results', (await tn.getRangeAll(kStoFDBSel(low), kStoFDBSel(high), {reverse: reverse, limit: limit})).length)
             const vals = (await tn.getRangeAll(kStoFDBSel(low), kStoFDBSel(high), {reverse: reverse, limit: limit}))
               .map(([kbuf, [stamp, value]]) => {
-                maxVersion = maxVersion ? vMax(maxVersion, stamp) : stamp
+                maxVersion = maxVersion ? versionLib.vMax(maxVersion, stamp) : stamp
                 // console.log('arr entry', [kbuf.toString('utf8'), value])
                 return [kbuf.toString('utf8'), opts.noDocs ? 1 : value] as [I.Key, Val]
               }) //.filter(([k, v]) => v != undefined)
@@ -273,7 +271,7 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.Store<Val
     if (from.length === 0) from = NULL_VERSION
     if (to.length === 0) to = END_VERSION
     if (typeof from === 'number' || typeof to === 'number') throw Error('Invalid version request')
-    if (vCmp(from, to) > 0) return {ops: [], versions: []}
+    if (versionLib.vCmp(from, to) > 0) return {ops: [], versions: []}
 
     // TODO: This will have some natural limit based on how big a
     // transaction can be. Split this up across multiple transactions using
@@ -332,7 +330,7 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.Store<Val
           const oldValue = await tn.getVersionstampPrefixedValue(k)
 
           // console.log(m, 'oldvalue stamp', oldValue && oldValue.stamp, 'v', v, 'conflict', (oldValue && v) ? vCmp(oldValue.stamp, v) > 0 : 'no compare')
-          if (v != null && oldValue != null && vCmp(oldValue.stamp, v) > 0) {
+          if (v != null && oldValue != null && versionLib.vCmp(oldValue.stamp, v) > 0) {
             // console.log('throwing write conflict', m)
             throw new err.WriteConflictError('Write conflict in key ' + k)
           }
@@ -406,7 +404,7 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.Store<Val
             const [op, meta] = v
 
             // console.log('v', v0, version)
-            assert(vCmp(v0, version) < 0)
+            assert(versionLib.vCmp(v0, version) < 0)
             txns.push({
               txn: new Map(op),
               meta,

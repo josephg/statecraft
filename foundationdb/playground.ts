@@ -1,26 +1,43 @@
-
+import {I} from '@statecraft/core'
+import fdbStore from './fdb'
+import {Console} from 'console'
 import * as fdb from 'foundationdb'
 
 fdb.setAPIVersion(600)
 
-const getOps = async () => {
-  const fdbConn = fdb.openSync().at('textdemo') // TODO: Directory layer stuff.
-  const backend = await fdbStore<string>(fdbConn)
+process.on('unhandledRejection', err => {
+  console.error(err != null ? (err as any).stack : 'error')
+  process.exit(1)
+})
 
-  // const backend = lmdbStore(
-  const store = backend
-  const source = store.storeInfo.sources[0]
-  const ops = await store.getOps({type: I.QueryType.KV, q:new Set(['asdf'])}, [{from: Buffer.alloc(0), to:  Buffer.alloc(0)}])
+global.console = new (Console as any)({
+  stdout: process.stdout,
+  stderr: process.stderr,
+  inspectOptions: {depth: null}
+})
 
-  let doc: any = null
-  ops.ops.forEach(o => {
-    const op = (o.txn as I.KVTxn<string>).get('asdf') as I.SingleOp<string>
-    if (op.type === 'set') doc = op.data
-    else if (op.type === 'text-unicode') doc = textType.type.apply(doc, op.data)
-    console.log({
-      version: Array.from(o.versions[0]!),
-      len: doc.length, op: op.data, meta: o.meta}, doc)
-  })
+const testFDB = async () => {
+  const fdbConn = fdb.openSync().at('temp-playground') // TODO: Directory layer stuff.
+  const store = await fdbStore(fdbConn)
+
+  const sub = store.subscribe({type:I.QueryType.KV, q:new Set(['x', 'q', 'y'])}, {})
+  ;(async () => {
+    for await (const data of sub) {
+      console.log('subscribe data', data)
+    }
+  })()
+
+  const txn = new Map([['a', {type:'inc', data: 10}]])
+  // const txn = new Map([['x', {type:'set', data: {ddd: (Math.random() * 100)|0}}]])
+  // const txn = new Map([['q', {type:'set', data: (Math.random() * 100)|0}]])
+  console.log('source', store.storeInfo.sources)
+  const v = await store.mutate(I.ResultType.KV, txn)
+  console.log('mutate cb', v)
+
+  const results = await store.fetch({type:I.QueryType.AllKV, q: true})
+  console.log('fetch results', results)
 
   store.close()
 }
+
+testFDB()
