@@ -140,7 +140,10 @@ export type TxnWithMeta<Val> = {
 }
 
 export type FetchOpts = {
-  // Don't actually return any data. Useful for figuring out the version. Default: false
+  /**
+   * Don't actually return values in returned data. Useful for figuring out the
+   * version. If unspecified, defaults to `false`.
+   */
   readonly noDocs?: boolean,
 
   /**
@@ -163,7 +166,6 @@ export type FetchOpts = {
   // Results already known at specified version. Return nothing in this case.
   // readonly knownAtVersions?: FullVersion,
   // TODO: knownDocs?
-
 }
 
 export type FetchResults<Val, R = ResultData<Val>> = {
@@ -183,12 +185,6 @@ export type FetchResults<Val, R = ResultData<Val>> = {
   // can be passed back to the store to continue the fetch results when limits
   // are sent & applied.
 }
-
-// export type Callback<T> = (err: Error | null, results?: T) => void
-
-export type FetchFn<Val> = (q: Query, opts?: FetchOpts) => Promise<FetchResults<Val>>
-
-
 
 
 export interface GetOpsOptions {
@@ -224,7 +220,7 @@ export type GetOpsResult<Val> = {
 }
 
 // If the to version in a version range is empty, fetch the open range (from..]
-export type GetOpsFn<Val> = (q: Query, versions: FullVersionRange, opts?: GetOpsOptions) => Promise<GetOpsResult<Val>>
+// export type GetOpsFn<Val> = (q: Query, versions: FullVersionRange, opts?: GetOpsOptions) => Promise<GetOpsResult<Val>>
 
 
 
@@ -286,7 +282,7 @@ export interface CatchupOpts {
   readonly limitDocs?: number,
   readonly limitBytes?: number,
 }
-export type CatchupFn<Val> = (q: Query, fromVersion: FullVersion, opts: CatchupOpts) => Promise<CatchupData<Val>>
+// export type CatchupFn<Val> = (q: Query, fromVersion: FullVersion, opts: CatchupOpts) => Promise<CatchupData<Val>>
 
 
 export interface SubscribeOpts {
@@ -346,28 +342,6 @@ export type AsyncIterableIteratorWithRet<T> = AsyncIterableIterator<T> & {
 export type Subscription<Val> = AsyncIterableIteratorWithRet<CatchupData<Val>>
 
 
-// A subscription gives you a stream of operations. There's 3 modes a
-// subscription can run in:
-//
-// 1. Fetch and subscribe. This is the default if you don't pass any options.
-// The first update from the subscription will contain a replace: {} object
-// with all the results from fetching the query, and subsequent updates will
-// modify the query as needed.
-//
-// 2. Subscribe only. If you pass in fromVersion: {...} in the options, that
-// indicates that the caller already has a copy of the query results at the
-// specified version. We don't do any fetch, and instead just catch up from
-// the specified version onwards. Use opts.aggregate to control whether the
-// server is allowed to aggregate the initial catchup.
-//
-// 3. Raw subscribe. If you pass fromVersion: 'current', you get all
-// operations as they come in.
-export type SubscribeFn<Val> = (q: Query, opts?: SubscribeOpts) => AsyncIterableIteratorWithRet<CatchupData<Val>>
-
-
-
-
-
 export interface MutateOptions {
   conflictKeys?: Key[], // TODO: Add conflict ranges.
   meta?: Metadata,
@@ -375,10 +349,7 @@ export interface MutateOptions {
 
 // TODO: Consider wrapping ResultType + txn in an object like I did with Query.
 // Also the TxnWithMeta is made from txn, versions and opts.meta. Might be better to just pass a TxnWithMeta straight in.
-export type MutateFn<Val> = (type: ResultType, txn: Txn<Val>, versions?: FullVersion, opts?: MutateOptions) => Promise<FullVersion>
-// export type MutateFn2 = (type: ResultType, txn: Txn | TxnWithMeta, opts?: MutateOptions) => Promise<FullVersion>
-
-
+// export type MutateFn<Val> = (type: ResultType, txn: Txn<Val>, versions?: FullVersion, opts?: MutateOptions) => Promise<FullVersion>
 
 
 export type OpsSupport = 'none' | 'partial' | 'all' // TODO
@@ -412,70 +383,257 @@ export type TxnListener<Val> = (
 ) => void
 
 
-
+/**
+ * Stores are the beating heart of statecraft. Stores are a semantic wrapper
+ * around:
+ *
+ * - Some data (A single value or a set of key-value pairs)
+ * - A monotonically increasing version number (or multiple version numbers).
+ *
+ * The store interface is intended to be like studs on a lego brick - a
+ * composable, interoperable API for interacting with data that changes over
+ * time.
+ *
+ * The store interface is designed to be a generic way to access:
+ *
+ * - Databases
+ * - Files on disk
+ * - Values in memory
+ * - Computed views (computed lazily or eagerly)
+ * - Event sources
+ * - Any other API for remote data
+ *
+ * Most statecraft stores will not store data directly, but instead wrap or
+ * delegate the data storage to another store in turn.
+ *
+ * Note that store is an interface and not a class. Any javascript object which
+ * conforms to the store specification (below) is considered to be a store, and
+ * can be used in any place that stores are used. This includes throughout the
+ * core statecraft library.
+ * 
+ * See other documentation for more high level details on stores.
+ */
 export interface Store<Val> {
+  /**
+   * Information about the store. This describes the store's unique identifier,
+   * list of root sources and supported query types.
+   * 
+   * Exported GraphQL schemas will be added here too.
+   */
   readonly storeInfo: StoreInfo, // TODO: Should this be a promise?
 
-  // (q: Query, opts?: FetchOpts) => Promise<FetchResults>
-  readonly fetch: FetchFn<Val>,
+  /**
+   * Fetch data from the store based on the passed query.
+   *
+   * This is one of two normal functions for reading data from a store.
+   *
+   * @param query A description of the data to be fetched. For example,
+   * `{type:'kv', q:new Set(['a','b','c'])}`. See query documentation for
+   * details on query types. The valid query types for a given store are listed
+   * in the `storeInfo.capabilities.queryTypes` bitfield.
+   *
+   * @param opts Fetch options.
+   *
+   * @returns A promise to the corresponding result set, along with a version
+   * range at which that resulting data is valid.
+   *
+   * For example, imagine a query requests key `a`. In the database, `a` was
+   * last modified at version 100. The database is currently at version 200. The
+   * result set will contain the value of key `a` (well, a `Map` from `a` to its
+   * corresponding value). The returned version range will be from version 100
+   * to version 200.
+   *
+   * Some stores do not store all historical versions. In the example above, if
+   * the store only remembers versions 190-200, the returned version range is
+   * allowed to only specify that smaller version range.
+   */
+  fetch(q: Query, opts?: FetchOpts): Promise<FetchResults<Val>>
 
-  // These are added automatically when store is augmented, but they can be supplied directly.
-  readonly catchup?: CatchupFn<Val>,
-
-
-  // catchup?: CatchupFn, // Can be generated from fetch. I think I can keep this private.
-
-
-  // Versions are [{from, to}] pairs where the data returned is in
-  // the range of (from, to]. You can think of the results as the operations
-  // moving from document version from to document version to.
-  //
-  // to:-1 will get all available operations.
-  readonly getOps: GetOpsFn<Val>
+  /**
+   * Get all historical operations within the specified version range. The
+   * operations returned should be trimmed to values in the requested query set.
+   *
+   * Note that some stores will simply wrap an event log (like kafka). In this
+   * case, the store should only advertise supporting query types `AllKV` or
+   * `Single`, and the query itself may be ignored completely.
+   *
+   * @param versions `[{from, to}]` pairs for each source, or `null` if you
+   * don't care about operations of the named source. The data returned will be
+   * in the range of (from, to]. You can think of the results as the operations
+   * moving from a snapshot at version `from` to a snapshot at version version
+   * `to`. Pass `to:<Empty buffer>` to get all available operations from version
+   * `from` to the current point in time.
+   *
+   * @param opts Optional getOps options object. See GetOpsOptions for details.
+   */
+  getOps(q: Query, versions: FullVersionRange, opts?: GetOpsOptions): Promise<GetOpsResult<Val>>
 
 
   // For reconnecting, you can specify knownDocs, knownAtVersions
   // - ... And something to specify the catchup mode (fast vs full)
   // - opts.getFullHistortForDocs - or something like it.
   // These options should usually appear together.
-  readonly subscribe: SubscribeFn<Val>
 
+  /**
+   * A subscription is a stream of catchup operations. These operations can be
+   * applied in order to observe the state of some data changing over time.
+   *
+   * There are 3 modes a subscription can run in, depending on the existance and
+   * value of `opts.fromVersion`:
+   *
+   * 1. *Fetch and subscribe*: This is the default if you don't pass any
+   *    options, or don't specify `opts.fromVersion`. The first update from the
+   *    subscription will contain a `replace: {...}` object with results as if
+   *    you fetched the query directly. After the initial catchup object, the
+   *    subscription is identical to a subscribe only query (below).
+   * 2. *Subscribe only*: Subscribe only queries are used when consuming
+   *    application already has a snapshot of the data at some known version.
+   *    Subscriptions run in subscribe only mode if you pass in
+   *    `fromVersion:[...]` in the query options, specifying the version from
+   *    which the client has operations. The store won't do any initial fetch,
+   *    but instead will attempt to catch the client up from the specified
+   *    version. Use `opts.aggregate` to control whether the server is allowed
+   *    to aggregate the initial catchup. Note that some stores only store
+   *    historical operations for a certain amount of time, or not at all. If
+   *    the requested version is too old, the store may simply give the client
+   *    application a fresh snapshot as the first update regardless of the state
+   *    of the `fromVersion` option.
+   * 3. *Raw subscribe*: If you pass `fromVersion: 'current'`, you get all
+   *    operations as they come in from whatever version the store thinks its
+   *    at. No catchup is performed at all in this mode. Most applications will
+   *    never use raw subscriptions.
+   *
+   * The subscription itself is an async iterator. This means you can read from
+   * the stream of operations with a `for await` loop:
+   *
+   * ```
+   * const sub = store.subscribe({type: QueryType.Single, q:true})
+   * for await (const catchup of sub) {
+   *   // ...
+   * }
+   * ```
+   *
+   * However, the catchup objects themselves are quite complex, and they're
+   * awkward to consume directly. Almost all applications should use the
+   * standard catchup state machine to consume subscription catchup objects:
+   *
+   * ```
+   * const sub = store.subscribe({type: QueryType.KV, q:new Set([...])})
+   * for await (const data of statecraft.subValues(ResultType.KV, sub)) {
+   *   console.log('query result set is now', data)
+   * }
+   * ```
+   *
+   * The state machine can also be driven manually:
+   * 
+   * ```
+   * const sub = store.subscribe({type: QueryType.StaticRange, q:[
+   *   {low: sel('a/x', true), high: sel('z')}
+   * ]})
+   * const machine = catchupStateMachine(ResultType.Range)
+   * ;(async () => {
+   *   for await (const catchup of sub) {
+   *     const {results, versions} = machine(catchup)
+   *     console.log('query result set is now', results, 'at version', versions)
+   *   }
+   * })()
+   * ```
+   *
+   * @param q A query defining the data that the consumer is interested in. Just
+   * like `fetch`, the query type must be listed in `storeInfo.capabilities.queryTypes`.
+   * 
+   * @returns The subscription object. Note that this subscription is returned
+   * syncronously (immediately). But resulting data will only be available with
+   * the first update.
+   */
+  subscribe(q: Query, opts?: SubscribeOpts): AsyncIterableIteratorWithRet<CatchupData<Val>>
 
-  // Modify the db. txn is a map from key => {type, data}. versions is just source => v.
-  // TODO: Consider adding a txnType argument here as well.
-  //
-  // # On versions:
-  //
-  // The version specified here is the current expected database version. The
-  // transaction itself will have a version equal to the new database version,
-  // which will be greater.
-  //
-  // The version can be elided if you don't care what the database has when the
-  // operation is submitted.
-  //
-  // So for example, given db at version 10, mutate(v:10) => transaction at
-  // v:11, and afterwards db is at v:11.
-  readonly mutate: MutateFn<Val>,
+  /**
+   * Modify the db by applying the specified transaction. All database writes
+   * happen through this function.
+   *
+   * `mutate` is atomic. Stores guarantee that the transaction is either applied
+   * in its entirity or not applied at all.
+   *
+   * Calling mutate directly is not always recommended.
+   * - For simple writes, consider using the helper functions `setSingle`,
+   *   `rmKV` or `setKV`.
+   * - For writes involving more complex logic and automatic retries in case of
+   *   conflicts, consider using a `transaction`. This mirrors the API you use
+   *   when interacting with more traditional databases.
+   *
+   * Ultimately however, all of these tools wrap calls to `mutate`.
+   *
+   * @param type The expected result type of the store. Most stores will only
+   * have one result type (`ResultType.Single` or `ResultType.KV`). The
+   * transaction's format must match the type passed here. Stores advertise
+   * their list of allowed result types via
+   *
+   * @param txn A transaction describing desired modifications to the database.
+   * The format of this object changes depending on the type of data in the
+   * store.
+   *
+   * - For single value stores, this is usually `{type:'set', data}` or
+   *   `{type:'rm'}`.
+   * - For KV stores, this is a map from key to operation. For example, `new
+   *   Map([['a',{type:'set',123}],['b',{type:'rm'}]])`.
+   *
+   * Other types can be registered via `statecraft.registerType`. This is useful
+   * for collaborative editing via OT or CRDT, or for custom complex data update
+   * functions like you would use for a multiplayer game.
+   *
+   * @param versions (*optional*): The version of the database at which this
+   * transaction is valid. If this transaction writes to any keys which have
+   * been modified more recently than the specified version, the transaction is
+   * considered to be in conflict and will be aborted. The transaction can also
+   * specify additional conflict keys via `opts.conflictKeys`.
+   *
+   * Note that if versions is not specified, the transaction will be applied
+   * some arbitrary current version. This means that you may overwrite changes
+   * from other users.
+   *
+   * @returns A promise to the resulting version of the store after the mutation
+   * has been applied.
+   */
+  mutate(type: ResultType, txn: Txn<Val>, versions?: FullVersion, opts?: MutateOptions): Promise<FullVersion>
 
-  // If needed
+  /**
+   * Close the store. This should free any resources allocated on behalf of the
+   * store, closing outgoing network sockets and associated file handles.
+   *
+   * This function is often a no-op.
+   *
+   * Stores should only recursively call `close()` on other stores created and
+   * owned locally.
+   *
+   * Likewise, store consumers should call `close()` on all stores created
+   * locally, even if those stores are only made as part of a data pipeline.
+   */
   close(): void,
 
 
-  // Start calling onTxn from the specified version (or latest if v not passed).
-  // Returns a promise to the current version when we're ready.
-  // start?(v?: FullVersion): Promise<FullVersion>
-
-  // TODO: Remove me.
-  // This is set by the store's wrapper. Could be implemented as an async
-  // iterator - but this way makes it clear that we discard events when
-  // there's no listener.
-  // 
-  // ... Eh. 🤷‍♀️
-  // onTxn?: TxnListener<Val>,
+  /**
+   * Catchup is an optional method that can be added to stores to make
+   * subscription catchup faster (eg when a subscription is created from a
+   * specified version - which happens when a client reconnects).
+   * 
+   * Most stores do not need to implement this method.
+   * 
+   * If this method is missing, catchup happens by calling `getOps` or `fetch`.
+   */
+  catchup?(q: Query, fromVersion: FullVersion, opts: CatchupOpts): Promise<CatchupData<Val>>
 
   // And potentially other helper methods and stuff.
   // [k: string]: any
 }
+
+// We'll peel & export the function types back out of store to make it easy to refer to
+// these types separately from stores.
+export type FetchFn<Val> = Store<Val>['fetch']
+export type CatchupFn<Val> = NonNullable<Store<Val>['catchup']>
+export type GetOpsFn<Val> = Store<Val>['getOps']
+export type SubscribeFn<Val> = Store<Val>['subscribe']
+export type MutateFn<Val> = Store<Val>['mutate']
 
 // This is a pretty standard OT type.
 export interface Type<Snap, Op> {
