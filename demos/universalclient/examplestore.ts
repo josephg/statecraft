@@ -1,34 +1,35 @@
-// // This is an example store that can be connected to by the universal client
+// This is an example store that can be connected to by the universal client
 
-// import net from 'net'
+import net from 'net'
 
-// import * as I from '../../lib/interfaces'
-// import kvMem from '../../lib/stores/kvmem'
-// import subValues from '../../lib/subvalues'
-// import { rmKV, setKV } from '../../lib/kv'
+import {I, stores, subValues, setKV, rmKV} from '@statecraft/core'
+import {tcpserver} from '@statecraft/net'
 // import serve from '../../lib/net/tcpserver'
 // import makeMap from '../../lib/stores/map'
 
-// process.on('unhandledRejection', err => {
-//   console.error(err.stack)
-//   process.exit(1)
-// })
+const {kvmem, map: makeMap} = stores
 
-// ;(async () => {
-//   const store = await kvMem(new Map([
-//     ['hi', {a:3, b:4}],
-//     ['yo', {a:10, b:30}]
-//   ]))
+process.on('unhandledRejection', err => {
+  console.error((err as any).stack)
+  process.exit(1)
+})
 
-//   setInterval(() => {
-//     setKV(store, 'x', {a: Math.random(), b: Math.random()})
-//   }, 1000)
+;(async () => {
+  const store = await kvmem(new Map([
+    ['hi', {a:3, b:4}],
+    ['yo', {a:10, b:30}]
+  ]))
 
-//   const mapStore = makeMap(store, ({a, b}) => {
-//     return "a + b is " + (a+b)
-//   })
+  setInterval(() => {
+    setKV(store, 'x', {a: Math.random(), b: Math.random()})
+  }, 1000)
+  
+  const server = tcpserver(store)
+  // const mapStore = makeMap(store, ({a, b}) => {
+  //   return "a + b is " + (a+b)
+  // })
 
-//   const server = serve(mapStore)
-//   server.listen(2002)
-//   console.log('listening on TCP port 2002')
-// })()
+  // const server = tcpserver(mapStore)
+  server.listen(2002)
+  console.log('listening on TCP port 2002')
+})()
