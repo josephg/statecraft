@@ -1,57 +1,88 @@
 # Statecraft
 
-> This is a work in progress / proof of concept for now. The API is incomplete. Do not use this project for anything yet.
+Statecraft is a set of tools for interacting with data that changes over time. Its the spiritual successor to [Sharedb](https://github.com/share/sharedb).
 
-Statecraft is a database middleware tool for intelligent sourcing and syncing. Its designed as the spiritual successor to [sharedb](https://github.com/share/sharedb), by the same original author.
+Statecraft sees the world as a series of stores. Each store has:
 
-The core insight is that most modern databases try to do too much. They're all great at something, but no single database provides all the features I want:
+- Some data (A single value or a set of key-value pairs)
+- A monotonically increasing version number.
 
-- Elasticsearch is a great full text search engine, but its generic data storage isn't very capable.
-- Couchdb has an awesome document view / rendering system, but no type checking
-- Rethinkdb's realtime query support is amazing, but it has no support for multi-key transactions
-- Postgres has beautiful reliability and multi-key transactions but its best features are only accessable via its super complicated internal scripting engine.
-- Leveldb is super easy to get started with but it won't scale past a single server / backend instance
-- Mongodb is like smoking - its easy to start using, and way too difficult to quit.
+The store guarantees that the data is immutable with respect to time. (So if the data changes, the version number goes up).
 
-Making yet another database implementation won't anything. I'll just end up with my own set of halfbaked non-core features.
+Stores provide a standard set of methods to interact with the data:
 
-Modern applications need something better. The goal of statecraft is to provide a simple view over a constellation of database services, exposing a useful common set of features without stopping you using the raw functionality of the
-databases themselves.
+- **Fetch**: Run a query against the data
+- **Mutate**: Edit the data & bump the version
+- **Subscribe**: Be notified when the data changes, and optionally also fetch the current state of the data.
+- **GetOps**: *(Optional)* Get all operations in some specified version range. Stores can choose how much historical data to store and return.
 
-The constellation of databases will look like a DAG of services and views, mounted into a single namespace that your application can access. As your infrastructure needs grow so will the set of services your application depends on. Your application will always talk the same database protocol - but it'll be talking to a different set of underlying services as it grows.
+A statecraft store is more than just a database abstraction. They can provide an interface to:
 
-> **TODO:** Explain this more with some diagrams.
+- A file on disk
+- A single variable in memory
+- A computed view (eg rendered HTML)
+- An event log (eg Kafka)
+- A store which lives remotely over the network
+- Some other remote API
 
-For now I'm implementing the features of statecraft through a simple nodejs API wrapped around levelup. After I'm happy with that I'm going to make a standard network API then let the tooling combinatorial fun begin.
+And much more.
 
-## Core features
+Unlike traditional transactional databases, statecraft stores compose together like LEGO. Stores wrap one another, adding functionality or changing the behaviour of the store living underneath in the process.
 
-- KV store for now just storing JSON or binary blobs
-- Optional type annotations for schema validation
-- Opt-in fully serialized multi-key transactions
-- Rethinkdb-style realtime streaming / mongodb oplog tailing
-- Support for operational transform to handle write conflicts. In the network protocol there'll be a capabilities handshake of some sort.
-- Arbitrary queries passed straight to part of the database. I want to support SQL without needing to parse SQL.
-- Some form of [multiversion concurrency control](https://en.wikipedia.org/wiki/Multiversion_concurrency_control)
-- Capability based security model.
+For example:
 
-By virtue of the mounting system these features can be added trivially by databases in the DAG without adding complexity to the core:
+- The `readonly` store transparently provides access to the underlying store, but disallows any mutation.
+- A `cache` store caches all queries made to the underlying store, and can return subsequent queries directly
+- The `map` store runs all fetch and subscribe result values through a mapping function.
+- The network server and client allow you to use a statecraft store living on another computer as if it existed locally. This works between servers or from a web browser over websockets.
 
-- Couchdb-style views. Values could be served from a cache or generated at runtime
-- Rethinkdb-style database proxies for load balancing, CDN
-- Custom indexers
-- Databases can provide reliability clusters via RAFT, etc
-- Authentication proxies. Its easy to write a service which uses fine-grained access control rules to expose part of your database to the public.
-- Extend the database API all the way to the browser, firebase style.
-- Realtime streaming backup services
-- Oplogs as a service, providing a way to time travel through the data set
-- Clean web-based admin tool.
+The philosophy of statecraft is to "ship the architecture diagram". You should be able to take your whiteboard diagram of your application and construct (almost) all of it directly out of statecraft stores. No reimplementation or integration necessary. And because the stores are standard, we can have standard tools for debugging too.
 
 
-## Goals, non-goals
+## Queries
 
-- The system should be able to scale up (perform well in large installations) as well as scale down, and be used as a tiny lightweight configuration store for applications.
-- Tiny, light, lean. Made out of well designed small pieces.
-- Realtime collaborative text editing should be easy to support using the feature set available out of the box
+Statecraft's `fetch` and `subscribe` functions use queries to specify the data to return.
 
-- The system is **not** designed to support timeseries databases. They have a different shape. Its possible the API I end up with will work well for them anyway, but its a non-goal for now.
+Currently there's 3 standard supported query types:
+
+- *Single value query* (`Single`). This is for stores which just expose a single value. Aka, fetch everything. Single value queries return a single value result.
+- *Key-value queries* (`KV`). These contain a list (or a set) of keys to fetch, and return a map of key-value pairs in response. There is also an `AllKV` variant which requests all key-value pairs in the store.
+- *Range queries*. These specify a list of ranges (start & end pairs) to fetch. They can optionally specify a limit and offset for the start and end of the range, although not all stores support all of these fields.
+
+I've made a proof-of-concept store which adds GraphQL schema & query support, but this is not yet fully merged.
+
+
+## Ok that sounds great but how do I use it?
+
+Full developer API documentation is still in the works. Sorry.
+
+For now you can look through the type definitions (with documentation) for stores and queries [in lib/interfaces.ts](https://github.com/josephg/statecraft/blob/master/core/lib/interfaces.ts). The set of available core stores is [in lib/stores/](https://github.com/josephg/statecraft/tree/master/core/lib/stores). And there are some demos showing different ways to use the API in [demos/](https://github.com/josephg/statecraft/tree/master/demos).
+
+
+## Why is this written in Typescript?
+
+I used Javascript to make a proof of concept because it was easy and it demos well.
+
+But I want to have implementations in lots of other languages too. And once async/await support is [in rust proper](https://areweasyncyet.rs), I would like to port statecraft's core into rust.
+
+The API is designed to make it easy to re-expose a statecraft store over the network. For this reason it should be easy to build applications on top of statecraft which use a mixed set of languages. For example, you should be able to write your blog rendering function in Rust or Go but use the existing nodejs code to cache the results and expose it over websockets. This requires some compatible statecraft implementations in Go, Rails, Python, Rust, Swift, etc. And doing that is waiting on a standardization push for the network API. This is coming, but not here yet.
+
+
+## Status
+
+Statecraft is in an advanced proof-of-concept stage. It works, but you and your application may need some hand holding. There are rough edges.
+
+If you want help building statecraft, or making stuff on top of statecraft, [get in touch](mailto:me@josephg.com).
+
+
+## License
+
+Statecraft is licensed under the ISC:
+
+```
+Copyright 2019 Joseph Gentle
+
+Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+```
