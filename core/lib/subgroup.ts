@@ -193,7 +193,7 @@ export default class SubGroup<Val> {
             if (vCmp(ev, fromV) < 0) throw new Error('Internal error: Subscription has missed versions')
             else if (vCmp(ev, toV) >= 0) {
               // TODO: This can usually be ignored. Remove this warning before ship.
-              console.warn(sub.id, 'skip version', 'expect', ev, 'actual fromV', fromV, 'data', sub.value)
+              console.warn('Warning: Internal version mismatch', sub.id, 'skip version', 'expect', ev, 'actual fromV', fromV, 'data', sub.value)
               continue
             } else {
               // ev is strictly between fromV and toV. Trim txns.

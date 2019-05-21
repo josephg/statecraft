@@ -9,12 +9,35 @@ const {singlemem} = stores
 const wait = (timeout: number) => new Promise(resolve => setTimeout(resolve, timeout))
 
 // Connection states:
-// - connected
 // - connecting
+// - connected
 // - waiting
 // - stopped
 type Status = string
 
+/**
+ * Create a new client reconnector.
+ *
+ * This is the main entrypoint for clients to connect to remote stores, and
+ * automatically reconnect when they are disconnected.
+ *
+ * @param connect A function which creates the network streams. This function
+ * will be called to connect initially, and then which each reconnect. Most
+ * users should use `connectToSocket` or `connectToWS`. Eg `() => net.connectToWS(wsurl)`
+ *
+ * @returns a 3-tuple with 3 values:
+ *
+ * - A single value store with connection status information. This will have a
+ *   string with values `'waiting'`, `'connecting'`, `'connected'` and
+ *   `'stopped'`.
+ * - A promise to the store itself. The promise will resolve once the store
+ *   connects for the first time.
+ * - A promise to an exception which will throw if the connected store's UID
+ *   changes. If the server's architecture changes, its UID will change and
+ *   we can no longer re-establish our subscriptions because any version
+ *   numbers are no longer necessarily valid. On the web You should probably
+ *   reload the page when this happens.
+ */
 const reconnector = <Val>(connect: (() => Promise<[TinyReader<N.SCMsg>, TinyWriter<N.CSMsg>]>)): [I.Store<Status>, Promise<I.Store<Val>>, Promise<void>] => {
   // This is a tiny store that the client can use to track & display whether
   // or not we're currently connected. Ite tempting to make a metastore be a

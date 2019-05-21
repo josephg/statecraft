@@ -7,6 +7,7 @@ import {type as texttype, TextOp} from 'ot-text-unicode'
 registerType(texttype)
 
 declare const config: {
+  sources: I.Source[],
   key: string,
   initialValue: string | null,
   initialVersions: (number[] | null)[],
@@ -93,7 +94,10 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
 ;(async () => {
   const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws/${config.key}`
   console.log('connecting to ws', wsurl, '...')
-  const [statusStore, storeP] = reconnectingclient<string>(() => connectToWS(wsurl))
+  const [statusStore, storeP, uidChanged] = reconnectingclient<string>(() => connectToWS(wsurl))
+
+  // If the server's ID changes when we reconnect, just reload the page.
+  uidChanged.catch(e => { location.reload() })
 
   ;(async () => {
     for await (const status of subValues(I.ResultType.Single, statusStore.subscribe({type: I.QueryType.Single, q:true}))) {
@@ -106,6 +110,10 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
 
   // console.log('config', config)
   
+  // TODO: Check that the config data is from the store we connected to, and not
+  // some other store. We might have stale cache information - in which case we
+  // should throw it out (or hard-reload the page).
+
   // The version is sent as an array of numbers. Base64 would be better, but
   // we can't have nice things because of browser vendors. Eh, this is fine.
   const v0: I.FullVersion = config.initialVersions.map(vv => vv == null ? null : Uint8Array.from(vv))
@@ -118,7 +126,12 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
   // before setting the initial value. The fetched data could be old or cached.
   if (config.initialValue == null) {
     console.log('Creating the document on the server...')
-    await store.mutate(I.ResultType.Single, {type: 'set', data: ''})
+    try {
+      await store.mutate(I.ResultType.Single, {type: 'set', data: ''}, v0)
+    } catch (e) {
+      // This is usually fine. If we conflict, its because the document was concurrently created on another peer.
+      console.warn('Could not initialize the document:', e)
+    }
   }
 
   const otdoc = await otDoc<string, TextOp>(store, 'text-unicode', {

@@ -92,6 +92,7 @@ const changePrefix = (k: I.Key, fromPrefix: string, toPrefix: string = '') => {
   <div id=connstatus></div>
   <script>
   const config = ${jsesc({
+    sources: store.storeInfo.sources, // Might be better to use uid here - but onekey makes that hard.
     key,
     initialValue: value,
     initialVersions: bakeVersions(versions)

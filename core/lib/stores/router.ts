@@ -425,16 +425,18 @@ export default function router<Val>(): Router<Val> {
     return false
   }
 
+  const storeInfo = {
+    uid: `router()`,
+    sources,
+    capabilities: {
+      queryTypes: bitSet(I.QueryType.KV, I.QueryType.StaticRange),
+      mutationTypes: bitSet(I.ResultType.KV),
+    }
+  }
+
   return {
     // Note the storeinfo will change as more stores are added.
-    storeInfo: {
-      uid: `router(UNKNOWN)`, // TODO: Depend on routes to generate this!!!
-      sources,
-      capabilities: {
-        queryTypes: bitSet(I.QueryType.KV, I.QueryType.StaticRange),
-        mutationTypes: bitSet(I.ResultType.KV),
-      }
-    },
+    storeInfo,
 
     // NOTE: You must mount all stores before the router is used.
     // TODO: Enforce that.
@@ -477,6 +479,9 @@ export default function router<Val>(): Router<Val> {
 
       // Routes are kept sorted
       routes.splice(pos, 0, route)
+
+      // This ends up being quite long, though I'm not sure if that actually matters.
+      storeInfo.uid = `router(${routes.map(({store}) => store.storeInfo.uid).join(',')})`
     },
 
     async fetch(query, frontOpts = {}) {
