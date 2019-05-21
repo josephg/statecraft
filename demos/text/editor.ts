@@ -104,11 +104,8 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
   const store = await storeP
   console.log('Connected to websocket server', wsurl, 'storeid', store.storeInfo.uid)
 
-  if (config.initialValue == null) {
-    console.log('Creating the document on the server...')
-    await store.mutate(I.ResultType.Single, {type: 'set', data: ''})
-  }
-
+  // console.log('config', config)
+  
   // The version is sent as an array of numbers. Base64 would be better, but
   // we can't have nice things because of browser vendors. Eh, this is fine.
   const v0: I.FullVersion = config.initialVersions.map(vv => vv == null ? null : Uint8Array.from(vv))
@@ -116,6 +113,13 @@ const applyChange = (ctx: TextCtx, oldval: string, newval: string) => {
 
   // This is needed to prevent the browser from storing the text content on back / forwards navigations.
   elem.value = config.initialValue || ''
+
+  // TODO: It would technically be better to wait until our subscription is live
+  // before setting the initial value. The fetched data could be old or cached.
+  if (config.initialValue == null) {
+    console.log('Creating the document on the server...')
+    await store.mutate(I.ResultType.Single, {type: 'set', data: ''})
+  }
 
   const otdoc = await otDoc<string, TextOp>(store, 'text-unicode', {
     initial: { val: config.initialValue, version: v0 }
