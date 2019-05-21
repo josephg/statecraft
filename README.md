@@ -1,11 +1,11 @@
 # Statecraft
 
-Statecraft is a set of tools for interacting with data that changes over time. Its the spiritual successor to [Sharedb](https://github.com/share/sharedb).
+Statecraft is a protocol and set of tools for interacting with data that changes over time. It is the spiritual successor to [Sharedb](https://github.com/share/sharedb).
 
 Statecraft sees the world as a series of stores. Each store has:
 
 - Some data (A single value or a set of key-value pairs)
-- A monotonically increasing version number.
+- A monotonically increasing version number
 
 The store guarantees that the data is immutable with respect to time. (So if the data changes, the version number goes up).
 
@@ -16,7 +16,7 @@ Stores provide a standard set of methods to interact with the data:
 - **Subscribe**: Be notified when the data changes, and optionally also fetch the current state of the data.
 - **GetOps**: *(Optional)* Get all operations in some specified version range. Stores can choose how much historical data to store and return.
 
-A statecraft store is more than just a database abstraction. They can provide an interface to:
+A Statecraft store is more than just a database abstraction. They can provide an interface to:
 
 - A file on disk
 - A single variable in memory
@@ -27,16 +27,16 @@ A statecraft store is more than just a database abstraction. They can provide an
 
 And much more.
 
-Unlike traditional transactional databases, statecraft stores compose together like LEGO. Stores wrap one another, adding functionality or changing the behaviour of the store living underneath in the process.
+Unlike traditional transactional databases, Statecraft stores compose together like LEGO. Stores wrap one another, adding functionality or changing the behaviour of the store living underneath in the process.
 
 For example:
 
 - The `readonly` store transparently provides access to the underlying store, but disallows any mutation.
 - A `cache` store caches all queries made to the underlying store, and can return subsequent queries directly
 - The `map` store runs all fetch and subscribe result values through a mapping function.
-- The network server and client allow you to use a statecraft store living on another computer as if it existed locally. This works between servers or from a web browser over websockets.
+- The network server and client allow you to use a Statecraft store living on another computer as if it existed locally. This works between servers or from a web browser over websockets.
 
-The philosophy of statecraft is to "ship the architecture diagram". You should be able to take your whiteboard diagram of your application and construct (almost) all of it directly out of statecraft stores. No reimplementation or integration necessary. And because the stores are standard, we can have standard tools for debugging too.
+The philosophy of Statecraft is to "ship the architecture diagram". You should be able to take your whiteboard diagram of your application and construct (almost) all of it directly out of Statecraft stores. No reimplementation or integration necessary. And because the stores are standard, we can have standard tools for debugging too.
 
 
 ## Queries
@@ -61,18 +61,18 @@ For now you can look through the type definitions (with documentation) for store
 
 ## Why is this written in Typescript?
 
-I used Javascript to make a proof of concept because it was easy and it demos well.
+Javascript has been to make a proof of concept because it was easy and it demos well.
 
-But I want to have implementations in lots of other languages too. And once async/await support is [in rust proper](https://areweasyncyet.rs), I would like to port statecraft's core into rust.
+Statecraft is language agnostic and my plan is to have implementations in many other languages too. Once async/await support is [in rust proper](https://areweasyncyet.rs), I would like to port Statecraft's core into rust.
 
-The API is designed to make it easy to re-expose a statecraft store over the network. For this reason it should be easy to build applications on top of statecraft which use a mixed set of languages. For example, you should be able to write your blog rendering function in Rust or Go but use the existing nodejs code to cache the results and expose it over websockets. This requires some compatible statecraft implementations in Go, Rails, Python, Rust, Swift, etc. And doing that is waiting on a standardization push for the network API. This is coming, but not here yet.
+The API is designed to make it easy to re-expose a statecraft store over the network. For this reason it should be easy to build applications on top of Statecraft which use a mixed set of languages. For example, you should be able to write your blog rendering function in Rust or Go but use the existing nodejs code to cache the results and expose it over websockets. This requires compatible Statecraft implementations in Go, Rails, Python, Rust, Swift, etc. These are waiting on a standardization push for the network API, which is coming but not here yet.
 
 
 ## Status
 
 Statecraft is in an advanced proof-of-concept stage. It works, but you and your application may need some hand holding. There are rough edges.
 
-If you want help building statecraft, or making stuff on top of statecraft, [get in touch](mailto:me@josephg.com).
+If you want help building Statecraft, making stuff on top of Statecraft, or if you would like to help with Statecraft [get in touch](mailto:me@josephg.com).
 
 
 ## License
