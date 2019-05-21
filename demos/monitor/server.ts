@@ -8,15 +8,11 @@ import express from 'express'
 import http from 'http'
 import net from 'net'
 
-import * as I from '../../lib/interfaces'
-import kvMem from '../../lib/stores/kvmem'
-import subValues from '../../lib/subvalues'
-import { rmKV, setKV } from '../../lib/kv'
-import { connectToSocket } from '../../lib/stores/tcpclient'
-import serveWS from '../../lib/net/wsserver'
+import {I, stores, subValues, setKV, rmKV} from '@statecraft/core'
+import {connectToSocket, wsserver} from '@statecraft/net'
 
 process.on('unhandledRejection', err => {
-  console.error(err.stack)
+  console.error((err as any).stack)
   process.exit(1)
 })
 
@@ -29,7 +25,7 @@ process.on('unhandledRejection', err => {
     cpus?: CPU[]
   }
 
-  const store = await kvMem<ClientInfo>()
+  const store = await stores.kvmem<ClientInfo>()
 
   // 1. Setup the TCP server to listen for incoming clients
 
@@ -80,11 +76,11 @@ process.on('unhandledRejection', err => {
 
   const webServer = http.createServer(app)
 
-  serveWS({server: webServer}, store)
+  wsserver({server: webServer}, store)
 
   const port = process.env.PORT || 3000
-  webServer.listen(port, (err: any) => {
+  webServer.listen(+port, ((err: any) => {
     if (err) throw err
     console.log('http server listening on', port)
-  })
+  }) as any as () => void)
 })()

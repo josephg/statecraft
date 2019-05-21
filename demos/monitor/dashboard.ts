@@ -1,11 +1,8 @@
-import * as I from '../../lib/interfaces'
-import reconnecter from '../../lib/stores/reconnectingclient'
-import {connect} from '../../lib/stores/wsclient'
-import subValues from '../../lib/subvalues'
-import subvalues from '../../lib/subvalues'
-
 import choo from 'choo'
 import html from 'choo/html'
+
+import {I, subValues} from '@statecraft/core'
+import {reconnectingclient, connectToWS} from '@statecraft/net'
 
 type CPU = {user: number, sys: number}
 type ClientInfo = {
@@ -45,10 +42,10 @@ const mainView = (state: any) => {
 (async () => {
   const wsurl = `ws${window.location.protocol.slice(4)}//${window.location.host}/ws/`
   console.log('connecting to ws', wsurl, '...')
-  const [statusStore, storeP] = reconnecter<ClientInfo>(() => connect(wsurl))
+  const [statusStore, storeP] = reconnectingclient<ClientInfo>(() => connectToWS(wsurl))
 
   ;(async () => {
-    for await (const status of subvalues(I.ResultType.Single, statusStore.subscribe({type:I.QueryType.Single, q:true}))) {
+    for await (const status of subValues(I.ResultType.Single, statusStore.subscribe({type:I.QueryType.Single, q:true}))) {
       console.log('status', status)
     }
   })()

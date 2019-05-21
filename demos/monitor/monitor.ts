@@ -2,11 +2,11 @@ import cpuStats from 'cpu-stats'
 import net from 'net'
 import os from 'os'
 
-import singleMem, {setSingle} from '../../lib/stores/singlemem'
-import { serveToSocket } from '../../lib/net/tcpserver';
+import {stores, setSingle} from '@statecraft/core'
+import {serveToSocket} from '@statecraft/net'
 
 process.on('unhandledRejection', err => {
-  console.error(err.stack)
+  console.error((err as any).stack)
   process.exit(1)
 })
 
@@ -20,7 +20,7 @@ type ClientInfo = {
   const port = process.env.PORT || 3003
   const host = process.env.HOST || 'localhost'
 
-  const localStore = singleMem<ClientInfo | null>(null)
+  const localStore = stores.singlemem<ClientInfo | null>(null)
 
   let listening = false
   const listen = async () => {
