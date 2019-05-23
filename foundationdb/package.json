@@ -1,6 +1,6 @@
 {
   "name": "@statecraft/foundationdb",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Statecraft foundationdb bindings",
   "main": "dist/fdb.js",
   "author": "Seph Gentle <me@josephg.com>",
