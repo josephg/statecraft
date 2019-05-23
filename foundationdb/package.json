@@ -26,5 +26,6 @@
     "ts-node": "^8.0.3",
     "typescript": "^3.4.2",
     "foundationdb": "^0.10.2"
-  }
+  },
+  "public": true
 }
