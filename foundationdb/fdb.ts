@@ -23,7 +23,7 @@ import {
 
 import msgpack from 'msgpack-lite'
 import assert from 'assert'
-import debugLib from 'debug'
+// import debugLib from 'debug'
 
 const fieldOps = resultTypes[I.ResultType.Single]
 
@@ -66,7 +66,7 @@ const NULL_VERSION = Buffer.alloc(10)
 // const END_VERSION = (new Uint8Array(10)).fill(0xff)//Buffer.alloc(10, 0xff)
 const END_VERSION = Buffer.alloc(10, 0xff)
 
-const debug = debugLib('statecraft')
+// const debug = debugLib('statecraft')
 
 // let running = 0
 // setInterval(() => console.log('running', running), 1000).unref()
@@ -141,7 +141,7 @@ export default async function fdbStore<Val>(rawDb: Database): Promise<I.Store<Va
   const source = await db.doTn(async tn => {
     const config = await tn.get(CONFIG_KEY) as Config | null
     if (config == null) {
-      debug('Database was created - no config!')
+      // debug('Database was created - no config!')
       const source = genSource()
       tn.set(CONFIG_KEY, {sc_ver: 1, source})
 
