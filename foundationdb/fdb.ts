@@ -466,3 +466,7 @@ export default async function fdbStore<Val>(rawDb: Database): Promise<I.Store<Va
 
   return store
 }
+
+// Fix commonjs imports
+fdbStore.default = fdbStore
+module.exports = fdbStore
