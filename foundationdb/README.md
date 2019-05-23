@@ -11,6 +11,7 @@ This SC wrapper supports running a horizontally scaled set of statecraft stores 
 
 ```javascript
 const fdb = require('foundationdb')
+const fdbStore = require('@statecraft/foundationdb')
 
 // Configure foundationdb and create a database
 fdb.setAPIVersion(600)

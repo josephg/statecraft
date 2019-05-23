@@ -15,17 +15,18 @@
     "fdb.ts"
   ],
   "dependencies": {
-    "@statecraft/core": "^0.1.1"
+    "@statecraft/core": "^0.1.1",
+    "msgpack-lite": "^0.1.26"
   },
   "peerDependencies": {
     "foundationdb": "^0.10.2"
   },
   "devDependencies": {
     "@types/node": "^11.13.0",
+    "foundationdb": "^0.10.2",
     "mocha": "^6.1.1",
     "ts-node": "^8.0.3",
-    "typescript": "^3.4.2",
-    "foundationdb": "^0.10.2"
+    "typescript": "^3.4.2"
   },
   "public": true
 }
