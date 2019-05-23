@@ -1404,13 +1404,13 @@ forwarded@~0.1.2:
   resolved "https://registry.yarnpkg.com/forwarded/-/forwarded-0.1.2.tgz#98c23dab1175657b8c0573e8ceccd91b0ff18c84"
   integrity sha1-mMI9qxF1ZXuMBXPozszZGw/xjIQ=
 
-foundationdb@^0.9.2:
-  version "0.9.2"
-  resolved "https://registry.yarnpkg.com/foundationdb/-/foundationdb-0.9.2.tgz#9881732ef24f32cfc20f90cad437049c19048b92"
-  integrity sha512-3fM9Tsm82ljkGpDML8kcbbSNmCfPytjVj/+TqXqXHGCAO1dUOUkSiyvBVGrSkkJVByMbftGyeXguoApQp9cF6A==
+foundationdb@^0.10.2:
+  version "0.10.2"
+  resolved "https://registry.yarnpkg.com/foundationdb/-/foundationdb-0.10.2.tgz#cdce283f02b2d91fb50de10a44614b1243c28344"
+  integrity sha512-4VUjUmjD2fEhGTBNhREriTtTbkBMx1Q8lyQb7aPoHlTn6tgp1U7lI93hVqjyOa7tQ00WjVbDN83RYRFEaa5OgA==
   dependencies:
-    nan "^2.10.0"
-    node-gyp-build "^3.3.0"
+    nan "^2.13.2"
+    node-gyp-build "^4.1.0"
 
 fresh@0.5.2, fresh@^0.5.2:
   version "0.5.2"
@@ -2093,10 +2093,15 @@ mutexify@^1.1.0:
   resolved "https://registry.yarnpkg.com/mutexify/-/mutexify-1.2.0.tgz#45597975a2b035f56dcf61ff15cc8d73c28e7639"
   integrity sha512-oprzxd2zhfrJqEuB98qc1dRMMonClBQ57UPDjnbcrah4orEMTq1jq3+AcdFe5ePzdbJXI7zmdhfftIdMnhYFoQ==
 
-nan@^2.10.0, nan@^2.12.0:
+nan@^2.12.0:
   version "2.13.2"
   resolved "https://registry.yarnpkg.com/nan/-/nan-2.13.2.tgz#f51dc7ae66ba7d5d55e1e6d4d8092e802c9aefe7"
   integrity sha512-TghvYc72wlMGMVMluVo9WRJc0mB8KxxF/gZ4YYFy7V2ZQX9l7rgbPg7vjS9mt6U5HXODVFVI2bOduCzwOMv/lw==
+
+nan@^2.13.2:
+  version "2.14.0"
+  resolved "https://registry.yarnpkg.com/nan/-/nan-2.14.0.tgz#7818f722027b2459a86f0295d434d1fc2336c52c"
+  integrity sha512-INOFj37C7k3AfaNTtX8RhsTw7qRy7eLET14cROi9+5HAVbbHuIWUHEauBv5qT4Av2tWasiTY1Jw6puUNqRJXQg==
 
 nanoassert@^1.1.0:
   version "1.1.0"
@@ -2235,10 +2240,10 @@ node-environment-flags@1.0.4:
   dependencies:
     object.getownpropertydescriptors "^2.0.3"
 
-node-gyp-build@^3.3.0:
-  version "3.8.0"
-  resolved "https://registry.yarnpkg.com/node-gyp-build/-/node-gyp-build-3.8.0.tgz#0f57efeb1971f404dfcbfab975c284de7c70f14a"
-  integrity sha512-bYbpIHyRqZ7sVWXxGpz8QIRug5JZc/hzZH4GbdT9HTZi6WmKCZ8GLvP8OZ9TTiIBvwPFKgtGrlWQSXDAvYdsPw==
+node-gyp-build@^4.1.0:
+  version "4.1.0"
+  resolved "https://registry.yarnpkg.com/node-gyp-build/-/node-gyp-build-4.1.0.tgz#3bc3dd7dd4aafecaf64a2e3729e785bc3cdea565"
+  integrity sha512-rGLv++nK20BG8gc0MzzcYe1Nl3p3mtwJ74Q2QD0HTEDKZ6NvOFSelY6s2QBPWIHRR8h7hpad0LiwajfClBJfNg==
 
 node-lmdb@^0.6.2:
   version "0.6.2"

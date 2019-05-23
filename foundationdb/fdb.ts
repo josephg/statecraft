@@ -1,15 +1,23 @@
 // This is a production grade store backend.
 // 
-// It supports kv and range queries
+// It supports kv and range queries.
 
-import {I, err, genSource, queryTypes, resultTypes, version as versionLib, bitHas, bitSet} from '@statecraft/core'
-import SubGroup from '@statecraft/core/dist/lib/subgroup' // TODO: Remove this.
+import {
+  I,
+  err,
+  genSource,
+  queryTypes,
+  resultTypes,
+  version as versionLib,
+  bitHas,
+  bitSet,
+  makeSubGroup,
+} from '@statecraft/core'
 
 import {
   TransactionOptionCode,
   Database,
   // StreamingMode,
-  openSync,
   keySelector
 } from 'foundationdb'
 
@@ -98,11 +106,27 @@ const capabilities = {
   mutationTypes: bitSet(I.ResultType.KV),
 }
 
-export default async function fdbStore<Val>(_db?: Database): Promise<I.Store<Val>> {
+/**
+ * This function constructs a statecraft store which wraps a foundationdb
+ * database.
+ *
+ * The foundationdb database must be initialized by the user before calling this
+ * and passed in as an argument here. See the README file or the playground file
+ * for usage examples.
+ *
+ * Note that this library will use the passed foundationdb database reference
+ * directly. You probably want to prefix your foundationdb instance before
+ * passing it in here. If you don't do that, we'll effectively take ownership of
+ * the entire foundationdb keyspace.
+ * 
+ * Eg: `fdbStore(fdb.openSync().at('my_statecraft_data'))`
+ *
+ * @param db The foundationdb database object.
+ */
+export default async function fdbStore<Val>(rawDb: Database): Promise<I.Store<Val>> {
   // Does it make sense to prefix like this? Once the directory layer is in,
   // we'll use that instead.
-  const rawDb = _db || openSync().at('SC')
-  const db = rawDb.withValueEncoding({
+  const db = rawDb.withKeyEncoding().withValueEncoding({
     pack: msgpack.encode,
     // Only needed pre node-foundationdb 0.9.0
     unpack: (buf) => buf.length === 0 ? undefined : msgpack.decode(buf),
@@ -300,7 +324,7 @@ export default async function fdbStore<Val>(_db?: Database): Promise<I.Store<Val
     }
   }
 
-  const subGroup = new SubGroup({initialVersion: [v0!], fetch, getOps})
+  const subGroup = makeSubGroup({initialVersion: [v0!], fetch, getOps})
 
   const store: I.Store<Val> = {
     storeInfo: {
