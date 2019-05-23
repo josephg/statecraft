@@ -9,7 +9,7 @@ import {queryTypes} from '../qrtypes'
 import {V64, v64ToNum, vInc, vEq, vCmp, V_EMPTY, vRangeTo} from '../version'
 import genSource from '../gensource'
 import { bitSet } from '../bit'
-import SubGroup from '../subgroup'
+import makeSubGroup from '../subgroup'
 
 // TODO: Shouldn't need binsearch.
 import binsearch from 'binary-search'
@@ -96,7 +96,7 @@ const opmem = <Val>(opts: Opts = {}): I.Store<Val> & Trigger<Val> => {
   }
   const getOps: I.GetOpsFn<Val> = (q, v, opts) => Promise.resolve(getOpsSync(q, v, opts))
 
-  const subgroup = new SubGroup({getOps, initialVersion: [version]})
+  const subgroup = makeSubGroup({getOps, initialVersion: [version]})
 
   const store: I.Store<Val> & Trigger<Val> = {
     storeInfo: {

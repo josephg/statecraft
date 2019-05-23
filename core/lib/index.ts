@@ -15,6 +15,8 @@ import {register as registerType, supportedTypes, typeOrThrow} from './typeregis
 import {queryTypes, resultTypes, wrapQuery} from './qrtypes'
 import {bitHas, bitSet} from './bit'
 
+import makeSubGroup from './subgroup'
+
 export {
   I, // TODO: Its weird exposing this as types.
   stores,
@@ -31,6 +33,7 @@ export {
   queryTypes, resultTypes, wrapQuery,
 
   transaction,
+  makeSubGroup,
 
   bitSet, bitHas,
 }

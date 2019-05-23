@@ -1,3 +1,12 @@
+// Subgroup is a helper utility for making a group of subscriptions. This is
+// used by most (/all?) root stores.
+
+// The point of subgroup is to do fan-out. It allows you to use a stream of
+// individual operations to feed an arbitrary set of subscriptions.
+
+// TODO: This utility class feels very internal. It might work better as a
+// stand-alone module.
+
 import * as I from './interfaces'
 import streamToIter, {Stream} from 'ministreamiterator'
 import err from './err'
@@ -64,14 +73,37 @@ const isVersion = (expectVersion: I.FullVersion | 'current' | null): expectVersi
 let nextId = 1
 
 interface Options<Val> {
+  /**
+   * The current version of the database. The first operation should use this as
+   * its `fromVersion`.
+   */
   initialVersion?: I.FullVersion,
-  start?: (v?: I.FullVersion) => Promise<I.FullVersion>,
+
+  /**
+   * If supplied, start is called when the first subscription is created.
+   * TODO: Currently unused by all consumers. Consider removing.
+   */
+  // start?: (v?: I.FullVersion) => Promise<I.FullVersion>,
+
+  /**
+   * The store's fetch function, if it has one. Used when a subscription is created with no named version.
+   */
   fetch?: I.FetchFn<Val>,
+
+  /** The store's catchup function, if it has one. Optional and rarely used. */
   catchup?: I.CatchupFn<Val>,
+
+  /**
+   * The store's getOps function. This is used when a subscription attempts to
+   * catch up from a known (named) version.
+   * 
+   * This is optional but recommended.
+   */
   getOps?: I.GetOpsFn<Val>,
 }
 
-export default class SubGroup<Val> {
+// TODO: I'm not entirely happy with the choice to use a class for this.
+export class SubGroup<Val> {
   private readonly allSubs = new Set<Sub<Val>>()
   private readonly opts: Options<Val>
 
@@ -83,10 +115,10 @@ export default class SubGroup<Val> {
   constructor(opts: Options<Val>) {
     this.opts = opts
     this.storeVersion = opts.initialVersion || []
-    if (opts.start) {
-      this.start = opts.start
-      this.startP = resolvable()
-    }
+    // if (opts.start) {
+    //   this.start = opts.start
+    //   this.startP = resolvable()
+    // }
 
     // Need at least one of these.
     if (opts.getOps == null && opts.catchup == null) {
@@ -155,7 +187,17 @@ export default class SubGroup<Val> {
     }
   }
 
-  // TODO: Rewrite this to accept a catchup object instead.
+  /**
+   * Called from stores when a mutation happens, to notify all created
+   * subscriptions.
+   *
+   * @param sourceIdx The index (position) of the source in storeinfo for the
+   * version that was updated
+   * @param fromV The old version of the database before this update. This is
+   * used to validate internal consistency.
+   * @param txns A list of mutations that the store has suffered.
+   */
+  // TODO: Consider rewriting this to accept a catchup object instead.
   onOp(sourceIdx: number, fromV: I.Version, txns: I.TxnWithMeta<Val>[]) {
     if (txns.length == 0) return
     const toV = txns[txns.length - 1].versions[sourceIdx]
@@ -246,6 +288,10 @@ export default class SubGroup<Val> {
     }
   }
 
+  /**
+   * Create a new subscription in the subscription group, with the specified
+   * query.
+   */
   create(this: SubGroup<Val>, query: I.Query, opts: I.SubscribeOpts = {}): I.Subscription<Val> {
     // console.log('create sub', query, opts)
     const {fromVersion} = opts
@@ -298,22 +344,6 @@ export default class SubGroup<Val> {
 
     // TODO: Skip catchup if the subscription is >= this.storeVersion.
     ;(async () => {
-      if (this.start) {
-        // This is a bit contrived. If a store defines a start function, we'll
-        // call it when the first subscription hits the store using the
-        // fromVersion of the subscription. This is quite magic, and it might be
-        // too magic. TODO: Reconsider this.
-        if (fromVersion === 'current') throw Error('Cannot start from current')
-        
-        // console.log('calling start', fromVersion)
-        const version = await this.start(fromVersion)
-        this.storeVersion = version
-
-        this.start = undefined
-        this.startP!.resolve()
-        this.startP = undefined
-      } else if (this.startP) await this.startP
-      
       try {
         if (!fromCurrent) {
           const catchup = await this.catchup(query, opts, sub.trackValues)
@@ -415,4 +445,8 @@ export default class SubGroup<Val> {
 
     return stream.iter
   }
+}
+
+export default function makeSubGroup<Val>(opts: Options<Val>) {
+  return new SubGroup(opts)
 }

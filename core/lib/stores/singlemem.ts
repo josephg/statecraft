@@ -5,9 +5,8 @@ import genSource from '../gensource'
 import err from '../err'
 import {V64, vCmp} from '../version'
 import {bitSet} from '../bit'
-import streamToIter from 'ministreamiterator'
-import SubGroup from '../subgroup'
 import makeOpCache from '../opcache'
+import makeSubGroup from '../subgroup'
 
 const capabilities = {
   queryTypes: bitSet(I.QueryType.Single),
@@ -30,7 +29,7 @@ export default function singleStore<Val = any>(initialValue: Val, source: I.Sour
   }
 
   const opcache = makeOpCache<Val>()
-  const subGroup = new SubGroup({initialVersion: [V64(version)], fetch, getOps: opcache.getOps})
+  const subGroup = makeSubGroup({initialVersion: [V64(version)], fetch, getOps: opcache.getOps})
 
   const store: I.Store<Val> = {
     storeInfo: {

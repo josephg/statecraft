@@ -9,7 +9,7 @@ import {vMax, V_EMPTY, vCmp, vEq, V64} from '../version'
 import {findRangeStatic} from '../types/range'
 import opmem from './opmem';
 import { bitSet } from '../bit'
-import SubGroup from '../subgroup'
+import makeSubGroup, {SubGroup} from '../subgroup'
 import resolvablePromise, { Resolvable } from '@josephg/resolvable'
 
 
@@ -247,7 +247,7 @@ export default function createKVStore<Val>(
         resultMap.applyMut!(data, txn)
       }
       
-      if (subgroup == null) subgroup = new SubGroup({
+      if (subgroup == null) subgroup = makeSubGroup({
         initialVersion: cu.toVersion,
         fetch,
         getOps: inner.getOps.bind(inner)
