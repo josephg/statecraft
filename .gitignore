@@ -13,3 +13,4 @@ yarn-error.log
 scratch*
 *.cluster
 testdb
+.vscode
