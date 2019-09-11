@@ -35,13 +35,13 @@ const header = (state: State, emit: any) => {
   // console.log('v', versions)
   return html`
     <div id=header class=${connectionStatus}>
-      Store: <span class=mon>${uid}</span>
+      Store: <span class="uid mon">${uid}</span>
       <span style="display: inline-block; width: 2em;"></span>
       Version: <span class=mon>${sources.map((s, i) => versions[i] && hex(versions[i]!)).join(', ')}</span>
       <span style="display: inline-block; width: 2em;"></span>
       <div class=button onclick=${() => {emit('set prefer', 'pre')}} disabled=${prefer === 'pre'}>PRE</div>
       <div class=button onclick=${() => {emit('set prefer', 'html')}} disabled=${prefer === 'html'}>HTML</div>
-      <span class=right>${connectionStatus}</span>
+      <span>${connectionStatus}</span>
     </div>
   `
 }

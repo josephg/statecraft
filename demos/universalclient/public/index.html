@@ -48,6 +48,9 @@ pre {
   border-bottom: 2px solid green;
   line-height: 2em;
   padding: 0 1em;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
 }
 #header.connected {
   background-color: #2d3a2d;
@@ -56,12 +59,17 @@ pre {
   background-color: #680000;
   border-bottom: 2px solid red;
 }
+#header > span {
+  margin-left: 0.75em;
+}
+.uid {
+  font-family: monospace;
+  overflow-x: scroll;
+  overflow-y: hidden;
+  flex-shrink: 1;
+}
 .mon {
   font-family: monospace;
-  font-size: 120%;
-}
-#header > .right {
-  float: right;
 }
 
 #header > .button {
