@@ -27,7 +27,9 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
   const subForRef = new Map<N.Ref, I.Subscription<Val>>()
 
   const protoErr = (err: Error) => {
-    console.error('Invalid client', err)
+    console.warn(err.message)
+    if (reader.destroy) reader.destroy(err)
+    if (writer.destroy) writer.destroy(err)
     writer.close()
   }
 

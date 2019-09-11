@@ -13,17 +13,24 @@ export interface TinyReader<Msg> {
   onMessage?: (msg: Msg) => void
   onClose?: () => void
   isClosed: boolean,
+  // In case of error, destroy the stream.
+  destroy?(e?: Error): void,
 }
 
 export interface TinyWriter<Msg> {
   write(data: Msg): void,
   close(): void,
+  // In case of error, destroy the stream.
+  destroy?(e?: Error): void,
 }
 
 export const wrapReader = <Msg>(r: Readable) => {
   const reader: TinyReader<Msg> = {buf: [], isClosed: false}
+  let destroyed = false
 
   r.on('data', msg => {
+    if (destroyed) return
+
     if (reader.onMessage) reader.onMessage!(msg as any as Msg)
     else reader.buf.push(msg)
   })
@@ -36,6 +43,10 @@ export const wrapReader = <Msg>(r: Readable) => {
     // anything here. I think.
     console.warn('socket error', err)
   })
+  reader.destroy = err => {
+    r.destroy()
+    destroyed = true
+  }
   
   return reader
 }
@@ -63,6 +74,11 @@ export const wrapWriter = <Msg>(w: Writable, encode?: (msg: Msg) => any) => {
     },
     close() {
       w.end()
+    },
+    destroy(err) {
+      // Not passing the error through because if we do it'll emit an error in the
+      // stream.
+      w.destroy()
     }
   } as TinyWriter<Msg>
 }
