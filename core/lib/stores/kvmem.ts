@@ -75,6 +75,7 @@ export default function createKVStore<Val>(
   const lastModVersion = new Map<I.Key, I.Version>()
 
   if (inner.storeInfo.sources.length !== 1) throw Error('Using an inner store with more than one source not currently supported')
+  if (inner.storeInfo.sourceIsMonotonic.includes(false)) throw Error('kvmem on top of a non monotonic source not implemented')
   // const source = inner.storeInfo.sources[0]
   let lastVersion: I.Version = V_EMPTY
 
@@ -169,6 +170,7 @@ export default function createKVStore<Val>(
       uid: `kvmem(${inner.storeInfo.uid})`,
       capabilities,
       sources: inner.storeInfo.sources,
+      sourceIsMonotonic: inner.storeInfo.sourceIsMonotonic,
     },
 
     fetch,

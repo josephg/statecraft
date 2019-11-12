@@ -47,6 +47,7 @@ const map = <In, Out>(inner: I.Store<In>, mapfn: MapFn<In, Out>, opts: MapOpts =
     storeInfo: {
       uid: `map(${inner.storeInfo.uid},${opts.fnUid || '_'})`,
       sources,
+      sourceIsMonotonic: inner.storeInfo.sourceIsMonotonic,
 
       capabilities: {
         // TODO: Filter these capabilities by the ones we support locally.

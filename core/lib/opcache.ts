@@ -20,6 +20,11 @@ interface OpsEntry<Val> {
 }
 const cmp = (item: OpsEntry<any>, v: I.Version) => vCmp(item.toV, v)
 
+/**
+ * Opcache is a helper object which keeps a set of recent operations in memory and can use it to respond to getOps calls.
+ * 
+ * At the moment opcache only works with monotonically increasing operations.
+ */
 const opcache = <Val>(opts: OpCacheOpts = {}): {
   onOp(sourceIdx: number, fromV: I.Version, toV: I.Version, type: I.ResultType, txn: I.Txn<Val>, meta: I.Metadata): void,
   getOps: I.GetOpsFn<Val>,

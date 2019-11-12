@@ -51,6 +51,7 @@ const onekey = <Val>(innerStore: I.Store<Val>, key: I.Key): I.Store<Val> => {
     storeInfo: {
       uid: `onekey(${innerStore.storeInfo.uid},${key})`,
       sources: innerStore.storeInfo.sources,
+      sourceIsMonotonic: innerStore.storeInfo.sourceIsMonotonic,
       capabilities: {
         mutationTypes: canMutate ? capabilities.mutationTypes : new Set(),
         ...capabilities,

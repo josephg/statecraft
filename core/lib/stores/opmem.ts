@@ -102,6 +102,7 @@ const opmem = <Val>(opts: Opts = {}): I.Store<Val> & Trigger<Val> => {
     storeInfo: {
       uid: `opmem(${source})`,
       sources: [source],
+      sourceIsMonotonic: [true],
       capabilities: {
         queryTypes: 0,
         // Is this right? Maybe we should just set all the bits.
@@ -122,6 +123,9 @@ const opmem = <Val>(opts: Opts = {}): I.Store<Val> & Trigger<Val> => {
     internalDidChange(type, txn, meta, toV) {
       const fromV = version
       if (!toV) toV = vInc(version)
+      else {
+        if (vCmp(version, toV) >= 0) throw Error('opmem requires monotonically increasing changes')
+      }
 
       ops.push({ fromV: version, toV, txn, meta })
       while (maxOps !== 0 && ops.length > maxOps) ops.shift()

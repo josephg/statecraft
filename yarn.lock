@@ -27,16 +27,6 @@
     es6-error "^4.1.1"
     ministreamiterator "^1.0.0"
 
-"@statecraft/core@0.1.1":
-  version "0.1.1"
-  resolved "https://registry.yarnpkg.com/@statecraft/core/-/core-0.1.1.tgz#d927788a7545ca97887a59ffc8f3db2a11fa2cf0"
-  integrity sha512-/T4ZydaSKI1nZb8UzuZhm/+GY6XS2gtqjpatDCY5QkxSz+mK8Skj0o/5oqtiOev4Fzg/BmpT7E1FEp3KYP42Sg==
-  dependencies:
-    "@josephg/resolvable" "^1.0.0"
-    binary-search "^1.3.2"
-    es6-error "^4.1.1"
-    ministreamiterator "^1.0.0"
-
 "@statecraft/net@0.1.0":
   version "0.1.0"
   resolved "https://registry.yarnpkg.com/@statecraft/net/-/net-0.1.0.tgz#92666fd0dcd8ea49226506781860b38b0d3ec578"

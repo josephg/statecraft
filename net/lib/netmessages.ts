@@ -85,6 +85,7 @@ export interface HelloMsg {
   pv: number,
   uid: string,
   sources: I.Source[], // ??? TODO: Still not sure whether to allow unknown sources.
+  m: boolean[], // This is kinda wasteful over the wire, but probably not a big deal. Bitvector would be better.
   capabilities: number[]
 }
 

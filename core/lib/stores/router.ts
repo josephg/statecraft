@@ -229,7 +229,7 @@ const composeCatchupsMut = <Val>(qtype: I.QueryType, a: I.CatchupData<Val>, b: I
 // Its sad that I need this - its only used for subscription replace queries
 // at the moment. Though it will also be used for baked queries in fetch.
 const mergeKVQueries = <T>(from: (Set<I.Key> | null)[]): Set<I.Key> => {
-  const results = new Set()
+  const results = new Set<I.Key>()
   for (let i = 0; i < from.length; i++) {
     const innerMap = from[i]
     if (innerMap != null) for (const k of innerMap) results.add(k)
@@ -317,6 +317,7 @@ export default function router<Val>(): Router<Val> {
   // The routes list is kept sorted in order of frontend ranges
   const routes: Route[] = []
   const sources: string[] = []
+  const sourceIsMonotonic: true[] = []
 
   const getRoute = (k: I.Key) => (
     // This could be rewritten to use binary search. It won't make a huge
@@ -346,7 +347,7 @@ export default function router<Val>(): Router<Val> {
         let pair = result.find(({store}) => store === route.store)
         let q, routeForKey
         if (pair == null) {
-          [q, routeForKey] = [new Set(), new Map()]
+          [q, routeForKey] = [new Set<I.Key>(), new Map()]
           result.push({store: route.store, q, routes: routeForKey, sourceMap: route.sourceMap})
         } else {
           q = pair.q as I.KVQuery
@@ -428,6 +429,7 @@ export default function router<Val>(): Router<Val> {
   const storeInfo = {
     uid: `router()`,
     sources,
+    sourceIsMonotonic,
     capabilities: {
       queryTypes: bitSet(I.QueryType.KV, I.QueryType.StaticRange),
       mutationTypes: bitSet(I.ResultType.KV),
@@ -447,9 +449,11 @@ export default function router<Val>(): Router<Val> {
       // TODO: Consider keeping this list sorted.
       const sourceMap = store.storeInfo.sources.map((s, i) => {
         const si = sources.indexOf(s)
-        return si < 0
-          ? sources.push(s) - 1
-          : si
+        if (si >= 0) return si
+
+        const idx = sources.push(s) - 1
+        sourceIsMonotonic.push(true)
+        return idx
       })
 
       // Filter the advertised capabilities to only be those which all our
@@ -826,7 +830,7 @@ export default function router<Val>(): Router<Val> {
 
               // I could update fromVersions, but I don't need to. Its not
               // used for anything at this point.
-              const merged = mergeCatchups(qtype, updates, res)
+              const merged = mergeCatchups<Val>(qtype, updates, res)
               if (opts.alwaysNotify || merged.replace || merged.txns.length) {
                 stream.append(merged)
               }

@@ -63,6 +63,7 @@ export default function serve<Val>(reader: TinyReader<N.CSMsg>, writer: TinyWrit
     pv: 0,
     uid: store.storeInfo.uid,
     sources: store.storeInfo.sources,
+    m: store.storeInfo.sourceIsMonotonic,
     capabilities: capabilitiesToJSON(store.storeInfo.capabilities),
   })
 

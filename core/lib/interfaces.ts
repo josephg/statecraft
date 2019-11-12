@@ -402,6 +402,9 @@ export type StoreInfo = {
   // Unique and lexographically sorted.
   readonly sources: Source[],
 
+  // Same length as the source list. This is kinda ugly, but its very infrequently used so,.
+  readonly sourceIsMonotonic: boolean[],
+
   readonly capabilities: Capabilities,
 
   // And ideally, recursive querying support.

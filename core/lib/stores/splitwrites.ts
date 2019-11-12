@@ -6,6 +6,7 @@ export default function splitWrites<Val>(readStore: I.Store<Val>, writeStore: I.
     storeInfo: {
       uid: readStore.storeInfo.uid, // TODO: Is this ok?
       sources: readStore.storeInfo.sources,
+      sourceIsMonotonic: readStore.storeInfo.sourceIsMonotonic,
       capabilities: {
         queryTypes: readStore.storeInfo.capabilities.queryTypes,
         mutationTypes: writeStore.storeInfo.capabilities.mutationTypes,

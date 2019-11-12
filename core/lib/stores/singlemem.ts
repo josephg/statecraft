@@ -35,7 +35,8 @@ export default function singleStore<Val = any>(initialValue: Val, source: I.Sour
     storeInfo: {
       uid: `single(${source})`,
       capabilities,
-      sources: [source]
+      sources: [source],
+      sourceIsMonotonic: [true],
     },
     
     fetch,
