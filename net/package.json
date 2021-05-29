@@ -20,7 +20,7 @@
     "@josephg/resolvable": "^1.0.0",
     "isomorphic-ws": "^4.0.1",
     "ministreamiterator": "^1.0.0",
-    "ws": "^6.2.1"
+    "ws": "^7.4.6"
   },
   "devDependencies": {
     "@types/node": "^11.13.0",
