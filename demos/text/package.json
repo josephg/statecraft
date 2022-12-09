@@ -17,7 +17,7 @@
     "@types/jsesc": "^0.4.29",
     "@types/node": "^11.13.0",
     "commonmark": "^0.28.1",
-    "express": "^4.16.4",
+    "express": "^4.17.3",
     "fresh": "^0.5.2",
     "jsesc": "^2.5.2",
     "msgpack-lite": "^0.1.26",
